@@ -12,6 +12,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
+app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
+
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-me';
 const BCRYPT_ROUNDS = 12;
@@ -409,6 +411,14 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const apiRouter = express.Router();
+
+apiRouter.get('/admin/system/health', (req, res) => {
+    res.json({ status: 'active', message: 'Backend is running correctly', timestamp: new Date() });
+});
+
+apiRouter.get('/health', (req, res) => {
+    res.json({ status: 'active', message: 'Backend is running correctly' });
+});
 
 // --- BASIC ENTITY ROUTES ---
 apiRouter.get('/customers', (req, res) => {
