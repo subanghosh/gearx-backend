@@ -1,0 +1,31 @@
+# Environment variables — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Uploads (user files — back up separately)
+uploads/
+
+# Database files
+*.sqlite
+*.db
+vroomly*.db
+vroomer*.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Backups
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

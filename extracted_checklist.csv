@@ -1,0 +1,252 @@
+Vehicle Type,Category,Item,Condition,Status,Priority,Garage Cost,Our Cost,Commission %,Frequency
+Car,General Inspection,250 Point Health Report,Done,Replace,P1,500,500,0,1 Year
+Car,Engine System,Engine oil level,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Engine oil leakage,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Oil filter condition,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Air filter condition,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Fuel filter clogging,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Spark plug wear,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Ignition coil function,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Timing belt wear,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Serpentine belt cracks,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Engine mount vibration,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Throttle body cleanliness,Normal,Not Required,-,0,0,0,-
+Car,Engine System,PCV valve blockage,Normal,Not Required,-,0,0,0,-
+Car,Engine System,MAF sensor condition,Normal,Not Required,-,0,0,0,-
+Car,Engine System,MAP sensor reading,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Oxygen sensor health,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Knock sensor check,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Camshaft sensor signal,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Crankshaft sensor signal,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Valve cover gasket leak,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Head gasket leak,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Piston noise,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Engine idle stability,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Exhaust smoke color,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Engine temperature stability,Normal,Not Required,-,0,0,0,-
+Car,Engine System,Engine vibration level,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Radiator leakage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Radiator fin damage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant level,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant contamination,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Radiator cap pressure,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Upper radiator hose cracks,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Lower radiator hose cracks,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Heater core blockage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Thermostat operation,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Water pump leakage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Cooling fan operation,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Fan motor noise,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Fan relay function,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Temperature sensor reading,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant pipe corrosion,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Intercooler blockage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Cooling fan shroud condition,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant reservoir crack,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant overflow hose,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Radiator mounting,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant circulation,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Fan blade damage,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant smell,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Coolant pressure stability,Normal,Not Required,-,0,0,0,-
+Car,Cooling System,Cooling system airlock,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake pad thickness,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake disc wear,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake shoe wear,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake drum scoring,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake caliper movement,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake master cylinder leak,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake booster performance,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake fluid level,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake fluid contamination,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake hose cracks,Normal,Not Required,-,0,0,0,-
+Car,Brake System,ABS sensor signal,Normal,Not Required,-,0,0,0,-
+Car,Brake System,ABS module error,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Handbrake cable tension,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Wheel cylinder leak,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake proportioning valve,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Parking brake lever travel,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake pedal hardness,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake vibration,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake noise,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake line corrosion,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake response time,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake fluid moisture,Normal,Not Required,-,0,0,0,-
+Car,Brake System,ABS warning light,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Emergency brake function,Normal,Not Required,-,0,0,0,-
+Car,Brake System,Brake disc overheating,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Shock absorber leakage,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Strut performance,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Coil spring damage,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Control arm bush wear,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Ball joint play,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Stabilizer bar condition,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Stabilizer link noise,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Suspension bush cracks,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering knuckle wear,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Wheel hub damage,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Wheel bearing noise,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Trailing arm bend,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Cross member damage,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Subframe rust,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Suspension mount looseness,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering rack leak,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering column play,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Power steering pump noise,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Power steering fluid level,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Tie rod inner wear,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Tie rod outer wear,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering gearbox play,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering coupler wear,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering angle sensor error,Normal,Not Required,-,0,0,0,-
+Car,Suspension & Steering,Steering vibration,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Clutch plate wear,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Pressure plate damage,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Release bearing noise,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Flywheel scoring,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Clutch master cylinder leak,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Clutch slave cylinder leak,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gearbox oil level,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gearbox mount wear,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission oil pan leak,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission filter clog,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gear shift lever play,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Drive shaft vibration,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,CV joint boot crack,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Differential oil leak,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Axle shaft bend,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gear shifting smoothness,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Clutch pedal free play,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission noise,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gear slipping,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Clutch smell,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission overheating,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Automatic transmission fluid level,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Gear linkage wear,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission seal leak,Normal,Not Required,-,0,0,0,-
+Car,Transmission System,Transmission vibration,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Battery voltage,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Battery terminal corrosion,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Alternator charging output,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Starter motor noise,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Ignition switch response,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Fuse box condition,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Relay functionality,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Wiring harness damage,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,ECU error codes,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,BCM communication,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Headlight brightness,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Tail light operation,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Indicator flashing,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Fog light operation,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Interior light operation,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Horn sound level,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Parking sensor function,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Reverse camera clarity,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Speed sensor signal,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Fuel gauge accuracy,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Immobilizer function,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Central locking,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Power window operation,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Dashboard warning lights,Normal,Not Required,-,0,0,0,-
+Car,Electrical System,Instrument cluster,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC compressor noise,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC condenser blockage,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC evaporator cooling,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Cabin air filter clog,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Blower motor noise,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC expansion valve,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC dryer condition,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC pressure sensor,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Climate control module,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC gas pipe leakage,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Heater blower function,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,HVAC control panel,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC relay function,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC fan speed levels,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Temperature blend door,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC cooling efficiency,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC smell,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC vent airflow,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC compressor clutch,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC condenser fan,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Cabin cooling time,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Rear AC vents,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Defogger function,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,Heater core heating,Normal,Not Required,-,0,0,0,-
+Car,AC & HVAC System,AC gas pressure,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust manifold crack,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Catalytic converter blockage,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust pipe rust,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Muffler noise,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Resonator damage,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust hanger rubber,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust heat shield looseness,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust gasket leak,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust clamp rust,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,DPF blockage,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust smoke density,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust vibration,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust smell,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Tailpipe corrosion,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust mount looseness,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Oxygen sensor exhaust reading,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust back pressure,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Catalytic converter temperature,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust pipe dent,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust bracket damage,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Diesel soot buildup,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Silencer crack,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust leak sound,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Exhaust alignment,Normal,Not Required,-,0,0,0,-
+Car,Exhaust System,Emission level,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre tread depth,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre sidewall crack,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre pressure,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel alignment,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel balancing weight,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Alloy wheel crack,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel nuts tightness,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Valve stem leak,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel bearing noise,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre uneven wear,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Spare tyre condition,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre age,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel rim bend,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel vibration,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre rotation need,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre puncture repair,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel hub bolts,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre pressure sensor,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre heat marks,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre shoulder wear,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre center wear,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre side bulge,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Wheel stud damage,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre valve cap,Normal,Not Required,-,0,0,0,-
+Car,Wheels & Tyres,Tyre brand mismatch,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Windshield crack,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Wiper blade wear,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Side mirror damage,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Door handle operation,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Fuel pump noise,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Fuel tank leak,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Door lock function,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Seat belt function,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Seat rail movement,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Dashboard cracks,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Interior trim damage,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Boot lock operation,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Bonnet latch,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Hood struts,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Paint scratches,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Rust spots,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Underbody rust,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Floor mat condition,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Carpet moisture,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Interior odor,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Sunroof operation,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Power window motor,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Central locking actuator,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Door hinge noise,Normal,Not Required,-,0,0,0,-
+Car,Body & Interior,Interior panel fitment,Normal,Not Required,-,0,0,0,-

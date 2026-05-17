@@ -1,0 +1,165 @@
+﻿Table: users
+CREATE TABLE users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('admin', 'marshal', 'mechanic', 'customer')),
+            password TEXT NOT NULL
+        , garageId TEXT, status TEXT DEFAULT 'active', phoneVerified INTEGER DEFAULT 0)
+---
+Table: customers
+CREATE TABLE customers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            email TEXT
+        , phoneVerified INTEGER DEFAULT 0, emailVerified INTEGER DEFAULT 0)
+---
+Table: vehicles
+CREATE TABLE vehicles (
+            id TEXT PRIMARY KEY,
+            customerId TEXT,
+            plate TEXT,
+            make TEXT,
+            model TEXT,
+            type TEXT, makeModel TEXT, photo TEXT,
+            FOREIGN KEY(customerId) REFERENCES customers(id)
+        )
+---
+Table: service_requests
+CREATE TABLE service_requests (
+            id TEXT PRIMARY KEY,
+            customerId TEXT,
+            vehicleId TEXT,
+            date TEXT,
+            status TEXT,
+            issue TEXT, garageId TEXT, inspectionCategory TEXT, categorySource TEXT, inspectionQuote REAL, mechanicInspectionCost REAL,
+            FOREIGN KEY(customerId) REFERENCES customers(id),
+            FOREIGN KEY(vehicleId) REFERENCES vehicles(id)
+        )
+---
+Table: trips
+CREATE TABLE trips (
+            id TEXT PRIMARY KEY,
+            serviceRequestId TEXT NOT NULL,
+            marshalId TEXT,
+            status TEXT, -- pending_otp_1, in_transit, at_garage, in_service, pending_approval, approved, completed
+            startOdometer INTEGER,
+            otp1 TEXT,
+            garageOtp TEXT,
+            garageDropOdometer INTEGER,
+            pickupLat REAL,
+            pickupLng REAL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(serviceRequestId) REFERENCES service_requests(id),
+            FOREIGN KEY(marshalId) REFERENCES users(id)
+        )
+---
+Table: media
+CREATE TABLE media (
+            id TEXT PRIMARY KEY,
+            type TEXT, -- 360_pickup, audit_evidence, final_delivery, parts_replaced
+            referenceId TEXT, -- tripId or serviceRequestId
+            filePath TEXT,
+            uploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+---
+Table: audits
+CREATE TABLE audits (
+            id TEXT PRIMARY KEY,
+            tripId TEXT,
+            mechanicId TEXT,
+            data TEXT, -- JSON string of the checklist and costs
+            status TEXT, -- pending_approval, approved
+            totalEstimate INTEGER,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        , customerEstimate REAL)
+---
+Table: marshal_bonuses
+CREATE TABLE marshal_bonuses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            marshalId TEXT,
+            tripId TEXT,
+            amount INTEGER,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+---
+Table: sqlite_sequence
+CREATE TABLE sqlite_sequence(name,seq)
+---
+Table: incentives
+CREATE TABLE incentives (
+            id TEXT PRIMARY KEY,
+            userId TEXT NOT NULL,
+            tripId TEXT,
+            amount REAL NOT NULL,
+            type TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            FOREIGN KEY(userId) REFERENCES users(id),
+            FOREIGN KEY(tripId) REFERENCES trips(id)
+        )
+---
+Table: garages
+CREATE TABLE garages (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            address TEXT,
+            contact TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        , commissionRate REAL DEFAULT 0, status TEXT DEFAULT 'active', email TEXT, password TEXT, businessType TEXT, gstNumber TEXT, bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankName TEXT, bankBranch TEXT, bankVerified INTEGER DEFAULT 0, serviceType TEXT DEFAULT 'Both', serviceTypeVerified INTEGER DEFAULT 0, commissionOnHold INTEGER DEFAULT 0, phoneVerified INTEGER DEFAULT 0, lat REAL, lng REAL, locationVerified INTEGER DEFAULT 0)
+---
+Table: garage_rates
+CREATE TABLE garage_rates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            garageId TEXT,
+            vehicleType TEXT, -- Car or Bike
+            itemCategory TEXT, -- e.g. Engine and Fluids
+            item TEXT, -- e.g. Engine Oil Color
+            logicType TEXT, -- replace, monitor
+            price REAL,
+            UNIQUE(garageId, vehicleType, itemCategory, item, logicType),
+            FOREIGN KEY(garageId) REFERENCES garages(id)
+        )
+---
+Table: garage_documents
+CREATE TABLE garage_documents (
+            id TEXT PRIMARY KEY,
+            garageId TEXT NOT NULL,
+            docType TEXT, -- 'business_cert', 'gst_cert', 'garage_photo', 'other'
+            fileName TEXT,
+            filePath TEXT,
+            uploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'pending', -- pending, accepted, rejected
+            note TEXT,
+            FOREIGN KEY(garageId) REFERENCES garages(id)
+        )
+---
+Table: garage_rate_requests
+CREATE TABLE garage_rate_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            garageId TEXT NOT NULL,
+            vehicleType TEXT,
+            itemCategory TEXT,
+            item TEXT,
+            logicType TEXT,
+            proposedPrice REAL,
+            currentPrice REAL,
+            status TEXT DEFAULT 'pending', -- pending, approved, rejected
+            requestedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            reviewedAt DATETIME,
+            FOREIGN KEY(garageId) REFERENCES garages(id)
+        )
+---
+Table: otp_verifications
+CREATE TABLE otp_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entityId TEXT NOT NULL,   -- garageId or userId
+            entityType TEXT NOT NULL, -- 'garage' or 'user'
+            phone TEXT NOT NULL,
+            otp TEXT NOT NULL,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expiresAt DATETIME,
+            verifiedAt DATETIME
+        )
+---

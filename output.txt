@@ -1,0 +1,21 @@
+﻿--- Checking database.sqlite ---
+--- Checking vroomly.sqlite ---
+--- Checking vroomly2.sqlite ---
+[vroomly2.sqlite] Garages found: [
+  {
+    "id": "Test001",
+    "name": "Test Garage Suban",
+    "contact": "",
+    "email": null,
+    "password": "Welcome@123"
+  }
+]
+[vroomly.sqlite] Users found: [
+  {
+    "id": "cust_suban",
+    "name": "Suban (Customer)",
+    "phone": "9000000004",
+    "email": "customer@vroomly.com",
+    "password": "customer"
+  }
+]

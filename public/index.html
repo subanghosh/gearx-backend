@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GearX Platform Hub</title>
+    <style>
+        body { font-family: 'Outfit', sans-serif; background: #0f172a; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 12px; border: 1px solid #334155; max-width: 600px; width: 90%; text-align: center; }
+        .portal-btn { display: block; margin: 15px auto; padding: 15px 20px; background: #3b82f6; border-radius: 8px; color: white; text-decoration: none; font-weight: 600; width: 80%; transition: background 0.2s; }
+        .portal-btn:hover { background: #2563eb; }
+        .portal-btn.admin { background: #8b5cf6; }
+        .portal-btn.admin:hover { background: #7c3aed; }
+        .portal-btn.garage { background: #f59e0b; }
+        .portal-btn.garage:hover { background: #d97706; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="card">
+        <h1 style="margin-bottom: 5px;">GearX Hub</h1>
+        <p style="color: #94a3b8; margin-bottom: 30px;">Select a portal to launch</p>
+        
+        <a href="/customer/" class="portal-btn">🚙 Customer App</a>
+        <a href="/garage/" class="portal-btn garage">🛠️ Garage Portal</a>
+        <a href="/marshal/" class="portal-btn">🦺 Marshal App</a>
+        <a href="/crm/" class="portal-btn admin">🛡️ Admin CRM</a>
+    </div>
+</body>
+</html>

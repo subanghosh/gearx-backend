@@ -1,0 +1,64 @@
+{
+  "garages": [
+    {
+      "id": "Test001",
+      "name": "Test Garage Suban",
+      "contact": "",
+      "email": null,
+      "password": "Welcome@123",
+      "status": "active"
+    },
+    {
+      "id": "g_test_1772597529849",
+      "name": "Test Garage",
+      "contact": "12345",
+      "email": null,
+      "password": null,
+      "status": "active"
+    },
+    {
+      "id": "g_test_1772597557858",
+      "name": "Test Garage",
+      "contact": "12345",
+      "email": null,
+      "password": null,
+      "status": "active"
+    },
+    {
+      "id": "g_test_1772597671706",
+      "name": "Test Garage",
+      "contact": "12345",
+      "email": null,
+      "password": null,
+      "status": "active"
+    },
+    {
+      "id": "g_test_1772598463508",
+      "name": "Test Garage",
+      "contact": "12345",
+      "email": null,
+      "password": null,
+      "status": "active"
+    }
+  ],
+  "users": [
+    {
+      "id": "admin",
+      "name": "Admin User",
+      "phone": "111",
+      "email": "admin@vroomly.com",
+      "password": "admin",
+      "role": "admin",
+      "status": "active"
+    },
+    {
+      "id": "mechanic",
+      "name": "Mechanic Mike",
+      "phone": "888",
+      "email": "mechanic@vroomly.com",
+      "password": "mechanic",
+      "role": "mechanic",
+      "status": "active"
+    }
+  ]
+}
