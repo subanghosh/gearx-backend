@@ -1219,9 +1219,9 @@ app.use('/api/upload-kyc', uploadLimiter);
 // --- STATIC ROUTES ---
 app.use('/api', apiRouter);
 app.use('/uploads', express.static('uploads'));
-app.use('/garage', express.static(path.join(__dirname, '../vroomly-garage-portal')));
-app.use('/customer', express.static(path.join(__dirname, '../vroomly-customer-app')));
-app.use('/marshal', express.static(path.join(__dirname, '../vroomly-marshal-app')));
+app.use('/garage', express.static(path.join(__dirname, '../gearx-garage-portal')));
+app.use('/customer', express.static(path.join(__dirname, '../gearx-customer-app')));
+app.use('/marshal', express.static(path.join(__dirname, '../gearx-marshal-app')));
 app.use('/crm', express.static(path.join(__dirname, '../Anti_Gravity')));
 
 // --- GLOBAL ERROR HANDLER ---
