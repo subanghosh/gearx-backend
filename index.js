@@ -1219,10 +1219,22 @@ app.use('/api/upload-kyc', uploadLimiter);
 // --- STATIC ROUTES ---
 app.use('/api', apiRouter);
 app.use('/uploads', express.static('uploads'));
-app.use('/garage', express.static(path.join(__dirname, '../gearx-garage-portal')));
-app.use('/customer', express.static(path.join(__dirname, '../gearx-customer-app')));
-app.use('/marshal', express.static(path.join(__dirname, '../gearx-marshal-app')));
+
+// Garage Portal
+app.use('/garage', express.static(path.join(__dirname, '../vroomly-garage-portal')));
+app.use('/vroomly-garage-portal', express.static(path.join(__dirname, '../vroomly-garage-portal')));
+
+// Customer App
+app.use('/customer', express.static(path.join(__dirname, '../vroomly-customer-app')));
+app.use('/vroomly-customer-app', express.static(path.join(__dirname, '../vroomly-customer-app')));
+
+// Marshal App
+app.use('/marshal', express.static(path.join(__dirname, '../vroomly-marshal-app')));
+app.use('/vroomly-marshal-app', express.static(path.join(__dirname, '../vroomly-marshal-app')));
+
+// CRM (Admin)
 app.use('/crm', express.static(path.join(__dirname, '../Anti_Gravity')));
+app.use('/admin', express.static(path.join(__dirname, '../Anti_Gravity')));
 
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
