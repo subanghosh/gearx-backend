@@ -26,12 +26,17 @@ app.use(helmet({
 const allowedOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
     process.env.FRONTEND_URL
 ].filter(Boolean);
 
 app.use(cors({
     origin: (origin, cb) => {
-        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        // Allow requests with no origin (mobile apps, curl, Postman)
+        if (!origin) return cb(null, true);
+        // If FRONTEND_URL is set, check against whitelist; otherwise allow all
+        if (!process.env.FRONTEND_URL || allowedOrigins.includes(origin)) return cb(null, true);
         cb(new Error('CORS: Origin not allowed'));
     },
     credentials: true
@@ -491,80 +496,105 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone } = req.body;
     if (!phone && !email)
         return res.status(400).json({ error: 'Phone or email is required' });
+
     // Clean expired OTPs (housekeeping)
-    pool.query("DELETE FROM otp_verifications WHERE expiresAt < NOW()").catch(() => {});
+    pool.query("DELETE FROM otp_verifications WHERE \"expiresAt\" < NOW()").catch(() => {});
+
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    db.run("INSERT INTO otp_verifications (entityId, entityType, phone, email, otp, expiresAt) VALUES ('TEMP', 'auth', ?, ?, ?, ?)",
-        [phone, email, otp, expiresAt], async (err) => {
-            if (err) return res.status(500).json({ error: 'Database error: ' + err.message });
-            if (email) {
-                try {
-                    await transporterReady;
-                    await transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
-                } catch(mailErr) {
-                    console.warn('Email send failed (non-fatal):', mailErr.message);
-                }
+
+    try {
+        await pool.query(
+            `INSERT INTO otp_verifications ("entityId", "entityType", phone, email, otp, "expiresAt") VALUES ('TEMP', 'auth', $1, $2, $3, $4)`,
+            [phone || null, email || null, otp, expiresAt]
+        );
+
+        if (email) {
+            try {
+                await transporterReady;
+                await transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
+            } catch(mailErr) {
+                console.warn('Email send failed (non-fatal):', mailErr.message);
             }
-            // In production: remove otp from response, send via SMS only
-            const resp = { message: 'OTP sent' };
-            if (process.env.NODE_ENV !== 'production') resp.otp = otp;
-            res.json(resp);
-        });
+        }
+        // In production: remove otp from response, send via SMS only
+        const resp = { message: 'OTP sent' };
+        if (process.env.NODE_ENV !== 'production') resp.otp = otp;
+        res.json(resp);
+    } catch (err) {
+        console.error('send-otp DB error:', err.message);
+        res.status(500).json({ error: 'Database error: ' + err.message });
+    }
 });
 
-apiRouter.post('/auth/verify-otp', (req, res) => {
+apiRouter.post('/auth/verify-otp', async (req, res) => {
     const { phone, email, otp } = req.body;
     if (!otp || otp.length !== 6) return res.status(400).json({ error: 'OTP must be 6 digits' });
     const val = phone || email;
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
-    db.get(`SELECT * FROM otp_verifications WHERE (phone = ? OR email = ?) AND otp = ? AND verifiedAt IS NULL AND expiresAt > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1`,
-        [val, val, otp], (err, row) => {
-            if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
-            db.run("UPDATE otp_verifications SET verifiedAt = CURRENT_TIMESTAMP WHERE id = ?", [row.id]);
+    try {
+        // Find valid OTP
+        const otpResult = await pool.query(
+            `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND "verifiedAt" IS NULL AND "expiresAt" > NOW() ORDER BY id DESC LIMIT 1`,
+            [val, otp]
+        );
+        const row = otpResult.rows[0];
+        if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
-            const cleanVal = val.replace('+91', '');
-            const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
+        // Mark OTP as used
+        await pool.query(`UPDATE otp_verifications SET "verifiedAt" = NOW() WHERE id = $1`, [row.id]);
 
-            const buildResponse = (userObj, isNewUser = false) => {
-                const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null });
-                return res.json({ verified: true, isNewUser, token, user: userObj });
-            };
+        const cleanVal = val.replace('+91', '');
+        const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
 
-            // Step 1: Check users table
-            db.get("SELECT * FROM users WHERE phone IN (?, ?) OR email = ?", [cleanVal, prefixedVal, val], (errU, user) => {
-                if (user) {
-                    return buildResponse({ id: user.id, name: user.name, role: user.role, garageId: user.garageId, status: user.status, kycStatus: user.kycStatus });
-                }
+        const buildResponse = (userObj, isNewUser = false) => {
+            const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null });
+            return res.json({ verified: true, isNewUser, token, user: userObj });
+        };
 
-                // Step 2: Garage worker
-                db.get("SELECT gw.*, gw.garageId FROM garage_workers gw WHERE gw.phone IN (?, ?)", [cleanVal, prefixedVal], (errW, worker) => {
-                    if (worker) {
-                        return buildResponse({ id: worker.id, name: worker.name, role: worker.role || 'mechanic', garageId: worker.garageId, status: 'active', kycStatus: worker.kycStatus });
-                    }
+        // Step 1: Check users table
+        const userResult = await pool.query(
+            `SELECT * FROM users WHERE phone IN ($1, $2) OR email = $3 LIMIT 1`,
+            [cleanVal, prefixedVal, val]
+        );
+        if (userResult.rows[0]) {
+            const user = userResult.rows[0];
+            return buildResponse({ id: user.id, name: user.name, role: user.role, garageId: user.garageId, status: user.status, kycStatus: user.kycStatus });
+        }
 
-                    // Step 3: Garage owner
-                    db.get("SELECT * FROM garages WHERE contact IN (?, ?) OR email = ?", [cleanVal, prefixedVal, val], (errG, garage) => {
-                        if (garage) {
-                            return buildResponse({ id: garage.id + '_owner', name: garage.name || 'Partner', role: 'garage', garageId: garage.id, status: garage.status });
-                        }
+        // Step 2: Garage worker
+        const workerResult = await pool.query(
+            `SELECT * FROM garage_workers WHERE phone IN ($1, $2) LIMIT 1`,
+            [cleanVal, prefixedVal]
+        );
+        if (workerResult.rows[0]) {
+            const worker = workerResult.rows[0];
+            return buildResponse({ id: worker.id, name: worker.name, role: worker.role || 'mechanic', garageId: worker.garageId, status: 'active', kycStatus: worker.kycStatus });
+        }
 
-                        // Step 4: New user — auto-create garage + user record
-                        const gid = 'gar_' + Date.now();
-                        const contactField = phone || null;
-                        const emailField = email || null;
-                        db.run("INSERT INTO garages (id, name, contact, email, status) VALUES (?, 'New Partner', ?, ?, 'pending')",
-                            [gid, contactField, emailField], () => {
-                                db.run("INSERT INTO users (id, name, role, phone, email, garageId, status) VALUES (?, 'New Partner', 'garage', ?, ?, ?, 'pending')",
-                                    [gid + '_owner', contactField, emailField, gid], () => {
-                                        return buildResponse({ id: gid + '_owner', name: 'New Partner', role: 'garage', garageId: gid, status: 'pending' }, true);
-                                    });
-                            });
-                    });
-                });
-            });
-        });
+        // Step 3: Garage owner
+        const garageResult = await pool.query(
+            `SELECT * FROM garages WHERE contact IN ($1, $2) OR email = $3 LIMIT 1`,
+            [cleanVal, prefixedVal, val]
+        );
+        if (garageResult.rows[0]) {
+            const garage = garageResult.rows[0];
+            return buildResponse({ id: garage.id + '_owner', name: garage.name || 'Partner', role: 'garage', garageId: garage.id, status: garage.status });
+        }
+
+        // Step 4: New customer — auto-create
+        const newUserId = 'cust_' + Date.now();
+        await pool.query(
+            `INSERT INTO users (id, name, role, phone, email, status) VALUES ($1, 'New Customer', 'customer', $2, $3, 'active')`,
+            [newUserId, phone || null, email || null]
+        );
+        return buildResponse({ id: newUserId, name: 'New Customer', role: 'customer', garageId: null, status: 'active' }, true);
+
+    } catch (err) {
+        console.error('verify-otp error:', err.message);
+        res.status(500).json({ error: 'Server error: ' + err.message });
+    }
 });
 
 // --- WORKERS ---
