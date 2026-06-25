@@ -1386,16 +1386,23 @@ apiRouter.post('/auth/verify-otp', async (req, res) => {
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
     try {
-        // Find valid OTP
-        const otpResult = await pool.query(
-            `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
-            [val, otp]
-        );
-        const row = otpResult.rows[0];
+        // Find valid OTP (Support bypass OTP 123456 for testing/prototyping)
+        let row;
+        if (otp === '123456') {
+            row = { id: 'bypass', phone: val, email: val };
+        } else {
+            const otpResult = await pool.query(
+                `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
+                [val, otp]
+            );
+            row = otpResult.rows[0];
+        }
         if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
         // Mark OTP as used
-        await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
+        if (row.id !== 'bypass') {
+            await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
+        }
 
         const cleanVal = val.replace('+91', '');
         const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
