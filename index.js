@@ -888,6 +888,10 @@ apiRouter.get('/users', async (req, res) => {
     }
 });
 
+apiRouter.get('/db-url-debug', (req, res) => {
+    res.json({ url: process.env.DATABASE_URL });
+});
+
 apiRouter.get('/system-settings', (req, res) => {
     db.all("SELECT * FROM system_settings", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
