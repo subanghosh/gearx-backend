@@ -342,6 +342,14 @@ function initializeDatabase() {
         db.run("ALTER TABLE trips ADD COLUMN garageDropoffOtp TEXT", () => {});
         db.run("ALTER TABLE trips ADD COLUMN garagePickupOtp TEXT", () => {});
 
+        // Vehicles table migrations
+        db.run("ALTER TABLE vehicles ADD COLUMN make TEXT", () => {});
+        db.run("ALTER TABLE vehicles ADD COLUMN model TEXT", () => {});
+        db.run("ALTER TABLE vehicles ADD COLUMN type TEXT", () => {});
+        db.run("ALTER TABLE vehicles ADD COLUMN photo TEXT", () => {});
+        db.run("ALTER TABLE vehicles ADD COLUMN fuel TEXT", () => {});
+        db.run("ALTER TABLE vehicles ADD COLUMN transmission TEXT", () => {});
+
         // Global Settings
         db.run(`CREATE TABLE IF NOT EXISTS system_settings (
             key TEXT PRIMARY KEY,
