@@ -775,19 +775,43 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
 
 // --- BASIC ENTITY ROUTES ---
 apiRouter.get('/customers', (req, res) => {
-    db.all("SELECT * FROM customers", (err, rows) => res.json(rows || []));
+    db.all("SELECT * FROM customers", (err, rows) => {
+        if (err) {
+            console.error("GET /customers DB error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows || []);
+    });
 });
 
 apiRouter.get('/vehicles', (req, res) => {
-    db.all("SELECT * FROM vehicles", (err, rows) => res.json(rows || []));
+    db.all("SELECT * FROM vehicles", (err, rows) => {
+        if (err) {
+            console.error("GET /vehicles DB error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows || []);
+    });
 });
 
 apiRouter.get('/requests', (req, res) => {
-    db.all("SELECT * FROM service_requests", (err, rows) => res.json(rows || []));
+    db.all("SELECT * FROM service_requests", (err, rows) => {
+        if (err) {
+            console.error("GET /requests DB error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows || []);
+    });
 });
 
 apiRouter.get('/garages', (req, res) => {
-    db.all("SELECT * FROM garages", (err, rows) => res.json(rows || []));
+    db.all("SELECT * FROM garages", (err, rows) => {
+        if (err) {
+            console.error("GET /garages DB error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows || []);
+    });
 });
 
 apiRouter.get('/garages/nearby', (req, res) => {
