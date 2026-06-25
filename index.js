@@ -17,6 +17,7 @@ app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately i
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-me';
 const BCRYPT_ROUNDS = 12;
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBoc7eGvtpa-MPQ9W_FwWTdO9xAWn43TM0';
 
 
 // --- GLOBAL UNIQUE ENTITY VALIDATION ---
@@ -597,9 +598,9 @@ apiRouter.get('/health', (req, res) => {
 
 // --- GOOGLE MAPS PROXY & QUOTA CONTROL ---
 async function checkAndIncrementQuota() {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey = GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
-        console.warn('[Google Maps Proxy] GOOGLE_MAPS_API_KEY environment variable is missing. Falling back to OpenStreetMap.');
+        console.warn('[Google Maps Proxy] GOOGLE_MAPS_API_KEY constant is missing. Falling back to OpenStreetMap.');
         return false;
     }
     
@@ -631,7 +632,7 @@ async function checkAndIncrementQuota() {
 }
 
 apiRouter.get('/maps/config', (req, res) => {
-    const hasKey = !!process.env.GOOGLE_MAPS_API_KEY;
+    const hasKey = !!GOOGLE_MAPS_API_KEY;
     res.json({ googleMapsActive: hasKey });
 });
 
@@ -644,7 +645,7 @@ apiRouter.get('/maps/autocomplete', async (req, res) => {
     const useGoogle = await checkAndIncrementQuota();
     if (useGoogle) {
         try {
-            const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+            const apiKey = GOOGLE_MAPS_API_KEY;
             const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:in&key=${apiKey}`;
             const response = await fetch(url);
             const data = await response.json();
@@ -712,7 +713,7 @@ apiRouter.get('/maps/details', async (req, res) => {
     const useGoogle = await checkAndIncrementQuota();
     if (useGoogle) {
         try {
-            const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+            const apiKey = GOOGLE_MAPS_API_KEY;
             const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address&key=${apiKey}`;
             const response = await fetch(url);
             const data = await response.json();
@@ -751,7 +752,7 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
     const useGoogle = await checkAndIncrementQuota();
     if (useGoogle) {
         try {
-            const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+            const apiKey = GOOGLE_MAPS_API_KEY;
             const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
             const response = await fetch(url);
             const data = await response.json();
