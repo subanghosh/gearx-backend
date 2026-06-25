@@ -2174,6 +2174,10 @@ apiRouter.post('/customers', (req, res) => {
     const { id, name, phone, email } = req.body;
     db.run("INSERT INTO customers (id, name, phone, email) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, email = EXCLUDED.email",
         [id || `cust_${Date.now()}`, name, phone, email], (err) => {
+            if (err) {
+                console.error("POST /customers DB error:", err.message);
+                return res.status(500).json({ error: err.message });
+            }
             res.json({ success: true, id: id || `cust_${Date.now()}` });
         });
 });
@@ -2182,6 +2186,10 @@ apiRouter.post('/vehicles', (req, res) => {
     const { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body;
     db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo, fuel, transmission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [id, customerId, make, model, type, plate, photo, fuel, transmission], (err) => {
+            if (err) {
+                console.error("POST /vehicles DB error:", err.message);
+                return res.status(500).json({ error: err.message });
+            }
             res.json({ success: true, id });
         });
 });
