@@ -2422,6 +2422,12 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
             if (serviceReq.workerId || serviceReq.status === 'marshal_assigned') {
                 return res.status(400).json({ error: 'This pickup request has already been accepted by another marshal.' });
             }
+            if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled') {
+                if (serviceReq.status === 'cancelled') {
+                    return res.status(400).json({ error: 'This pickup request has been cancelled by the customer.' });
+                }
+                return res.status(400).json({ error: 'This booking request is no longer active.' });
+            }
             
             const lat = serviceReq.lat || 19.0760;
             const lng = serviceReq.lng || 72.8777;
