@@ -1,7 +1,15 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./vroomly2.sqlite');
-db.all("SELECT name FROM sqlite_master WHERE type='table' AND name='otp_verifications'", (err, rows) => {
-    if (err) console.error(err);
-    console.log("Database Probe - Tables found:", rows);
-    process.exit();
-});
+const { Pool } = require('pg');
+require('dotenv').config();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+
+async function test() {
+    try {
+        const res = await pool.query("SELECT * FROM vehicles WHERE id='veh_8mwj3p1km'");
+        console.log(res.rows);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        pool.end();
+    }
+}
+test();
