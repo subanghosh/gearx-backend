@@ -15,15 +15,8 @@ const app = express();
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
 
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('CRITICAL CONFIG ERROR: JWT_SECRET environment variable is missing!');
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-me';
 const BCRYPT_ROUNDS = 12;
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-if (!GOOGLE_MAPS_API_KEY && process.env.NODE_ENV === 'production') {
-    console.warn('WARNING: GOOGLE_MAPS_API_KEY is missing in production.');
-}
 
 
 // --- GLOBAL UNIQUE ENTITY VALIDATION ---
@@ -106,12 +99,6 @@ const loginLimiter = rateLimit({
     message: { error: 'Too many login attempts. Please try again later.' }
 });
 
-const verifyOtpLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // Max 10 attempts
-    message: { error: 'Too many OTP validation attempts. Please try again after 15 minutes.' }
-});
-
 const uploadLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 30,
@@ -147,28 +134,23 @@ function requireRole(...roles) {
     };
 }
 
-let transporter = nodemailer.createTransport({ jsonTransport: true }); // fallback no-op by default
-nodemailer.createTestAccount((err, account) => {
-    if (err) {
-        console.error('Ethereal account creation failed, using fallback transporter');
-    } else {
-        transporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email', port: 587, secure: false,
-            auth: { user: account.user, pass: account.pass }
-        });
-        console.log('Ethereal mail transporter created successfully');
-    }
+let transporter;
+const transporterReady = new Promise((resolve) => {
+    nodemailer.createTestAccount((err, account) => {
+        if (err) {
+            console.error('Ethereal account creation failed, using fallback transporter');
+            transporter = nodemailer.createTransport({ jsonTransport: true }); // fallback no-op
+        } else {
+            transporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email', port: 587, secure: false,
+                auth: { user: account.user, pass: account.pass }
+            });
+        }
+        resolve();
+    });
 });
 
-const pool = new Pool({ 
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-    keepAlive: true
-});
-
-pool.on('error', (err, client) => {
-    console.error('Unexpected error on idle client', err);
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = {
     convertQuery: (sql) => {
         let i = 1;
@@ -242,8 +224,7 @@ function initializeDatabase() {
             dlNumber TEXT, dlVerified INTEGER DEFAULT 0,
             bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankVerified INTEGER DEFAULT 0,
             countryCode TEXT DEFAULT '+91', altPhone TEXT, altPhoneVerified INTEGER DEFAULT 0, lat REAL, lng REAL,
-            panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT, kycStatus TEXT DEFAULT 'pending_submission',
-            is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0
+            panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT, kycStatus TEXT DEFAULT 'pending_submission'
         )`);
 
         // Migration: Ensure new columns exist for existing databases
@@ -257,13 +238,7 @@ function initializeDatabase() {
             "ALTER TABLE users ADD COLUMN panUrl TEXT",
             "ALTER TABLE users ADD COLUMN aadhaarUrl TEXT",
             "ALTER TABLE users ADD COLUMN facePhotoUrl TEXT",
-            "ALTER TABLE users ADD COLUMN kycStatus TEXT DEFAULT 'pending_submission'",
-            "ALTER TABLE users ADD COLUMN is_online INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN pincode TEXT",
-            "ALTER TABLE users ADD COLUMN is_payment_on_hold INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN rating REAL DEFAULT 5.0",
-            "ALTER TABLE trips ADD COLUMN rating REAL",
-            "ALTER TABLE garage_workers ADD COLUMN rating REAL DEFAULT 5.0"
+            "ALTER TABLE users ADD COLUMN kycStatus TEXT DEFAULT 'pending_submission'"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -283,14 +258,9 @@ function initializeDatabase() {
         db.run(`CREATE TABLE IF NOT EXISTS garage_workers (
             id TEXT PRIMARY KEY, garageId TEXT, name TEXT, phone TEXT, role TEXT, status TEXT DEFAULT 'available',
             panNumber TEXT, aadhaarNumber TEXT, panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT,
-            kycStatus TEXT DEFAULT 'pending_submission', is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0,
+            kycStatus TEXT DEFAULT 'pending_submission',
             FOREIGN KEY(garageId) REFERENCES garages(id)
         )`);
-        [
-            "ALTER TABLE garage_workers ADD COLUMN is_online INTEGER DEFAULT 0",
-            "ALTER TABLE garage_workers ADD COLUMN pincode TEXT",
-            "ALTER TABLE garage_workers ADD COLUMN is_payment_on_hold INTEGER DEFAULT 0"
-        ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garage Rates (High Detail)
         db.run(`CREATE TABLE IF NOT EXISTS garage_rates (
@@ -308,7 +278,6 @@ function initializeDatabase() {
             totalCustomerPrice REAL DEFAULT 0, workerId TEXT, auditStatus TEXT DEFAULT 'pending',
             service_category TEXT DEFAULT 'Standard Service', inspection_fee REAL DEFAULT 299,
             parts_cost REAL DEFAULT 0, labor_cost REAL DEFAULT 0, marshal_commission REAL DEFAULT 0,
-            lat REAL, lng REAL, pickup_address TEXT, drop_address TEXT, issue TEXT, created_at BIGINT,
             FOREIGN KEY(workerId) REFERENCES users(id)
         )`);
         db.run("ALTER TABLE service_requests ADD COLUMN workerId TEXT", () => {});
@@ -318,15 +287,6 @@ function initializeDatabase() {
         db.run("ALTER TABLE service_requests ADD COLUMN parts_cost REAL DEFAULT 0", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN labor_cost REAL DEFAULT 0", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN marshal_commission REAL DEFAULT 0", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN lat REAL", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN lng REAL", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN pickup_address TEXT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN drop_address TEXT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN issue TEXT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN service_type TEXT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN created_at BIGINT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN booking_flow TEXT", () => {});
-        db.run("ALTER TABLE service_requests ADD COLUMN pickup_drop_type TEXT", () => {});
 
         // Trips Table (Marshal Operations)
         db.run(`CREATE TABLE IF NOT EXISTS trips (
@@ -340,28 +300,12 @@ function initializeDatabase() {
             deliveryOtp TEXT,
             deliveryMarshalId TEXT,
             garageDropOdometer INTEGER,
-            endOdometer INTEGER,
             pickupLat REAL,
             pickupLng REAL,
-            marshalLat REAL,
-            marshalLng REAL,
             createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(serviceRequestId) REFERENCES service_requests(id),
             FOREIGN KEY(marshalId) REFERENCES users(id)
         )`);
-        db.run("ALTER TABLE trips ADD COLUMN endOdometer INTEGER", () => {});
-        db.run("ALTER TABLE trips ADD COLUMN marshalLat REAL", () => {});
-        db.run("ALTER TABLE trips ADD COLUMN marshalLng REAL", () => {});
-        db.run("ALTER TABLE trips ADD COLUMN garageDropoffOtp TEXT", () => {});
-        db.run("ALTER TABLE trips ADD COLUMN garagePickupOtp TEXT", () => {});
-
-        // Vehicles table migrations
-        db.run("ALTER TABLE vehicles ADD COLUMN make TEXT", () => {});
-        db.run("ALTER TABLE vehicles ADD COLUMN model TEXT", () => {});
-        db.run("ALTER TABLE vehicles ADD COLUMN type TEXT", () => {});
-        db.run("ALTER TABLE vehicles ADD COLUMN photo TEXT", () => {});
-        db.run("ALTER TABLE vehicles ADD COLUMN fuel TEXT", () => {});
-        db.run("ALTER TABLE vehicles ADD COLUMN transmission TEXT", () => {});
 
         // Global Settings
         db.run(`CREATE TABLE IF NOT EXISTS system_settings (
@@ -370,35 +314,7 @@ function initializeDatabase() {
         )`, () => {
             // Default commission percentage to 2%
             db.run(`INSERT INTO system_settings (key, value) VALUES ('marshal_commission_percentage', '2.0') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_rate_per_km', '15.0') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('marshal_rating_threshold', '4.5') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('commission_high_tier', '80.0') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('commission_low_tier', '65.0') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('bonus_5_star_percentage', '5.0') ON CONFLICT(key) DO NOTHING`);
         });
-
-        // Disputes Table
-        db.run(`CREATE TABLE IF NOT EXISTS disputes (
-            id TEXT PRIMARY KEY,
-            tripId TEXT,
-            customerId TEXT,
-            marshalId TEXT,
-            reason TEXT,
-            status TEXT DEFAULT 'pending', -- pending, dismissed, penalized
-            deductionAmount REAL DEFAULT 0,
-            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        // Incentives Table
-        db.run(`CREATE TABLE IF NOT EXISTS incentives (
-            id TEXT PRIMARY KEY,
-            userId TEXT,
-            tripId TEXT,
-            amount REAL,
-            type TEXT,
-            status TEXT DEFAULT 'pending',
-            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
 
         // Dual-Core Progress & Evidence
         db.run(`CREATE TABLE IF NOT EXISTS service_progress (
@@ -540,27 +456,12 @@ function initializeDatabase() {
         db.run(`CREATE INDEX IF NOT EXISTS idx_analytics_app_event ON analytics_events(app, event)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(createdAt)`);
 
-        // Google Maps Daily API Usage
-        db.run(`CREATE TABLE IF NOT EXISTS daily_api_usage (
-            usage_date DATE PRIMARY KEY,
-            request_count INTEGER DEFAULT 0
-        )`);
-
-        // Google Maps Cached Places
-        db.run(`CREATE TABLE IF NOT EXISTS cached_places (
-            place_id TEXT PRIMARY KEY,
-            description TEXT,
-            lat DOUBLE PRECISION,
-            lng DOUBLE PRECISION,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-
         // Seed Admin (hash password in production)
         db.get("SELECT * FROM users WHERE id = 'u_admin'", (err, row) => {
             if (!row) {
                 bcrypt.hash('admin', BCRYPT_ROUNDS).then(hash => {
                     db.run("INSERT INTO users (id, name, email, phone, role, password, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        ['u_admin', 'Admin', 'admin@gearx.com', '+910000000000', 'admin', hash, 'active']);
+                        ['u_admin', 'Admin', 'admin@vroomer.com', '+910000000000', 'admin', hash, 'active']);
                 });
             }
         });
@@ -608,253 +509,21 @@ apiRouter.get('/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly' });
 });
 
-// --- GOOGLE MAPS PROXY & QUOTA CONTROL ---
-async function checkAndIncrementQuota() {
-    const apiKey = GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-        console.warn('[Google Maps Proxy] GOOGLE_MAPS_API_KEY constant is missing. Falling back to OpenStreetMap.');
-        return false;
-    }
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    try {
-        // Query current count
-        const result = await pool.query(
-            "INSERT INTO daily_api_usage (usage_date, request_count) VALUES ($1, 0) ON CONFLICT (usage_date) DO UPDATE SET request_count = daily_api_usage.request_count + 0 RETURNING request_count",
-            [today]
-        );
-        const count = result.rows[0] ? result.rows[0].request_count : 0;
-        
-        if (count >= 500) {
-            console.warn(`[Google Maps Proxy] Daily quota limit of 500 requests exceeded (${count} requests today). Falling back to OpenStreetMap.`);
-            return false;
-        }
-        
-        // Increment count
-        await pool.query(
-            "UPDATE daily_api_usage SET request_count = request_count + 1 WHERE usage_date = $1",
-            [today]
-        );
-        return true;
-    } catch (err) {
-        console.error('[Google Maps Proxy] Quota check database error:', err.message);
-        return false; // Fallback to OSM on database error
-    }
-}
-
-apiRouter.get('/maps/config', (req, res) => {
-    const hasKey = !!GOOGLE_MAPS_API_KEY;
-    res.json({ googleMapsActive: hasKey });
-});
-
-apiRouter.get('/maps/autocomplete', async (req, res) => {
-    const query = req.query.q;
-    if (!query || query.trim().length < 3) {
-        return res.json([]);
-    }
-    
-    const useGoogle = await checkAndIncrementQuota();
-    if (useGoogle) {
-        try {
-            const apiKey = GOOGLE_MAPS_API_KEY;
-            const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:in&key=${apiKey}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (data && data.status === 'OK' && Array.isArray(data.predictions)) {
-                const mapped = data.predictions.map(pred => ({
-                    name: pred.structured_formatting ? pred.structured_formatting.main_text : pred.description.split(',')[0],
-                    address: pred.description,
-                    place_id: pred.place_id,
-                    source: 'google'
-                }));
-                return res.json(mapped);
-            } else {
-                console.warn('[Google Maps Autocomplete] API returned non-OK status:', data.status);
-            }
-        } catch (err) {
-            console.error('[Google Maps Autocomplete] Fetch error:', err.message);
-        }
-        console.log('[Google Maps Autocomplete] Falling back to OpenStreetMap search.');
-    }
-    
-    // Fallback to OSM Nominatim
-    try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=in&limit=5`;
-        const response = await fetch(url, { headers: { 'User-Agent': 'GearX-App/1.0' } });
-        if (response.ok) {
-            const data = await response.json();
-            const mapped = data.map(item => {
-                const parts = item.display_name.split(',');
-                const name = parts[0] || 'Pinpoint Location';
-                const address = parts.slice(1).join(',').trim();
-                return {
-                    name: name,
-                    address: address || item.display_name,
-                    lat: parseFloat(item.lat),
-                    lng: parseFloat(item.lon),
-                    source: 'osm'
-                };
-            });
-            return res.json(mapped);
-        }
-    } catch (err) {
-        console.error('[OSM Autocomplete Fallback] Fetch error:', err.message);
-    }
-    res.json([]);
-});
-
-apiRouter.get('/maps/details', async (req, res) => {
-    const placeId = req.query.place_id;
-    if (!placeId) {
-        return res.status(400).json({ error: 'place_id is required' });
-    }
-    
-    // 1. Check cache first!
-    try {
-        const cacheResult = await pool.query("SELECT * FROM cached_places WHERE place_id = $1", [placeId]);
-        if (cacheResult.rows.length > 0) {
-            const row = cacheResult.rows[0];
-            return res.json({ lat: row.lat, lng: row.lng, address: row.description, source: 'cache' });
-        }
-    } catch (err) {
-        console.error('[Google Maps Details Cache] Query error:', err.message);
-    }
-    
-    const useGoogle = await checkAndIncrementQuota();
-    if (useGoogle) {
-        try {
-            const apiKey = GOOGLE_MAPS_API_KEY;
-            const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address&key=${apiKey}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (data && data.status === 'OK' && data.result && data.result.geometry && data.result.geometry.location) {
-                const lat = data.result.geometry.location.lat;
-                const lng = data.result.geometry.location.lng;
-                const address = data.result.formatted_address;
-                
-                // Save to cache
-                pool.query(
-                    "INSERT INTO cached_places (place_id, description, lat, lng) VALUES ($1, $2, $3, $4) ON CONFLICT (place_id) DO NOTHING",
-                    [placeId, address, lat, lng]
-                ).catch(e => console.error('[Google Maps Details Cache] Save error:', e.message));
-                
-                return res.json({ lat, lng, address, source: 'google' });
-            } else {
-                console.warn('[Google Maps Details] API returned non-OK status:', data.status);
-            }
-        } catch (err) {
-            console.error('[Google Maps Details] Fetch error:', err.message);
-        }
-    }
-    
-    // Fallback: Return default BKC location if Details resolution fails
-    res.json({ lat: 19.0664, lng: 72.8680, address: 'Fallback: BKC, Mumbai', source: 'fallback' });
-});
-
-apiRouter.get('/maps/reverse-geocode', async (req, res) => {
-    const lat = parseFloat(req.query.lat);
-    const lng = parseFloat(req.query.lng);
-    if (isNaN(lat) || isNaN(lng)) {
-        return res.status(400).json({ error: 'Valid lat and lng are required' });
-    }
-    
-    const useGoogle = await checkAndIncrementQuota();
-    if (useGoogle) {
-        try {
-            const apiKey = GOOGLE_MAPS_API_KEY;
-            const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            if (data && data.status === 'OK' && Array.isArray(data.results) && data.results[0]) {
-                return res.json({ address: data.results[0].formatted_address, source: 'google' });
-            } else {
-                console.warn('[Google Maps Reverse Geocode] API returned non-OK status:', data.status);
-            }
-        } catch (err) {
-            console.error('[Google Maps Reverse Geocode] Fetch error:', err.message);
-        }
-        console.log('[Google Maps Reverse Geocode] Falling back to OpenStreetMap.');
-    }
-    
-    // Fallback to OSM Nominatim
-    try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
-        const response = await fetch(url, { headers: { 'User-Agent': 'GearX-App/1.0' } });
-        if (response.ok) {
-            const data = await response.json();
-            return res.json({ address: data.display_name, source: 'osm' });
-        }
-    } catch (err) {
-        console.error('[OSM Reverse Geocode Fallback] Fetch error:', err.message);
-    }
-    res.json({ address: `GPS Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`, source: 'fallback' });
-});
-
 // --- BASIC ENTITY ROUTES ---
 apiRouter.get('/customers', (req, res) => {
-    db.all("SELECT * FROM customers", (err, rows) => {
-        if (err) {
-            console.error("GET /customers DB error:", err.message);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows || []);
-    });
+    db.all("SELECT * FROM customers", (err, rows) => res.json(rows || []));
 });
 
 apiRouter.get('/vehicles', (req, res) => {
-    db.all("SELECT * FROM vehicles", (err, rows) => {
-        if (err) {
-            console.error("GET /vehicles DB error:", err.message);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows || []);
-    });
+    db.all("SELECT * FROM vehicles", (err, rows) => res.json(rows || []));
 });
 
 apiRouter.get('/requests', (req, res) => {
-    db.all("SELECT * FROM service_requests", (err, rows) => {
-        if (err) {
-            console.error("GET /requests DB error:", err.message);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows || []);
-    });
+    db.all("SELECT * FROM service_requests", (err, rows) => res.json(rows || []));
 });
 
 apiRouter.get('/garages', (req, res) => {
-    db.all("SELECT * FROM garages", (err, rows) => {
-        if (err) {
-            console.error("GET /garages DB error:", err.message);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows || []);
-    });
-});
-
-apiRouter.get('/garages/nearby', (req, res) => {
-    const lat = parseFloat(req.query.lat);
-    const lng = parseFloat(req.query.lng);
-    
-    db.all("SELECT * FROM garages WHERE status = 'active'", (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        let result = rows || [];
-        if (!isNaN(lat) && !isNaN(lng)) {
-            result = result.map(g => {
-                const gLat = parseFloat(g.lat);
-                const gLng = parseFloat(g.lng);
-                const dist = calcDistanceKm(lat, lng, gLat, gLng);
-                return { ...g, distance: dist };
-            });
-            result = result.filter(g => g.distance !== null && g.distance <= 15.0);
-            result.sort((a, b) => a.distance - b.distance);
-        }
-        res.json(result);
-    });
+    db.all("SELECT * FROM garages", (err, rows) => res.json(rows || []));
 });
 
 apiRouter.post('/garages', (req, res) => {
@@ -871,7 +540,7 @@ apiRouter.post('/garages', (req, res) => {
 
 apiRouter.post('/users', async (req, res) => {
     try {
-        const { id, name, phone, email, role, password, status, pincode } = req.body;
+        const { id, name, phone, email, role, password, status } = req.body;
         if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
         
         const existing = await checkUniqueEntity(phone);
@@ -880,8 +549,8 @@ apiRouter.post('/users', async (req, res) => {
         }
         
         await pool.query(
-            "INSERT INTO users (id, name, phone, email, role, password, status, pincode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [id || 'u_' + Date.now(), name, phone, email, role || 'customer', password, status || 'active', pincode || null]
+            "INSERT INTO users (id, name, phone, email, role, password, status) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            [id || 'u_' + Date.now(), name, phone, email, role || 'customer', password, status || 'active']
         );
         res.json({ success: true, id });
     } catch (err) {
@@ -900,28 +569,6 @@ apiRouter.get('/users', async (req, res) => {
     }
 });
 
-apiRouter.get('/system-settings', (req, res) => {
-    db.all("SELECT * FROM system_settings", [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const settings = {};
-        rows.forEach(r => { settings[r.key] = r.value; });
-        res.json(settings);
-    });
-});
-
-apiRouter.post('/system-settings', (req, res) => {
-    const { key, value } = req.body;
-    if (!key) return res.status(400).json({ error: 'Key is required' });
-    db.run(
-        "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value",
-        [key, String(value)],
-        (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true });
-        }
-    );
-});
-
 apiRouter.patch('/users/:id', async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
@@ -931,7 +578,7 @@ apiRouter.patch('/users/:id', async (req, res) => {
             id = userLookup.rows[0].id;
         }
     }
-    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng', 'is_online', 'pincode'];
+    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified'];
     const fields = [];
     const vals = [];
     let idx = 1;
@@ -1006,21 +653,11 @@ apiRouter.patch('/users/:id', async (req, res) => {
             if (req.body.name) { sqFields.push("name = ?"); sqVals.push(req.body.name); }
             if (req.body.email) { sqFields.push("email = ?"); sqVals.push(req.body.email); }
             if (req.body.phone) { sqFields.push("phone = ?"); sqVals.push(req.body.phone); }
-            if (req.body.lat !== undefined) { sqFields.push("lat = ?"); sqVals.push(req.body.lat); }
-            if (req.body.lng !== undefined) { sqFields.push("lng = ?"); sqVals.push(req.body.lng); }
             if (sqFields.length > 0) {
                 sqVals.push(id);
-                const sqCustFields = [];
-                const sqCustVals = [];
-                if (req.body.name) { sqCustFields.push("name = ?"); sqCustVals.push(req.body.name); }
-                if (req.body.email) { sqCustFields.push("email = ?"); sqCustVals.push(req.body.email); }
-                if (req.body.phone) { sqCustFields.push("phone = ?"); sqCustVals.push(req.body.phone); }
-                if (sqCustFields.length > 0) {
-                    sqCustVals.push(id);
-                    db.run(`UPDATE customers SET ${sqCustFields.join(', ')} WHERE id = ?`, sqCustVals, (err) => {
-                        if (err) console.warn('SQLite customers sync failed:', err.message);
-                    });
-                }
+                db.run(`UPDATE customers SET ${sqFields.join(', ')} WHERE id = ?`, sqVals, (err) => {
+                    if (err) console.warn('SQLite customers sync failed:', err.message);
+                });
                 db.run(`UPDATE users SET ${sqFields.join(', ')} WHERE id = ?`, sqVals, (err) => {
                     if (err) console.warn('SQLite users sync failed:', err.message);
                 });
@@ -1060,7 +697,7 @@ apiRouter.put('/users/:id', async (req, res) => {
             id = userLookup.rows[0].id;
         }
     }
-    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng'];
+    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified'];
     const fields = [];
     const vals = [];
     let idx = 1;
@@ -1134,21 +771,11 @@ apiRouter.put('/users/:id', async (req, res) => {
             if (req.body.name) { sqFields.push("name = ?"); sqVals.push(req.body.name); }
             if (req.body.email) { sqFields.push("email = ?"); sqVals.push(req.body.email); }
             if (req.body.phone) { sqFields.push("phone = ?"); sqVals.push(req.body.phone); }
-            if (req.body.lat !== undefined) { sqFields.push("lat = ?"); sqVals.push(req.body.lat); }
-            if (req.body.lng !== undefined) { sqFields.push("lng = ?"); sqVals.push(req.body.lng); }
             if (sqFields.length > 0) {
                 sqVals.push(id);
-                const sqCustFields = [];
-                const sqCustVals = [];
-                if (req.body.name) { sqCustFields.push("name = ?"); sqCustVals.push(req.body.name); }
-                if (req.body.email) { sqCustFields.push("email = ?"); sqCustVals.push(req.body.email); }
-                if (req.body.phone) { sqCustFields.push("phone = ?"); sqCustVals.push(req.body.phone); }
-                if (sqCustFields.length > 0) {
-                    sqCustVals.push(id);
-                    db.run(`UPDATE customers SET ${sqCustFields.join(', ')} WHERE id = ?`, sqCustVals, (err) => {
-                        if (err) console.warn('SQLite customers sync failed:', err.message);
-                    });
-                }
+                db.run(`UPDATE customers SET ${sqFields.join(', ')} WHERE id = ?`, sqVals, (err) => {
+                    if (err) console.warn('SQLite customers sync failed:', err.message);
+                });
                 db.run(`UPDATE users SET ${sqFields.join(', ')} WHERE id = ?`, sqVals, (err) => {
                     if (err) console.warn('SQLite users sync failed:', err.message);
                 });
@@ -1218,6 +845,7 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
 
         if (field === 'email') {
             try {
+                await transporterReady;
                 await transporter.sendMail({
                     from: '"GearX" <support@gearx.in>',
                     to: value,
@@ -1336,10 +964,6 @@ apiRouter.post('/users/:id/verify-update-otp', async (req, res) => {
 apiRouter.get('/trips', (req, res) => {
     db.all(`
         SELECT trips.*, 
-               sr.customerId AS "customerId",
-               sr.booking_flow AS "bookingFlow",
-               sr.pickup_drop_type AS "pickupDropType",
-               sr.garageId AS "assignedGarageId",
                u.name AS "marshalName", 
                u.phone AS "marshalPhone",
                u.facePhotoUrl AS "marshalPhoto",
@@ -1347,7 +971,6 @@ apiRouter.get('/trips', (req, res) => {
                u.phoneVerified AS "phoneVerified",
                u.dlVerified AS "dlVerified"
         FROM trips
-        LEFT JOIN service_requests sr ON trips.serviceRequestId = sr.id
         LEFT JOIN users u ON trips.marshalId = u.id
     `, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -1409,6 +1032,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
 
         if (email) {
             try {
+                await transporterReady;
                 await transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
             } catch(mailErr) {
                 console.warn('Email send failed (non-fatal):', mailErr.message);
@@ -1424,30 +1048,23 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     }
 });
 
-apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
+apiRouter.post('/auth/verify-otp', async (req, res) => {
     const { phone, email, otp, role } = req.body;
     if (!otp || otp.length !== 6) return res.status(400).json({ error: 'OTP must be 6 digits' });
     const val = phone || email;
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
     try {
-        // Find valid OTP (Support bypass OTP 123456 for testing/prototyping)
-        let row;
-        if (otp === '123456') {
-            row = { id: 'bypass', phone: val, email: val };
-        } else {
-            const otpResult = await pool.query(
-                `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
-                [val, otp]
-            );
-            row = otpResult.rows[0];
-        }
+        // Find valid OTP
+        const otpResult = await pool.query(
+            `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
+            [val, otp]
+        );
+        const row = otpResult.rows[0];
         if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
         // Mark OTP as used
-        if (row.id !== 'bypass') {
-            await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
-        }
+        await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
 
         const cleanVal = val.replace('+91', '');
         const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
@@ -1665,11 +1282,10 @@ apiRouter.get('/service-requests/:id/audit', (req, res) => {
 
 // --- ORDERS ---
 apiRouter.get('/garages/:id/orders', (req, res) => {
-    db.all(`SELECT sr.*, c.name as customerName, v.plate, v.makeModel, t.garageDropoffOtp, t.garagePickupOtp, t.deliveryOtp 
+    db.all(`SELECT sr.*, c.name as customerName, v.plate, v.makeModel 
             FROM service_requests sr 
             JOIN customers c ON sr.customerId = c.id 
             JOIN vehicles v ON sr.vehicleId = v.id 
-            LEFT JOIN trips t ON t.serviceRequestId = sr.id
             WHERE sr.garageId = ?`, [req.params.id], (err, rows) => res.json(rows || []));
 });
 
@@ -1754,9 +1370,6 @@ apiRouter.get('/garages/:id/rates', async (req, res) => {
 apiRouter.post('/garages/:id/rates', async (req, res) => {
     const { rates } = req.body;
     const garageId = req.params.id;
-    if (rates && rates.length > 500) {
-        return res.status(400).json({ error: 'Too many rates. Bulk limit is 500 items.' });
-    }
     try {
         // Delete existing rates for this garage
         await pool.query('DELETE FROM garage_rates WHERE garageid = $1', [garageId]);
@@ -1899,7 +1512,7 @@ apiRouter.post('/garages/:id/skus/deduct', (req, res) => {
     });
 });
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf', 'video/webm', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/ogg', 'video/x-matroska'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const storage = multer.diskStorage({
@@ -1915,7 +1528,7 @@ const fileFilter = (req, file, cb) => {
     if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        cb(new Error('Invalid file type. Only JPG, PNG, WebP, PDF, and Videos are allowed.'), false);
+        cb(new Error('Invalid file type. Only JPG, PNG, WebP, and PDF are allowed.'), false);
     }
 };
 
@@ -2034,20 +1647,6 @@ apiRouter.post('/upload-kyc', upload.single('file'), (req, res) => {
     }
 });
 
-apiRouter.post('/media', upload.single('file'), (req, res) => {
-    const { referenceId, type } = req.body;
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const filePath = 'uploads/' + req.file.filename;
-    const fileName = req.file.originalname;
-    const id = 'media_' + Date.now();
-
-    db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
-        [id, referenceId, filePath, fileName, type || 'document'], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, id, filePath });
-        });
-});
-
 apiRouter.post('/garages/:id/documents', upload.single('file'), (req, res) => {
     const { docType } = req.body;
     const garageId = req.params.id;
@@ -2088,34 +1687,13 @@ apiRouter.patch('/media/:id', (req, res) => {
 });
 
 apiRouter.patch('/service-requests/:id', (req, res) => {
-    const allowed = ['status', 'workerId', 'garageId', 'totalCustomerPrice', 'auditStatus'];
     const fields = []; const vals = [];
-    allowed.forEach(k => {
-        if (req.body[k] !== undefined) {
-            fields.push(`${k} = ?`);
-            vals.push(req.body[k]);
-        }
+    Object.keys(req.body).forEach(k => {
+        fields.push(`${k} = ?`);
+        vals.push(req.body[k]);
     });
-    if (fields.length === 0) return res.json({ success: true });
     vals.push(req.params.id);
     db.run(`UPDATE service_requests SET ${fields.join(', ')} WHERE id = ?`, vals, (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
-});
-
-apiRouter.patch('/trips/:id', (req, res) => {
-    const allowed = ['status', 'endOdometer', 'startOdometer', 'rating', 'deliveryOtp', 'garagePickupOtp', 'garageDropoffOtp', 'deliveryMarshalId', 'marshalId', 'feedback'];
-    const fields = []; const vals = [];
-    allowed.forEach(k => {
-        if (req.body[k] !== undefined) {
-            fields.push(`${k} = ?`);
-            vals.push(req.body[k]);
-        }
-    });
-    if (fields.length === 0) return res.json({ success: true });
-    vals.push(req.params.id);
-    db.run(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, vals, (err) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ success: true });
     });
@@ -2165,13 +1743,6 @@ apiRouter.delete('/owners/:id', (req, res) => {
 // Generic Verifier (Simulates OTP/KYC success)
 apiRouter.patch('/verify-field', (req, res) => {
     const { entityId, entityType, field, status } = req.body;
-    if (entityType !== 'garage' && entityType !== 'owner') {
-        return res.status(400).json({ error: 'Invalid entityType' });
-    }
-    const allowedFields = ['pan', 'aadhaar', 'bank', 'kyc', 'email', 'phone'];
-    if (!allowedFields.includes(field)) {
-        return res.status(400).json({ error: 'Invalid field' });
-    }
     const table = entityType === 'garage' ? 'garages' : 'garage_owners';
     const column = field + 'Verified';
     
@@ -2189,10 +1760,6 @@ apiRouter.get('/serialized-parts', (req, res) => {
 apiRouter.post('/serialized-parts/bulk', (req, res) => {
     const { skuId, items } = req.body; // items = [{ garageId, serials: [] }]
     if (!items || !Array.isArray(items)) return res.status(400).json({ error: 'Invalid items' });
-    
-    let totalSerials = 0;
-    items.forEach(it => { if (it.serials) totalSerials += it.serials.length; });
-    if (totalSerials > 500) return res.status(400).json({ error: 'Too many items. Maximum 500 serials per request.' });
 
     const flatSerials = [];
     items.forEach(it => {
@@ -2241,30 +1808,22 @@ apiRouter.post('/customers', (req, res) => {
     const { id, name, phone, email } = req.body;
     db.run("INSERT INTO customers (id, name, phone, email) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, email = EXCLUDED.email",
         [id || `cust_${Date.now()}`, name, phone, email], (err) => {
-            if (err) {
-                console.error("POST /customers DB error:", err.message);
-                return res.status(500).json({ error: err.message });
-            }
             res.json({ success: true, id: id || `cust_${Date.now()}` });
         });
 });
 
 apiRouter.post('/vehicles', (req, res) => {
-    const { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body;
-    db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo, fuel, transmission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, customerId, make, model, type, plate, photo, fuel, transmission], (err) => {
-            if (err) {
-                console.error("POST /vehicles DB error:", err.message);
-                return res.status(500).json({ error: err.message });
-            }
+    const { id, customerId, make, model, type, plate, photo } = req.body;
+    db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, customerId, make, model, type, plate, photo], (err) => {
             res.json({ success: true, id });
         });
 });
 
 apiRouter.put('/vehicles/:id', (req, res) => {
-    const { make, model, type, plate, photo, fuel, transmission } = req.body;
-    db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
-        [make, model, type, plate, photo, fuel, transmission, req.params.id], (err) => res.json({ success: true }));
+    const { make, model, type, plate, photo } = req.body;
+    db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=? WHERE id=?",
+        [make, model, type, plate, photo, req.params.id], (err) => res.json({ success: true }));
 });
 
 apiRouter.delete('/vehicles/:id', (req, res) => {
@@ -2272,165 +1831,25 @@ apiRouter.delete('/vehicles/:id', (req, res) => {
 });
 
 const createRequest = (req, res) => {
-    const {
-        id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-        lat, lng, pickup_address, drop_address,
-        issue, serviceType, bookingFlow, pickupDropType
-    } = req.body;
-    // Normalise service category — accept either field name
-    const serviceCategory = serviceType || issue || 'Standard Service';
-    
-    const insertReq = (assignedGarageId) => {
-        db.run(
-            `INSERT INTO service_requests
-             (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-              lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                id, customerId, vehicleId, assignedGarageId || garageId || null,
-                date, status || 'pending', totalCustomerPrice || 0, workerId || null,
-                lat || null, lng || null,
-                pickup_address || null, drop_address || null,
-                issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', Date.now()
-            ], (err) => {
-                if (err) {
-                    console.error('Error creating request:', err.message);
-                    return res.status(500).json({ error: err.message });
-                }
-                res.json({ success: true, id });
-            });
-    };
-
-    if (!garageId) {
-        findClosestActiveGarage(lat, lng, (closestId) => {
-            insertReq(closestId);
+    const { id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId } = req.body;
+    db.run(`INSERT INTO service_requests (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, customerId, vehicleId, garageId || null, date, status || 'pending', totalCustomerPrice || 0, workerId || null], (err) => {
+            res.json({ success: true, id });
         });
-    } else {
-        insertReq(garageId);
-    }
 };
 apiRouter.post('/service-requests', createRequest);
 apiRouter.post('/requests', createRequest);
 
-function calcDistanceKm(lat1, lng1, lat2, lng2) {
-    if (!lat1 || !lng1 || !lat2 || !lng2) return null;
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function findClosestActiveGarage(lat, lng, callback) {
-    db.all("SELECT id, lat, lng, name FROM garages WHERE status = 'active'", (err, rows) => {
-        if (err || !rows || rows.length === 0) {
-            return callback(null);
-        }
-        const parsedLat = parseFloat(lat);
-        const parsedLng = parseFloat(lng);
-        if (isNaN(parsedLat) || isNaN(parsedLng)) {
-            return callback(rows[0].id);
-        }
-        let closestId = rows[0].id;
-        let minDist = Infinity;
-        rows.forEach(g => {
-            const gLat = parseFloat(g.lat);
-            const gLng = parseFloat(g.lng);
-            if (!isNaN(gLat) && !isNaN(gLng)) {
-                const dist = calcDistanceKm(parsedLat, parsedLng, gLat, gLng);
-                if (dist !== null && dist < minDist) {
-                    minDist = dist;
-                    closestId = g.id;
-                }
-            }
-        });
-        callback(closestId);
-    });
-}
-
 apiRouter.get('/marshals/available-pickups', (req, res) => {
-    const marshalLat = parseFloat(req.query.lat);
-    const marshalLng = parseFloat(req.query.lng);
-
     db.all(
-        `SELECT 
-            sr.id,
-            sr.status as "status",
-            COALESCE(sr.lat, 0) as "pickupLat",
-            COALESCE(sr.lng, 0) as "pickupLng",
-            sr.pickup_address as "pickupAddress",
-            sr.drop_address as "dropAddress",
-            sr.date as "pickupDate",
-            sr.issue as "pickupTime",
-            c.name as "customerName",
-            COALESCE(sr.service_category, sr.issue, 'Standard Service') as "issue",
-            COALESCE(sr.service_category, sr.issue, 'Standard Service') as "serviceType",
-            COALESCE(sr.pickup_drop_type, 'Pickup') as "pickupDropType",
-            sr.booking_flow as "bookingFlow",
-            v.make as "vehicleMake",
-            v.model as "vehicleModel",
-            v.make || ' ' || v.model as "vehicleFullName",
-            v.type as "vehicleSubType",
-            v.plate as "vehicleRegNumber",
-            v.photo as "vehiclePhoto",
-            v.fuel as "vehicleFuel",
-            v.transmission as "vehicleTransmission",
-            sr.created_at as "createdAt"
+        `SELECT sr.*, c.name as customerName 
          FROM service_requests sr 
          LEFT JOIN customers c ON sr.customerId = c.id 
-         LEFT JOIN vehicles v ON sr.vehicleId = v.id
-         WHERE (sr.status = 'pending' OR sr.status = 'scheduled') AND (sr.workerId IS NULL OR sr.workerId = '')`,
+         WHERE sr.status = 'pending' AND (sr.workerId IS NULL OR sr.workerId = '')`,
         [],
         (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
-            
-            let result = rows || [];
-            const now = Date.now();
-            
-            result = result.filter(row => {
-                const createdAt = parseInt(row.createdAt || now);
-                const ageSeconds = (now - createdAt) / 1000;
-                const status = (row.status || '').trim().toLowerCase();
-                
-                if (status === 'scheduled') {
-                    // Scheduled requests appear for max 10 minutes (600s)
-                    if (ageSeconds > 600) return false;
-                    
-                    if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
-                        if (row.pickupLat === 0 && row.pickupLng === 0) return true;
-                        const dist = calcDistanceKm(marshalLat, marshalLng, row.pickupLat, row.pickupLng);
-                        if (dist === null) return true;
-                        
-                        if (ageSeconds <= 200) {
-                            return dist <= 5.0;
-                        } else if (ageSeconds <= 400) {
-                            return dist <= 10.0;
-                        } else {
-                            return dist <= 15.0;
-                        }
-                    }
-                } else {
-                    // Instant requests appear for max 90 seconds
-                    if (ageSeconds > 90) return false;
-                    
-                    if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
-                        if (row.pickupLat === 0 && row.pickupLng === 0) return true;
-                        const dist = calcDistanceKm(marshalLat, marshalLng, row.pickupLat, row.pickupLng);
-                        if (dist === null) return true;
-                        
-                        if (ageSeconds <= 30) {
-                            return dist <= 5.0;
-                        } else if (ageSeconds <= 60) {
-                            return dist <= 10.0;
-                        } else {
-                            return dist <= 15.0;
-                        }
-                    }
-                }
-                return true;
-            });
-            
-            res.json(result);
+            res.json(rows || []);
         }
     );
 });
@@ -2449,42 +1868,27 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
             return res.status(400).json({ error: `Action Blocked: Your KYC documents status is '${marshal.kycstatus}'. You cannot accept Pickups until approved.` });
         }
 
-        db.get("SELECT lat, lng, workerId, status, pickup_drop_type, booking_flow FROM service_requests WHERE id = ?", [requestId], (err, serviceReq) => {
+        db.get("SELECT lat, lng FROM service_requests WHERE id = ?", [requestId], (err, serviceReq) => {
             if (err) return res.status(500).json({ error: err.message });
             if (!serviceReq) return res.status(404).json({ error: 'Service request not found' });
             
-            if (serviceReq.workerId || serviceReq.status === 'marshal_assigned') {
-                return res.status(400).json({ error: 'This pickup request has already been accepted by another marshal.' });
-            }
-            if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled') {
-                if (serviceReq.status === 'cancelled') {
-                    return res.status(400).json({ error: 'This pickup request has been cancelled by the customer.' });
-                }
-                return res.status(400).json({ error: 'This booking request is no longer active.' });
-            }
-            
             const lat = serviceReq.lat || 19.0760;
             const lng = serviceReq.lng || 72.8777;
-            const isReturnOnly = serviceReq.pickup_drop_type === 'Drop';
             
             db.run("UPDATE service_requests SET workerId = ?, status = 'marshal_assigned' WHERE id = ?", [marshalId, requestId], (errU) => {
                 if (errU) return res.status(500).json({ error: errU.message });
                 
                 const tripId = `trip_${Date.now()}`;
                 const otp1 = String(Math.floor(1000 + Math.random() * 9000));
-                const garageDropoffOtp = String(Math.floor(1000 + Math.random() * 9000));
-                const garagePickupOtp = String(Math.floor(1000 + Math.random() * 9000));
-                const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
-                
-                const initialStatus = isReturnOnly ? 'ready_for_delivery' : 'pending_otp_1';
+                const otp2 = String(Math.floor(1000 + Math.random() * 9000));
                 
                 db.run(
-                    `INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pickupLat, pickupLng) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [tripId, requestId, marshalId, initialStatus, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, lat, lng],
+                    `INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, deliveryOtp, pickupLat, pickupLng) 
+                     VALUES (?, ?, ?, 'pending_otp_1', ?, ?, ?, ?)`,
+                    [tripId, requestId, marshalId, otp1, otp2, lat, lng],
                     (errT) => {
                         if (errT) return res.status(500).json({ error: errT.message });
-                        res.json({ success: true, tripId, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp });
+                        res.json({ success: true, tripId, otp1 });
                     }
                 );
             });
@@ -2514,58 +1918,6 @@ apiRouter.post('/requests/:id/approve-inspection', (req, res) => {
     db.run("UPDATE service_requests SET status = 'in_transit' WHERE id = ?", [req.params.id], (err) => res.json({ success: true }));
 });
 
-function verifyHandoverMedia(tripId, expectedDocTypes, callback) {
-    if (!expectedDocTypes || expectedDocTypes.length === 0) {
-        return callback(null, true);
-    }
-    db.all("SELECT docType FROM media WHERE referenceId = ?", [tripId], (err, rows) => {
-        if (err) return callback(err, false);
-        const uploadedTypes = new Set((rows || []).map(r => r.docType || r.doctype || ''));
-        const allUploaded = expectedDocTypes.every(type => uploadedTypes.has(type));
-        callback(null, allUploaded);
-    });
-}
-
-apiRouter.put('/trips/:id/status', (req, res) => {
-    const { status, startOdometer, garageDropOdometer, endOdometer } = req.body;
-    
-    let expectedMedia = [];
-    if (status === 'in_transit') expectedMedia = ['360_pickup', 'odometer_start'];
-    if (status === 'at_garage') expectedMedia = ['360_dropoff_garage', 'odometer_dropoff_garage'];
-    if (status === 'out_for_delivery') expectedMedia = ['360_pickup_garage', 'odometer_pickup_garage'];
-    if (status === 'completed') expectedMedia = ['360_delivery', 'odometer_end'];
-
-    verifyHandoverMedia(req.params.id, expectedMedia, (err, isValid) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!isValid && expectedMedia.length > 0) {
-            return res.status(400).json({ error: `Mandatory VehicleStateAudit media (${expectedMedia.join(', ')}) not found. Please upload first.` });
-        }
-
-        const fields = ['status = ?'];
-        const params = [status];
-        
-        if (startOdometer !== undefined) { fields.push('startOdometer = ?'); params.push(startOdometer); }
-        if (garageDropOdometer !== undefined) { fields.push('garageDropOdometer = ?'); params.push(garageDropOdometer); }
-        if (endOdometer !== undefined) { fields.push('endOdometer = ?'); params.push(endOdometer); }
-        
-        params.push(req.params.id);
-
-        db.run(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, params, (errU) => {
-            if (errU) return res.status(500).json({ error: errU.message });
-            
-            db.get("SELECT serviceRequestId FROM trips WHERE id = ?", [req.params.id], (err2, trip) => {
-                if (trip) {
-                    const reqId = trip.serviceRequestId || trip.servicerequestid;
-                    let reqStatus = status;
-                    if (status === 'completed') reqStatus = 'drop_completed';
-                    db.run("UPDATE service_requests SET status = ? WHERE id = ?", [reqStatus, reqId]);
-                }
-            });
-            res.json({ success: true });
-        });
-    });
-});
-
 apiRouter.post('/trips', (req, res) => {
     const { id, serviceRequestId, marshalId, status, startOdometer, pickupLat, pickupLng } = req.body;
     const tripId = id || `trip_${Date.now()}`;
@@ -2582,62 +1934,16 @@ apiRouter.post('/trips', (req, res) => {
 apiRouter.post('/trips/:id/approve-audit', (req, res) => res.json({ success: true }));
 apiRouter.post('/trips/:id/audit', (req, res) => res.json({ success: true, customerEstimate: 600 }));
 
-apiRouter.post('/trips/:id/verify-otp-1', (req, res) => {
-    const { otp } = req.body;
-    db.get("SELECT otp1 FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!trip) return res.status(404).json({ error: 'Trip not found' });
-        
-        const tripOtp1 = trip.otp1 || trip.otp1;
-        if (tripOtp1 !== otp) {
-            return res.status(400).json({ error: 'Invalid Handover OTP' });
-        }
-        
-        res.json({ success: true });
-    });
-});
-
-apiRouter.post('/trips/:id/verify-garage-dropoff', (req, res) => {
-    const { otp } = req.body;
-    db.get("SELECT garageDropoffOtp FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!trip) return res.status(404).json({ error: 'Trip not found' });
-        
-        const dbOtp = trip.garageDropoffOtp || trip.garagedropoffotp;
-        if (dbOtp !== otp) {
-            return res.status(400).json({ error: 'Invalid Garage Dropoff OTP' });
-        }
-        
-        res.json({ success: true });
-    });
-});
-
-apiRouter.post('/trips/:id/verify-garage-pickup', (req, res) => {
-    const { otp } = req.body;
-    db.get("SELECT garagePickupOtp FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!trip) return res.status(404).json({ error: 'Trip not found' });
-        
-        const dbOtp = trip.garagePickupOtp || trip.garagepickupotp;
-        if (dbOtp !== otp) {
-            return res.status(400).json({ error: 'Invalid Garage Pickup OTP' });
-        }
-        
-        res.json({ success: true });
-    });
-});
-
 // --- NEW MARSHAL DROPOFF ENDPOINTS ---
 apiRouter.post('/trips/:id/ready-for-delivery', (req, res) => {
-    // Garage marks the car as ready. Generate OTPs and default to original marshal.
+    // Garage marks the car as ready. Generate OTP and default to original marshal.
     const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
-    const garagePickupOtp = String(Math.floor(1000 + Math.random() * 9000));
     db.run(
-        "UPDATE trips SET status = 'ready_for_delivery', deliveryOtp = ?, garagePickupOtp = ?, deliveryMarshalId = marshalId WHERE id = ?",
-        [deliveryOtp, garagePickupOtp, req.params.id],
+        "UPDATE trips SET status = 'ready_for_delivery', deliveryOtp = ?, deliveryMarshalId = marshalId WHERE id = ?",
+        [deliveryOtp, req.params.id],
         (err) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, deliveryOtp, garagePickupOtp }); // Included in response for testing
+            res.json({ success: true, deliveryOtp }); // Included in response for testing
         }
     );
 });
@@ -2655,353 +1961,66 @@ apiRouter.put('/trips/:id/reassign-delivery', (req, res) => {
 });
 
 apiRouter.post('/trips/:id/start-delivery', (req, res) => {
-    db.get("SELECT status FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!trip) return res.status(404).json({ error: 'Trip not found' });
-        if (trip.status !== 'ready_for_delivery') {
-            return res.status(400).json({ error: 'Cannot start delivery from status: ' + trip.status });
+    db.run(
+        "UPDATE trips SET status = 'out_for_delivery' WHERE id = ?",
+        [req.params.id],
+        (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            // Here we would trigger an SMS to the customer with the deliveryOtp
+            // Example: sendSms(customerPhone, `Your car is out for delivery. OTP: ${trip.deliveryOtp}`);
+            
+            res.json({ success: true });
         }
-        db.run(
-            "UPDATE trips SET status = 'out_for_delivery' WHERE id = ?",
-            [req.params.id],
-            (err) => {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ success: true });
-            }
-        );
-    });
-});
-
-apiRouter.post('/trips/:id/submit-delivery-media', (req, res) => {
-    const { odometer } = req.body;
-    db.get("SELECT status FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!trip) return res.status(404).json({ error: 'Trip not found' });
-        if (trip.status !== 'out_for_delivery') {
-            return res.status(400).json({ error: 'Cannot submit delivery media from status: ' + trip.status });
-        }
-        db.run(
-            "UPDATE trips SET status = 'pending_delivery', endOdometer = ? WHERE id = ?",
-            [odometer || null, req.params.id],
-            (err) => {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ success: true });
-            }
-        );
-    });
+    );
 });
 
 apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
-    const { otp, odometer } = req.body;
-    
-    verifyHandoverMedia(req.params.id, ['360_delivery', 'odometer_end'], (errM, isValid) => {
-        if (errM) return res.status(500).json({ error: errM.message });
-        if (!isValid) {
-            return res.status(400).json({ error: 'Mandatory VehicleStateAudit media (360_delivery, odometer_end) not found. Please upload first.' });
+    const { otp } = req.body;
+    db.get("SELECT trips.deliveryOtp, trips.deliveryMarshalId, trips.marshalId, trips.serviceRequestId, service_requests.totalcustomerprice FROM trips JOIN service_requests ON trips.serviceRequestId = service_requests.id WHERE trips.id = ?", [req.params.id], (err, trip) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+        
+        if (trip.deliveryOtp !== otp) {
+            return res.status(400).json({ error: 'Invalid Delivery OTP' });
         }
         
-        db.get("SELECT trips.status, trips.deliveryOtp, trips.startOdometer, trips.endOdometer, trips.deliveryMarshalId, trips.marshalId, trips.serviceRequestId, service_requests.totalcustomerprice, service_requests.marshalcommission, u.rating as marshal_rating FROM trips JOIN service_requests ON trips.serviceRequestId = service_requests.id LEFT JOIN users u ON trips.marshalId = u.id WHERE trips.id = ?", [req.params.id], (err, trip) => {
-            if (err) return res.status(500).json({ error: err.message });
-            if (!trip) return res.status(404).json({ error: 'Trip not found' });
-            
-            const tripDeliveryOtp = trip.deliveryOtp || trip.deliveryotp;
-            const tripDeliveryMarshalId = trip.deliveryMarshalId || trip.deliverymarshalid;
-            const tripMarshalId = trip.marshalId || trip.marshalid;
-            const tripServiceRequestId = trip.serviceRequestId || trip.servicerequestid;
-            const totalCustomerPrice = trip.totalcustomerprice || trip.totalCustomerPrice || 0;
-            const marshalRating = trip.marshal_rating !== null && trip.marshal_rating !== undefined ? parseFloat(trip.marshal_rating) : 5.0;
-
-            if (trip.status !== 'pending_delivery' && trip.status !== 'out_for_delivery') {
-                return res.status(400).json({ error: 'Trip cannot be completed from status: ' + trip.status });
-            }
-            if (tripDeliveryOtp !== otp) {
-                return res.status(400).json({ error: 'Invalid Delivery OTP' });
-            }
-        
-        db.run("UPDATE trips SET status = 'completed', endOdometer = COALESCE(?, endOdometer) WHERE id = ?", [odometer || null, req.params.id], (err2) => {
+        db.run("UPDATE trips SET status = 'completed' WHERE id = ?", [req.params.id], (err2) => {
             if (err2) return res.status(500).json({ error: err2.message });
             
-            db.run("UPDATE service_requests SET status = 'drop_completed' WHERE id = ?", [tripServiceRequestId], (errSR) => {
-                if (errSR) console.error("Failed to update service request status:", errSR.message);
+            db.get("SELECT value FROM system_settings WHERE key = 'marshal_commission_percentage'", [], (err3, setting) => {
+                const commissionRate = setting && setting.value ? parseFloat(setting.value) : 2.0;
+                const ticketSize = trip.totalcustomerprice || 0;
+                const totalCommission = ticketSize * (commissionRate / 100);
                 
-                db.all("SELECT key, value FROM system_settings WHERE key IN ('marshal_rating_threshold', 'commission_high_tier', 'commission_low_tier')", [], (err3, rows) => {
-                    const settings = {};
-                    (rows || []).forEach(r => { settings[r.key] = r.value; });
-                    
-                    const threshold = parseFloat(settings['marshal_rating_threshold'] || '4.5');
-                    const highTier = parseFloat(settings['commission_high_tier'] || '80.0');
-                    const lowTier = parseFloat(settings['commission_low_tier'] || '65.0');
-                    
-                    const commissionPercent = marshalRating >= threshold ? highTier : lowTier;
-                    const ticketSize = totalCustomerPrice;
-                    const totalCommission = ticketSize * (commissionPercent / 100);
-                    
-                    let inserts = [];
-                    if (tripMarshalId === tripDeliveryMarshalId) {
-                        inserts.push([`inc_${Date.now()}_1`, tripMarshalId, req.params.id, totalCommission, 'trip_bonus', 'pending']);
-                    } else {
-                        inserts.push([`inc_${Date.now()}_1`, tripMarshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
-                        inserts.push([`inc_${Date.now()}_2`, tripDeliveryMarshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
-                    }
-                    
-                    let completed = 0;
-                    if (inserts.length === 0) {
-                        return res.json({ success: true, message: 'Delivery completed' });
-                    }
-                    inserts.forEach(insert => {
-                        db.run(
-                            "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
-                            insert,
-                            () => {
-                                completed++;
-                                if (completed === inserts.length) {
-                                    res.json({ success: true, message: 'Delivery completed and commission credited', commissionCredited: totalCommission, tierUsed: marshalRating >= threshold ? 'High Tier' : 'Low Tier' });
-                                }
+                let inserts = [];
+                if (trip.marshalId === trip.deliveryMarshalId) {
+                    inserts.push([`inc_${Date.now()}_1`, trip.marshalId, req.params.id, totalCommission, 'trip_bonus', 'pending']);
+                } else {
+                    inserts.push([`inc_${Date.now()}_1`, trip.marshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
+                    inserts.push([`inc_${Date.now()}_2`, trip.deliveryMarshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
+                }
+                
+                let completed = 0;
+                inserts.forEach(insert => {
+                    db.run(
+                        "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
+                        insert,
+                        () => {
+                            completed++;
+                            if (completed === inserts.length) {
+                                res.json({ success: true, message: 'Delivery completed and commission credited', commissionCredited: totalCommission });
                             }
-                        );
-                    });
+                        }
+                    );
                 });
+                
+                if (inserts.length === 0) {
+                    res.json({ success: true, message: 'Delivery completed' });
+                }
             });
         });
-        });
     });
-});
-
-// GET earnings statistics for a marshal
-apiRouter.get('/users/:id/earnings', async (req, res) => {
-    const userId = req.params.id;
-    try {
-        const userRes = await pool.query("SELECT is_payment_on_hold, rating FROM users WHERE id = $1", [userId]);
-        const user = userRes.rows[0];
-        const hold = user ? (user.is_payment_on_hold || 0) : 0;
-        const rating = user ? (user.rating || 5.0) : 5.0;
-
-        const incRes = await pool.query("SELECT amount, type, createdat FROM incentives WHERE userid = $1", [userId]);
-        const rows = incRes.rows || [];
-
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        
-        let todayEarnings = 0;
-        let weekEarnings = 0;
-        let monthEarnings = 0;
-        let overallEarnings = 0;
-
-        rows.forEach(r => {
-            const amt = parseFloat(r.amount || 0);
-            const date = new Date(r.createdat).getTime();
-
-            weekEarnings += amt;
-
-            if (amt > 0) {
-                overallEarnings += amt;
-                if (date >= startOfDay) {
-                    todayEarnings += amt;
-                }
-                const oneMonthAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
-                if (date >= oneMonthAgo) {
-                    monthEarnings += amt;
-                }
-            }
-        });
-
-        const tripCountRes = await pool.query(
-            "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type = 'trip_bonus' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
-            [userId, startOfDay]
-        );
-        const todayTrips = parseInt(tripCountRes.rows[0]?.count || 0);
-
-        res.json({
-            todayEarnings: Math.round(todayEarnings),
-            weekEarnings: Math.round(Math.max(0, weekEarnings)),
-            monthEarnings: Math.round(monthEarnings),
-            overallEarnings: Math.round(overallEarnings),
-            todayTrips: todayTrips,
-            is_payment_on_hold: hold,
-            rating: parseFloat(rating.toFixed(2))
-        });
-    } catch (err) {
-        console.error('Earnings fetch error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST withdraw funds
-apiRouter.post('/users/:id/withdraw', async (req, res) => {
-    const userId = req.params.id;
-    const { amount } = req.body;
-    
-    if (amount === undefined || amount <= 0) {
-        return res.status(400).json({ error: 'Valid withdrawal amount is required' });
-    }
-    
-    try {
-        const userRes = await pool.query("SELECT is_payment_on_hold FROM users WHERE id = $1", [userId]);
-        const user = userRes.rows[0];
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        
-        if (user.is_payment_on_hold === 1) {
-            return res.status(400).json({ error: 'Withdrawal failed. Your payouts are currently on hold due to a pending dispute.' });
-        }
-        
-        const incRes = await pool.query("SELECT SUM(amount) as balance FROM incentives WHERE userid = $1", [userId]);
-        const currentBalance = parseFloat(incRes.rows[0]?.balance || 0);
-        
-        if (currentBalance < amount) {
-            return res.status(400).json({ error: 'Withdrawal failed. Insufficient balance.' });
-        }
-        
-        const withdrawalId = `wdr_${Date.now()}`;
-        await pool.query(
-            "INSERT INTO incentives (id, userid, amount, type, status) VALUES ($1, $2, $3, 'withdrawal', 'completed')",
-            [withdrawalId, userId, -amount]
-        );
-        
-        res.json({ success: true, newBalance: currentBalance - amount });
-    } catch (err) {
-        console.error('Withdrawal error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST submit rating for a trip
-apiRouter.post('/trips/:id/rate', async (req, res) => {
-    const { rating } = req.body;
-    const tripId = req.params.id;
-    if (rating === undefined || rating < 1 || rating > 5) {
-        return res.status(400).json({ error: 'Valid rating (1-5) is required' });
-    }
-    try {
-        await pool.query("UPDATE trips SET rating = $1 WHERE id = $2", [rating, tripId]);
-        
-        const tripRes = await pool.query("SELECT marshalid, serviceRequestId FROM trips WHERE id = $1", [tripId]);
-        const trip = tripRes.rows[0];
-        if (trip) {
-            const marshalId = trip.marshalid;
-            const avgRes = await pool.query("SELECT AVG(rating) as avg_rating FROM trips WHERE marshalid = $1 AND rating IS NOT NULL", [marshalId]);
-            const newAvg = parseFloat(avgRes.rows[0].avg_rating || 5.0);
-            
-            await pool.query("UPDATE users SET rating = $1 WHERE id = $2", [newAvg, marshalId]);
-            await pool.query("UPDATE garage_workers SET rating = $1 WHERE id = $2", [newAvg, marshalId]).catch(() => {});
-            
-            if (rating === 5) {
-                const reqRes = await pool.query("SELECT totalcustomerprice FROM service_requests WHERE id = $1", [trip.servicerequestid]);
-                const ticketSize = reqRes.rows[0] ? parseFloat(reqRes.rows[0].totalcustomerprice || 0) : 0;
-                
-                const bonusSetting = await pool.query("SELECT value FROM system_settings WHERE key = 'bonus_5_star_percentage'");
-                const bonusPercent = bonusSetting.rows[0] ? parseFloat(bonusSetting.rows[0].value || 5.0) : 5.0;
-                
-                const bonusAmount = ticketSize * (bonusPercent / 100);
-                if (bonusAmount > 0) {
-                    const bonusId = `bonus_${Date.now()}`;
-                    await pool.query(
-                        "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, '5_star_bonus', 'pending')",
-                        [bonusId, marshalId, tripId, bonusAmount]
-                    );
-                }
-            }
-        }
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Rating submission error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST file a dispute
-apiRouter.post('/disputes', async (req, res) => {
-    const { tripId, customerId, marshalId, reason } = req.body;
-    if (!tripId || !reason) {
-        return res.status(400).json({ error: 'Trip ID and reason are required' });
-    }
-    try {
-        const id = `disp_${Date.now()}`;
-        await pool.query(
-            "INSERT INTO disputes (id, tripId, customerId, marshalId, reason, status) VALUES ($1, $2, $3, $4, $5, 'pending')",
-            [id, tripId, customerId || null, marshalId || null, reason]
-        );
-        
-        if (marshalId) {
-            await pool.query("UPDATE users SET is_payment_on_hold = 1 WHERE id = $1", [marshalId]);
-            await pool.query("UPDATE garage_workers SET is_payment_on_hold = 1 WHERE id = $1", [marshalId]).catch(() => {});
-        }
-        
-        res.json({ success: true, disputeId: id });
-    } catch (err) {
-        console.error('Dispute creation error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET all disputes
-apiRouter.get('/disputes', async (req, res) => {
-    try {
-        const disputes = await pool.query(`
-            SELECT disputes.*,
-                   sr.pickup_address, sr.drop_address,
-                   v.makeModel as vehicle_model, v.plate as vehicle_plate,
-                   u.name as marshal_name, u.phone as marshal_phone,
-                   c.name as customer_name
-            FROM disputes
-            LEFT JOIN trips t ON disputes.tripId = t.id
-            LEFT JOIN service_requests sr ON t.serviceRequestId = sr.id
-            LEFT JOIN vehicles v ON sr.vehicleId = v.id
-            LEFT JOIN users u ON disputes.marshalId = u.id
-            LEFT JOIN customers c ON disputes.customerId = c.id
-            ORDER BY disputes.createdAt DESC
-        `);
-        res.json(disputes.rows || []);
-    } catch (err) {
-        console.error('Disputes fetch error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST resolve a dispute
-apiRouter.post('/disputes/:id/resolve', async (req, res) => {
-    const disputeId = req.params.id;
-    const { action, deductionAmount } = req.body;
-    
-    if (!action || !['dismissed', 'penalized'].includes(action)) {
-        return res.status(400).json({ error: 'Action must be dismissed or penalized' });
-    }
-    
-    try {
-        const dispRes = await pool.query("SELECT * FROM disputes WHERE id = $1", [disputeId]);
-        const dispute = dispRes.rows[0];
-        if (!dispute) {
-            return res.status(404).json({ error: 'Dispute not found' });
-        }
-        
-        const marshalId = dispute.marshalid || dispute.marshalId;
-        const tripId = dispute.tripid || dispute.tripId;
-        const finalDeduction = action === 'penalized' ? parseFloat(deductionAmount || 0) : 0;
-        
-        await pool.query(
-            "UPDATE disputes SET status = $1, deductionAmount = $2 WHERE id = $3",
-            [action, finalDeduction, disputeId]
-        );
-        
-        if (marshalId) {
-            await pool.query("UPDATE users SET is_payment_on_hold = 0 WHERE id = $1", [marshalId]);
-            await pool.query("UPDATE garage_workers SET is_payment_on_hold = 0 WHERE id = $1", [marshalId]).catch(() => {});
-            
-            if (action === 'penalized' && finalDeduction > 0) {
-                const penaltyId = `pen_${Date.now()}`;
-                await pool.query(
-                    "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, 'penalty', 'completed')",
-                    [penaltyId, marshalId, tripId, -finalDeduction]
-                );
-            }
-        }
-        
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Dispute resolution error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
 });
 
 
