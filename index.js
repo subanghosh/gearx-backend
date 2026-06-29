@@ -243,7 +243,7 @@ function initializeDatabase() {
             bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankVerified INTEGER DEFAULT 0,
             countryCode TEXT DEFAULT '+91', altPhone TEXT, altPhoneVerified INTEGER DEFAULT 0, lat REAL, lng REAL,
             panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT, kycStatus TEXT DEFAULT 'pending_submission',
-            is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0
+            is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0, dlUrl TEXT, profilePictureUrl TEXT, panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT
         )`);
 
         // Migration: Ensure new columns exist for existing databases
@@ -263,7 +263,17 @@ function initializeDatabase() {
             "ALTER TABLE users ADD COLUMN is_payment_on_hold INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN rating REAL DEFAULT 5.0",
             "ALTER TABLE trips ADD COLUMN rating REAL",
-            "ALTER TABLE garage_workers ADD COLUMN rating REAL DEFAULT 5.0"
+            "ALTER TABLE garage_workers ADD COLUMN rating REAL DEFAULT 5.0",
+            "ALTER TABLE users ADD COLUMN dlUrl TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN dlUrl TEXT",
+            "ALTER TABLE users ADD COLUMN profilePictureUrl TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN profilePictureUrl TEXT",
+            "ALTER TABLE users ADD COLUMN panBackUrl TEXT",
+            "ALTER TABLE users ADD COLUMN aadhaarBackUrl TEXT",
+            "ALTER TABLE users ADD COLUMN dlBackUrl TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN panBackUrl TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN aadhaarBackUrl TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN dlBackUrl TEXT"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -368,13 +378,13 @@ function initializeDatabase() {
             key TEXT PRIMARY KEY,
             value TEXT
         )`, () => {
-            // Default commission percentage to 2%
             db.run(`INSERT INTO system_settings (key, value) VALUES ('marshal_commission_percentage', '2.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_rate_per_km', '15.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('marshal_rating_threshold', '4.5') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('commission_high_tier', '80.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('commission_low_tier', '65.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('bonus_5_star_percentage', '5.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('max_pickup_distance_km', '10.0') ON CONFLICT(key) DO NOTHING`);
         });
 
         // Disputes Table
@@ -554,6 +564,42 @@ function initializeDatabase() {
             lng DOUBLE PRECISION,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // Feedback Table
+        db.run(`CREATE TABLE IF NOT EXISTS feedback (
+            id TEXT PRIMARY KEY,
+            userId TEXT,
+            userRole TEXT,
+            surveyType TEXT,
+            question1 TEXT,
+            answer1 TEXT,
+            question2 TEXT,
+            answer2 TEXT,
+            question3 TEXT,
+            answer3 TEXT,
+            question4 TEXT,
+            answer4 TEXT,
+            question5 TEXT,
+            answer5 TEXT,
+            question6 TEXT,
+            answer6 TEXT,
+            createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        // Incentive Slabs Table
+        db.run(`CREATE TABLE IF NOT EXISTS incentive_slabs (
+            id TEXT PRIMARY KEY,
+            maxDistance REAL,
+            ratePerKm REAL
+        )`, () => {
+            db.get("SELECT COUNT(*) as count FROM incentive_slabs", (err, row) => {
+                if (row && Number(row.count) === 0) {
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_1', 5.0, 15.0)");
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_2', 10.0, 20.0)");
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_3', 999.0, 25.0)");
+                }
+            });
+        });
 
         // Seed Admin (hash password in production)
         db.get("SELECT * FROM users WHERE id = 'u_admin'", (err, row) => {
@@ -922,6 +968,120 @@ apiRouter.post('/system-settings', (req, res) => {
     );
 });
 
+// Feedback / Survey Routes
+apiRouter.get('/feedback', (req, res) => {
+    db.all("SELECT * FROM feedback ORDER BY createdAt DESC", [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+apiRouter.post('/feedback', (req, res) => {
+    const { userId, userRole, surveyType, answers } = req.body;
+    const id = `fb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const params = [id, userId, userRole, surveyType];
+    const qFields = [];
+    const placeholders = ['?', '?', '?', '?'];
+    
+    for (let i = 1; i <= 6; i++) {
+        const ans = answers && answers[i - 1];
+        params.push(ans ? ans.q : null);
+        params.push(ans ? ans.a : null);
+        qFields.push(`question${i}`, `answer${i}`);
+        placeholders.push('?', '?');
+    }
+    
+    const sql = `INSERT INTO feedback (id, userId, userRole, surveyType, ${qFields.join(', ')}) VALUES (${placeholders.join(', ')})`;
+    db.run(sql, params, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id });
+    });
+});
+
+// Incentive Slabs & Global Settings Routes
+apiRouter.get('/settings/incentives', (req, res) => {
+    db.all("SELECT maxDistance, ratePerKm FROM incentive_slabs ORDER BY maxDistance ASC", [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+apiRouter.post('/settings/incentives', (req, res) => {
+    const { slabs } = req.body;
+    if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
+    
+    db.run("DELETE FROM incentive_slabs", [], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        let completed = 0;
+        if (slabs.length === 0) return res.json({ success: true });
+        
+        slabs.forEach((slab, idx) => {
+            const id = `slab_${idx}_${Date.now()}`;
+            db.run(
+                "INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES (?, ?, ?)",
+                [id, Number(slab.maxDistance), Number(slab.ratePerKm)],
+                (err2) => {
+                    completed++;
+                    if (completed === slabs.length) {
+                        res.json({ success: true });
+                    }
+                }
+            );
+        });
+    });
+});
+
+apiRouter.get('/settings/global', (req, res) => {
+    db.all("SELECT key, value FROM system_settings WHERE key IN ('five_star_bonus', 'payout_days')", [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const settings = { five_star_bonus: 50, payout_days: 3 }; // defaults
+        rows.forEach(r => { settings[r.key] = Number(r.value); });
+        res.json(settings);
+    });
+});
+
+apiRouter.post('/settings/global', (req, res) => {
+    const { settings } = req.body;
+    if (!Array.isArray(settings)) return res.status(400).json({ error: 'Settings array is required' });
+    
+    let completed = 0;
+    settings.forEach(s => {
+        db.run(
+            "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value",
+            [s.key, String(s.value)],
+            (err) => {
+                completed++;
+                if (completed === settings.length) {
+                    res.json({ success: true });
+                }
+            }
+        );
+    });
+});
+
+apiRouter.get('/users/:id', async (req, res) => {
+    let id = req.params.id;
+    if (id.endsWith('_owner')) {
+        const garageId = id.replace('_owner', '');
+        const userLookup = await pool.query(`SELECT id FROM users WHERE garageid = $1 AND role = 'garage' LIMIT 1`, [garageId]);
+        if (userLookup.rows[0]) {
+            id = userLookup.rows[0].id;
+        }
+    }
+    try {
+        const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json(userRes.rows[0]);
+    } catch (err) {
+        console.error('GET /users/:id error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch user profile' });
+    }
+});
+
 apiRouter.patch('/users/:id', async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
@@ -1217,16 +1377,14 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
         );
 
         if (field === 'email') {
-            try {
-                await transporter.sendMail({
-                    from: '"GearX" <support@gearx.in>',
-                    to: value,
-                    subject: 'Verify your new email',
-                    text: `Your verification OTP is: ${otp}. Valid for 10 minutes.`
-                });
-            } catch (mailErr) {
+            transporter.sendMail({
+                from: '"GearX" <support@gearx.in>',
+                to: value,
+                subject: 'Verify your new email',
+                text: `Your verification OTP is: ${otp}. Valid for 10 minutes.`
+            }).catch(mailErr => {
                 console.warn('Email send failed (non-fatal):', mailErr.message);
-            }
+            });
         }
 
         const resp = { message: 'OTP sent' };
@@ -1342,7 +1500,7 @@ apiRouter.get('/trips', (req, res) => {
                sr.garageId AS "assignedGarageId",
                u.name AS "marshalName", 
                u.phone AS "marshalPhone",
-               u.facePhotoUrl AS "marshalPhoto",
+               COALESCE(u.profilepictureurl, u.facePhotoUrl) AS "marshalPhoto",
                u.emailVerified AS "emailVerified",
                u.phoneVerified AS "phoneVerified",
                u.dlVerified AS "dlVerified"
@@ -1408,11 +1566,9 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         );
 
         if (email) {
-            try {
-                await transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
-            } catch(mailErr) {
+            transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` }).catch(mailErr => {
                 console.warn('Email send failed (non-fatal):', mailErr.message);
-            }
+            });
         }
         // In production: remove otp from response, send via SMS only
         const resp = { message: 'OTP sent' };
@@ -1921,13 +2077,37 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
 
+apiRouter.post('/users/:id/profile-picture', upload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    try {
+        const file = req.file;
+        const data = fs.readFileSync(file.path);
+        const base64Data = `data:${file.mimetype};base64,${data.toString('base64')}`;
+        fs.unlink(file.path, () => {});
+
+        // Update both users and garage_workers tables
+        await pool.query(`UPDATE users SET profilepictureurl = $1 WHERE id = $2`, [base64Data, req.params.id]);
+        await pool.query(`UPDATE garage_workers SET profilepictureurl = $1 WHERE id = $2`, [base64Data, req.params.id]).catch(() => {});
+
+        res.json({ success: true, profilePictureUrl: base64Data });
+    } catch (err) {
+        console.error('Profile picture upload error:', err.message);
+        res.status(500).json({ error: 'Failed to upload profile picture: ' + err.message });
+    }
+});
+
 apiRouter.put('/workers/:id/kyc', upload.fields([
     { name: 'panFile', maxCount: 1 }, 
+    { name: 'panBackFile', maxCount: 1 }, 
     { name: 'aadhaarFile', maxCount: 1 }, 
-    { name: 'faceFile', maxCount: 1 }
+    { name: 'aadhaarBackFile', maxCount: 1 }, 
+    { name: 'faceFile', maxCount: 1 },
+    { name: 'dlFile', maxCount: 1 },
+    { name: 'dlBackFile', maxCount: 1 }
 ]), async (req, res) => {
     const { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
-            bankAccountName, bankAccountNumber, bankIFSC } = req.body;
+            bankAccountName, bankAccountNumber, bankIFSC,
+            address, city, state, pincode } = req.body;
     const files = req.files || {};
 
     // ── Server-side KYC validation (mirrors frontend kyc-validation.js) ────
@@ -1950,20 +2130,124 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     if (!bankIFSC || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankIFSC.trim().toUpperCase()))
         serverErrors.push('Invalid IFSC Code. Expected format: SBIN0001234');
 
-    // File checks (only enforced when requesting pending_approval status)
+    // Address validation
     if (kycStatus === 'pending_approval') {
-        if (!files.panFile) serverErrors.push('PAN Card photo is required.');
-        if (!files.aadhaarFile) serverErrors.push('Aadhaar photo is required.');
-        if (!files.faceFile) serverErrors.push('Live Selfie photo is required.');
+        if (!address || address.trim().length < 5) serverErrors.push('Please enter a valid Street Address.');
+        if (!city || city.trim().length < 2) serverErrors.push('Please enter a valid City.');
+        if (!state || state.trim().length < 2) serverErrors.push('Please enter a valid State.');
+        if (!pincode || !/^[1-9][0-9]{5}$/.test(pincode.trim())) serverErrors.push('Invalid Pincode: must be exactly 6 digits.');
+    }
+
+    // Fetch existing user to preserve files if they aren't being re-uploaded
+    let existingUser = {};
+    try {
+        const existingRes = await pool.query('SELECT panurl, panbackurl, aadhaarurl, aadhaarbackurl, facephotourl, dlurl, dlbackurl FROM users WHERE id = $1', [req.params.id]);
+        if (existingRes.rows.length > 0) {
+            existingUser = existingRes.rows[0];
+        }
+    } catch (e) {
+        console.error('Error fetching existing user for KYC preservation:', e);
+    }
+
+    // File checks (only enforced when requesting pending_approval status and not already uploaded)
+    if (kycStatus === 'pending_approval') {
+        if (!files.panFile && !existingUser.panurl) serverErrors.push('PAN Card front photo is required.');
+        if (!files.panBackFile && !existingUser.panbackurl) serverErrors.push('PAN Card back photo is required.');
+        if (!files.aadhaarFile && !existingUser.aadhaarurl) serverErrors.push('Aadhaar front photo is required.');
+        if (!files.aadhaarBackFile && !existingUser.aadhaarbackurl) serverErrors.push('Aadhaar back photo is required.');
+        if (!files.faceFile && !existingUser.facephotourl) serverErrors.push('Live Selfie photo is required.');
+        if (!files.dlFile && !existingUser.dlurl) serverErrors.push('Driving License front photo is required.');
+        if (!files.dlBackFile && !existingUser.dlbackurl) serverErrors.push('Driving License back photo is required.');
     }
 
     if (serverErrors.length > 0) {
         return res.status(400).json({ error: serverErrors[0], details: serverErrors });
     }
 
-    const panUrl = files.panFile ? 'uploads/' + files.panFile[0].filename : null;
-    const aadhaarUrl = files.aadhaarFile ? 'uploads/' + files.aadhaarFile[0].filename : null;
-    const facePhotoUrl = files.faceFile ? 'uploads/' + files.faceFile[0].filename : null;
+    let panUrl = existingUser.panurl || null;
+    if (files.panFile) {
+        try {
+            const file = files.panFile[0];
+            const data = fs.readFileSync(file.path);
+            panUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting PAN file to base64:', e);
+        }
+    }
+
+    let panBackUrl = existingUser.panbackurl || null;
+    if (files.panBackFile) {
+        try {
+            const file = files.panBackFile[0];
+            const data = fs.readFileSync(file.path);
+            panBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting PAN back file to base64:', e);
+        }
+    }
+
+    let aadhaarUrl = existingUser.aadhaarurl || null;
+    if (files.aadhaarFile) {
+        try {
+            const file = files.aadhaarFile[0];
+            const data = fs.readFileSync(file.path);
+            aadhaarUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting Aadhaar file to base64:', e);
+        }
+    }
+
+    let aadhaarBackUrl = existingUser.aadhaarbackurl || null;
+    if (files.aadhaarBackFile) {
+        try {
+            const file = files.aadhaarBackFile[0];
+            const data = fs.readFileSync(file.path);
+            aadhaarBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting Aadhaar back file to base64:', e);
+        }
+    }
+
+    let facePhotoUrl = existingUser.facephotourl || null;
+    if (files.faceFile) {
+        try {
+            const file = files.faceFile[0];
+            const data = fs.readFileSync(file.path);
+            facePhotoUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting face file to base64:', e);
+        }
+    }
+
+    let dlUrl = existingUser.dlurl || null;
+    if (files.dlFile) {
+        try {
+            const file = files.dlFile[0];
+            const data = fs.readFileSync(file.path);
+            dlUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting DL file to base64:', e);
+        }
+    }
+
+    let dlBackUrl = existingUser.dlbackurl || null;
+    if (files.dlBackFile) {
+        try {
+            const file = files.dlBackFile[0];
+            const data = fs.readFileSync(file.path);
+            dlBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
+            fs.unlink(file.path, () => {});
+        } catch (e) {
+            console.error('Error converting DL back file to base64:', e);
+        }
+    }
+
     const cleanAadhaar = aadhaarNumber.replace(/\D/g, '');
     const cleanPan = panNumber.trim().toUpperCase();
     const cleanDL = dlNumber.replace(/[^A-Z0-9]/g, '').toUpperCase();
@@ -1993,20 +2277,26 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         await pool.query(
             `UPDATE garage_workers SET name = $1, email = $2, pannumber = $3, aadhaarnumber = $4, 
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
-             dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12
-             WHERE id = $13`,
+             dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
+             address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20
+             WHERE id = $21`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
-             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, req.params.id]
+             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
+             panBackUrl, aadhaarBackUrl, dlBackUrl, req.params.id]
         ).catch(() => {}); // ignore if no garage_worker row
 
         // Sync into core users table (marshals live here)
         await pool.query(
             `UPDATE users SET name = $1, email = $2, pannumber = $3, aadhaarnumber = $4,
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
-             dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12
-             WHERE id = $13`,
+             dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
+             address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20
+             WHERE id = $21`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
-             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, req.params.id]
+             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
+             panBackUrl, aadhaarBackUrl, dlBackUrl, req.params.id]
         );
 
         res.json({ success: true, kycStatus: finalKycStatus });
@@ -2352,87 +2642,77 @@ apiRouter.get('/marshals/available-pickups', (req, res) => {
     const marshalLat = parseFloat(req.query.lat);
     const marshalLng = parseFloat(req.query.lng);
 
-    db.all(
-        `SELECT 
-            sr.id,
-            sr.status as "status",
-            COALESCE(sr.lat, 0) as "pickupLat",
-            COALESCE(sr.lng, 0) as "pickupLng",
-            sr.pickup_address as "pickupAddress",
-            sr.drop_address as "dropAddress",
-            sr.date as "pickupDate",
-            sr.issue as "pickupTime",
-            c.name as "customerName",
-            COALESCE(sr.service_category, sr.issue, 'Standard Service') as "issue",
-            COALESCE(sr.service_category, sr.issue, 'Standard Service') as "serviceType",
-            COALESCE(sr.pickup_drop_type, 'Pickup') as "pickupDropType",
-            sr.booking_flow as "bookingFlow",
-            v.make as "vehicleMake",
-            v.model as "vehicleModel",
-            v.make || ' ' || v.model as "vehicleFullName",
-            v.type as "vehicleSubType",
-            v.plate as "vehicleRegNumber",
-            v.photo as "vehiclePhoto",
-            v.fuel as "vehicleFuel",
-            v.transmission as "vehicleTransmission",
-            sr.created_at as "createdAt"
-         FROM service_requests sr 
-         LEFT JOIN customers c ON sr.customerId = c.id 
-         LEFT JOIN vehicles v ON sr.vehicleId = v.id
-         WHERE (sr.status = 'pending' OR sr.status = 'scheduled') AND (sr.workerId IS NULL OR sr.workerId = '')`,
-        [],
-        (err, rows) => {
-            if (err) return res.status(500).json({ error: err.message });
-            
-            let result = rows || [];
-            const now = Date.now();
-            
-            result = result.filter(row => {
-                const createdAt = parseInt(row.createdAt || now);
-                const ageSeconds = (now - createdAt) / 1000;
-                const status = (row.status || '').trim().toLowerCase();
+    // Fetch dynamic max pickup distance setting from database
+    db.get("SELECT value FROM system_settings WHERE key = 'max_pickup_distance_km'", [], (err, settingRow) => {
+        const maxDistSetting = settingRow ? parseFloat(settingRow.value) : 10.0;
+
+        db.all(
+            `SELECT 
+                sr.id,
+                sr.status as "status",
+                COALESCE(sr.lat, 0) as "pickupLat",
+                COALESCE(sr.lng, 0) as "pickupLng",
+                sr.pickup_address as "pickupAddress",
+                sr.drop_address as "dropAddress",
+                sr.date as "pickupDate",
+                sr.issue as "pickupTime",
+                c.name as "customerName",
+                COALESCE(sr.service_category, sr.issue, 'Standard Service') as "issue",
+                COALESCE(sr.service_category, sr.issue, 'Standard Service') as "serviceType",
+                COALESCE(sr.pickup_drop_type, 'Pickup') as "pickupDropType",
+                sr.booking_flow as "bookingFlow",
+                v.make as "vehicleMake",
+                v.model as "vehicleModel",
+                v.make || ' ' || v.model as "vehicleFullName",
+                v.type as "vehicleSubType",
+                v.plate as "vehicleRegNumber",
+                v.photo as "vehiclePhoto",
+                v.fuel as "vehicleFuel",
+                v.transmission as "vehicleTransmission",
+                sr.created_at as "createdAt"
+             FROM service_requests sr 
+             LEFT JOIN customers c ON sr.customerId = c.id 
+             LEFT JOIN vehicles v ON sr.vehicleId = v.id
+             WHERE (sr.status = 'pending' OR sr.status = 'scheduled') AND (sr.workerId IS NULL OR sr.workerId = '')`,
+            [],
+            (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
                 
-                if (status === 'scheduled') {
-                    // Scheduled requests appear for max 10 minutes (600s)
-                    if (ageSeconds > 600) return false;
+                let result = rows || [];
+                const now = Date.now();
+                
+                result = result.filter(row => {
+                    const createdAt = parseInt(row.createdAt || now);
+                    const ageSeconds = (now - createdAt) / 1000;
                     
                     if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
                         if (row.pickupLat === 0 && row.pickupLng === 0) return true;
                         const dist = calcDistanceKm(marshalLat, marshalLng, row.pickupLat, row.pickupLng);
                         if (dist === null) return true;
                         
-                        if (ageSeconds <= 200) {
-                            return dist <= 5.0;
-                        } else if (ageSeconds <= 400) {
-                            return dist <= 10.0;
-                        } else {
-                            return dist <= 15.0;
-                        }
-                    }
-                } else {
-                    // Instant requests appear for max 90 seconds
-                    if (ageSeconds > 90) return false;
-                    
-                    if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
-                        if (row.pickupLat === 0 && row.pickupLng === 0) return true;
-                        const dist = calcDistanceKm(marshalLat, marshalLng, row.pickupLat, row.pickupLng);
-                        if (dist === null) return true;
+                        // RESTRICTION: Must be within dynamic maximum pickup distance setting
+                        if (dist > maxDistSetting) return false;
                         
-                        if (ageSeconds <= 30) {
-                            return dist <= 5.0;
-                        } else if (ageSeconds <= 60) {
-                            return dist <= 10.0;
+                        const status = (row.status || '').trim().toLowerCase();
+                        if (status === 'scheduled') {
+                            if (ageSeconds > 600) return false;
+                            if (ageSeconds <= 200) return dist <= Math.min(5.0, maxDistSetting);
+                            if (ageSeconds <= 400) return dist <= Math.min(10.0, maxDistSetting);
+                            return dist <= maxDistSetting;
                         } else {
-                            return dist <= 15.0;
+                            if (ageSeconds > 90) return false;
+                            if (ageSeconds <= 30) return dist <= Math.min(5.0, maxDistSetting);
+                            if (ageSeconds <= 60) return dist <= Math.min(10.0, maxDistSetting);
+                            return dist <= maxDistSetting;
                         }
                     }
-                }
-                return true;
-            });
-            
-            res.json(result);
-        }
-    );
+                    return true;
+                });
+                
+                res.json(result);
+            }
+        );
+    });
 });
 
 apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
@@ -2449,23 +2729,34 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
             return res.status(400).json({ error: `Action Blocked: Your KYC documents status is '${marshal.kycstatus}'. You cannot accept Pickups until approved.` });
         }
 
-        db.get("SELECT lat, lng, workerId, status, pickup_drop_type, booking_flow FROM service_requests WHERE id = ?", [requestId], (err, serviceReq) => {
-            if (err) return res.status(500).json({ error: err.message });
-            if (!serviceReq) return res.status(404).json({ error: 'Service request not found' });
-            
-            if (serviceReq.workerId || serviceReq.status === 'marshal_assigned') {
-                return res.status(400).json({ error: 'This pickup request has already been accepted by another marshal.' });
-            }
-            if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled') {
-                if (serviceReq.status === 'cancelled') {
-                    return res.status(400).json({ error: 'This pickup request has been cancelled by the customer.' });
+        db.get("SELECT value FROM system_settings WHERE key = 'max_pickup_distance_km'", [], (err, settingRow) => {
+            const maxDistSetting = settingRow ? parseFloat(settingRow.value) : 10.0;
+
+            db.get("SELECT lat, lng, workerId, status, pickup_drop_type, booking_flow FROM service_requests WHERE id = ?", [requestId], (err, serviceReq) => {
+                if (err) return res.status(500).json({ error: err.message });
+                if (!serviceReq) return res.status(404).json({ error: 'Service request not found' });
+                
+                if (serviceReq.workerId || serviceReq.status === 'marshal_assigned') {
+                    return res.status(400).json({ error: 'This pickup request has already been accepted by another marshal.' });
                 }
-                return res.status(400).json({ error: 'This booking request is no longer active.' });
-            }
-            
-            const lat = serviceReq.lat || 19.0760;
-            const lng = serviceReq.lng || 72.8777;
-            const isReturnOnly = serviceReq.pickup_drop_type === 'Drop';
+                if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled') {
+                    if (serviceReq.status === 'cancelled') {
+                        return res.status(400).json({ error: 'This pickup request has been cancelled by the customer.' });
+                    }
+                    return res.status(400).json({ error: 'This booking request is no longer active.' });
+                }
+                
+                const lat = serviceReq.lat || 19.0760;
+                const lng = serviceReq.lng || 72.8777;
+                const isReturnOnly = serviceReq.pickup_drop_type === 'Drop';
+
+                // Geofence check on acceptance
+                if (marshal.lat && marshal.lng && serviceReq.lat && serviceReq.lng) {
+                    const dist = calcDistanceKm(marshal.lat, marshal.lng, serviceReq.lat, serviceReq.lng);
+                    if (dist !== null && dist > maxDistSetting) {
+                        return res.status(400).json({ error: `Cannot accept pickup: You are ${dist.toFixed(1)}km away, which exceeds the maximum limit of ${maxDistSetting}km.` });
+                    }
+                }
             
             db.run("UPDATE service_requests SET workerId = ?, status = 'marshal_assigned' WHERE id = ?", [marshalId, requestId], (errU) => {
                 if (errU) return res.status(500).json({ error: errU.message });
@@ -2489,7 +2780,8 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
                 );
             });
         });
-    } catch (errPg) {
+    });
+} catch (errPg) {
         console.error('Postgres error querying marshal:', errPg.message);
         return res.status(500).json({ error: 'Database error querying marshal: ' + errPg.message });
     }
@@ -2724,41 +3016,91 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
             db.run("UPDATE service_requests SET status = 'drop_completed' WHERE id = ?", [tripServiceRequestId], (errSR) => {
                 if (errSR) console.error("Failed to update service request status:", errSR.message);
                 
-                db.all("SELECT key, value FROM system_settings WHERE key IN ('marshal_rating_threshold', 'commission_high_tier', 'commission_low_tier')", [], (err3, rows) => {
+                db.all("SELECT key, value FROM system_settings WHERE key IN ('marshal_rating_threshold', 'commission_high_tier', 'commission_low_tier', 'base_fare', 'customer_rate_per_km')", [], (err3, rows) => {
                     const settings = {};
                     (rows || []).forEach(r => { settings[r.key] = r.value; });
                     
-                    const threshold = parseFloat(settings['marshal_rating_threshold'] || '4.5');
-                    const highTier = parseFloat(settings['commission_high_tier'] || '80.0');
-                    const lowTier = parseFloat(settings['commission_low_tier'] || '65.0');
+                    const baseFare = parseFloat(settings['base_fare'] || '50.0');
                     
-                    const commissionPercent = marshalRating >= threshold ? highTier : lowTier;
-                    const ticketSize = totalCustomerPrice;
-                    const totalCommission = ticketSize * (commissionPercent / 100);
-                    
-                    let inserts = [];
-                    if (tripMarshalId === tripDeliveryMarshalId) {
-                        inserts.push([`inc_${Date.now()}_1`, tripMarshalId, req.params.id, totalCommission, 'trip_bonus', 'pending']);
-                    } else {
-                        inserts.push([`inc_${Date.now()}_1`, tripMarshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
-                        inserts.push([`inc_${Date.now()}_2`, tripDeliveryMarshalId, req.params.id, totalCommission / 2, 'trip_bonus', 'pending']);
-                    }
-                    
-                    let completed = 0;
-                    if (inserts.length === 0) {
-                        return res.json({ success: true, message: 'Delivery completed' });
-                    }
-                    inserts.forEach(insert => {
-                        db.run(
-                            "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
-                            insert,
-                            () => {
-                                completed++;
-                                if (completed === inserts.length) {
-                                    res.json({ success: true, message: 'Delivery completed and commission credited', commissionCredited: totalCommission, tierUsed: marshalRating >= threshold ? 'High Tier' : 'Low Tier' });
-                                }
+                    db.all("SELECT maxDistance, ratePerKm FROM incentive_slabs ORDER BY maxDistance ASC", [], (errSlabs, slabsList) => {
+                        if (errSlabs) console.error("Failed to fetch slabs:", errSlabs.message);
+                        
+                        const slabs = (slabsList || []).map(s => ({
+                            maxDistance: s.maxDistance !== undefined ? s.maxDistance : s.maxdistance,
+                            ratePerKm: s.ratePerKm !== undefined ? s.ratePerKm : s.rateperkm
+                        }));
+                        
+                        const endOdm = odometer || trip.endOdometer || trip.endodometer || 0;
+                        const startOdm = trip.startOdometer || trip.startodometer || 0;
+                        const distance = Math.max(0, endOdm - startOdm);
+                        
+                        let rate = 15.0; // default rate
+                        if (slabs.length > 0) {
+                            const matchingSlab = slabs.find(s => distance <= s.maxDistance);
+                            if (matchingSlab) {
+                                rate = matchingSlab.ratePerKm;
+                            } else {
+                                rate = slabs[slabs.length - 1].ratePerKm;
                             }
-                        );
+                        }
+                        
+                        const baseRatePerKm = parseFloat(settings['customer_rate_per_km'] || '25.0');
+                        
+                        let baseAmount = distance * baseRatePerKm;
+                        let extraAmount = distance * Math.max(0, rate - baseRatePerKm);
+                        
+                        if (baseAmount + extraAmount < baseFare) {
+                            baseAmount = baseFare;
+                            extraAmount = 0;
+                        }
+                        
+                        let inserts = [];
+                        if (tripMarshalId === tripDeliveryMarshalId) {
+                            inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, baseAmount, 'trip_bonus_base', 'pending']);
+                            if (extraAmount > 0) {
+                                inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, extraAmount, 'trip_bonus_extra', 'pending']);
+                            }
+                        } else {
+                            inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, baseAmount / 2, 'trip_bonus_base', 'pending']);
+                            if (extraAmount > 0) {
+                                inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, extraAmount / 2, 'trip_bonus_extra', 'pending']);
+                            }
+                            
+                            inserts.push([`inc_${Date.now()}_2_base`, tripDeliveryMarshalId, req.params.id, baseAmount / 2, 'trip_bonus_base', 'pending']);
+                            if (extraAmount > 0) {
+                                inserts.push([`inc_${Date.now()}_2_extra`, tripDeliveryMarshalId, req.params.id, extraAmount / 2, 'trip_bonus_extra', 'pending']);
+                            }
+                        }
+                        
+                        let completed = 0;
+                        if (inserts.length === 0) {
+                            return res.json({ success: true, message: 'Delivery completed' });
+                        }
+                        inserts.forEach(insert => {
+                            db.run(
+                                "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
+                                insert,
+                                () => {
+                                    // Also sync to PostgreSQL database
+                                    pool.query(
+                                        "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, $5, $6)",
+                                        [insert[0], insert[1], insert[2], insert[3], insert[4], insert[5]]
+                                    ).catch(e => console.error("PG Sync Error:", e));
+
+                                    completed++;
+                                    if (completed === inserts.length) {
+                                        res.json({ 
+                                            success: true, 
+                                            message: 'Delivery completed and commission credited', 
+                                            commissionCredited: baseAmount + extraAmount, 
+                                            distanceUsed: distance, 
+                                            rateUsed: rate, 
+                                            baseFareUsed: baseRatePerKm 
+                                        });
+                                    }
+                                }
+                            );
+                        });
                     });
                 });
             });
@@ -2776,7 +3118,7 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
         const hold = user ? (user.is_payment_on_hold || 0) : 0;
         const rating = user ? (user.rating || 5.0) : 5.0;
 
-        const incRes = await pool.query("SELECT amount, type, createdat FROM incentives WHERE userid = $1", [userId]);
+        const incRes = await pool.query("SELECT amount, type, createdat, tripid FROM incentives WHERE userid = $1 ORDER BY createdat DESC", [userId]);
         const rows = incRes.rows || [];
 
         const now = new Date();
@@ -2806,10 +3148,17 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
         });
 
         const tripCountRes = await pool.query(
-            "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type = 'trip_bonus' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
+            "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type LIKE 'trip_bonus%' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
             [userId, startOfDay]
         );
         const todayTrips = parseInt(tripCountRes.rows[0]?.count || 0);
+
+        const recentTransactions = rows.slice(0, 10).map(r => ({
+            tripId: r.tripid,
+            amount: parseFloat(r.amount || 0),
+            type: r.type,
+            date: r.createdat
+        }));
 
         res.json({
             todayEarnings: Math.round(todayEarnings),
@@ -2818,7 +3167,8 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
             overallEarnings: Math.round(overallEarnings),
             todayTrips: todayTrips,
             is_payment_on_hold: hold,
-            rating: parseFloat(rating.toFixed(2))
+            rating: parseFloat(rating.toFixed(2)),
+            recentTransactions: recentTransactions
         });
     } catch (err) {
         console.error('Earnings fetch error:', err.message);
