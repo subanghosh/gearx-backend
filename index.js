@@ -987,6 +987,23 @@ apiRouter.post('/system-settings', (req, res) => {
     );
 });
 
+apiRouter.get('/debug-server-paths', (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const parentDir = path.join(__dirname, '..');
+        const parentFiles = fs.readdirSync(parentDir);
+        res.json({
+            __dirname,
+            parentDir,
+            parentFiles,
+            currentFiles: fs.readdirSync(__dirname)
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Feedback / Survey Routes
 apiRouter.get('/feedback', (req, res) => {
     db.all("SELECT * FROM feedback ORDER BY createdAt DESC", [], (err, rows) => {
