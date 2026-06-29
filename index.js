@@ -1179,6 +1179,36 @@ apiRouter.patch('/users/:id', async (req, res) => {
                 }
             }
 
+            // Sync to garage_workers table in Postgres if user is a worker/marshal
+            const workerCheck = await pool.query(`SELECT id FROM garage_workers WHERE id = $1`, [id]);
+            if (workerCheck.rows[0]) {
+                const wFields = [];
+                const wVals = [];
+                let wIdx = 1;
+                allowed.forEach(col => {
+                    if (req.body[col] !== undefined) {
+                        wFields.push(`${col.toLowerCase()} = $${wIdx++}`);
+                        wVals.push(req.body[col]);
+                    }
+                });
+                if (req.body.phone) {
+                    wFields.push(`phoneverified = $${wIdx++}`);
+                    wVals.push(0);
+                }
+                if (req.body.email) {
+                    if (req.body.emailVerified === undefined) {
+                        wFields.push(`emailverified = $${wIdx++}`);
+                        wVals.push(0);
+                    }
+                }
+                if (wFields.length > 0) {
+                    wVals.push(id);
+                    await pool.query(`UPDATE garage_workers SET ${wFields.join(', ')} WHERE id = $${wIdx}`, wVals).catch(e => {
+                        console.error('Failed to sync to garage_workers table:', e.message);
+                    });
+                }
+            }
+
             // Sync to SQLite tables
             const sqFields = [];
             const sqVals = [];
