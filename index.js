@@ -2124,10 +2124,33 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     { name: 'dlFile', maxCount: 1 },
     { name: 'dlBackFile', maxCount: 1 }
 ]), async (req, res) => {
-    const { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
+    let { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
             bankAccountName, bankAccountNumber, bankIFSC, bankName,
             address, city, state, pincode } = req.body;
     const files = req.files || {};
+
+    // Auto-resolve bankName from bankIFSC if not sent by client (since UI doesn't collect it)
+    if ((!bankName || bankName.trim().length < 3) && bankIFSC) {
+        const prefix = bankIFSC.substring(0, 4).toUpperCase();
+        const bankMap = {
+            'SBIN': 'State Bank of India',
+            'HDFC': 'HDFC Bank',
+            'ICIC': 'ICICI Bank',
+            'BARB': 'Bank of Baroda',
+            'PUNB': 'Punjab National Bank',
+            'AXIS': 'Axis Bank',
+            'KKBK': 'Kotak Mahindra Bank',
+            'UTIB': 'Axis Bank',
+            'IBKL': 'IDBI Bank',
+            'YESB': 'Yes Bank',
+            'IDFB': 'IDFC First Bank',
+            'CNRB': 'Canara Bank',
+            'IOBA': 'Indian Overseas Bank',
+            'MAHB': 'Bank of Maharashtra',
+            'INDB': 'IndusInd Bank'
+        };
+        bankName = bankMap[prefix] || (prefix + ' Bank');
+    }
 
     // ── Server-side KYC validation (mirrors frontend kyc-validation.js) ────
     const serverErrors = [];

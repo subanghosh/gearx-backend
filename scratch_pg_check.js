@@ -7,13 +7,9 @@ const pool = new Pool({
 
 async function main() {
     try {
-        console.log("Checking columns of users table in Postgres...");
-        const res = await pool.query(`
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'users'
-        `);
-        console.log("Columns:", res.rows);
+        console.log("Searching for marshal_1782608426482 details...");
+        const users = await pool.query("SELECT * FROM users WHERE id = 'marshal_1782608426482'");
+        console.log("User details:", users.rows[0]);
     } catch (e) {
         console.error("Error:", e);
     } finally {
