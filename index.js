@@ -243,7 +243,8 @@ function initializeDatabase() {
             bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankVerified INTEGER DEFAULT 0,
             countryCode TEXT DEFAULT '+91', altPhone TEXT, altPhoneVerified INTEGER DEFAULT 0, lat REAL, lng REAL,
             panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT, kycStatus TEXT DEFAULT 'pending_submission',
-            is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0, dlUrl TEXT, profilePictureUrl TEXT, panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT
+            is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0, dlUrl TEXT, profilePictureUrl TEXT, panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT,
+            bankName TEXT
         )`);
 
         // Migration: Ensure new columns exist for existing databases
@@ -279,7 +280,15 @@ function initializeDatabase() {
             "ALTER TABLE users ADD COLUMN dlBackUrl TEXT",
             "ALTER TABLE garage_workers ADD COLUMN panBackUrl TEXT",
             "ALTER TABLE garage_workers ADD COLUMN aadhaarBackUrl TEXT",
-            "ALTER TABLE garage_workers ADD COLUMN dlBackUrl TEXT"
+            "ALTER TABLE garage_workers ADD COLUMN dlBackUrl TEXT",
+            "ALTER TABLE users ADD COLUMN bankName TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN bankName TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN dlNumber TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN dlVerified INTEGER DEFAULT 0",
+            "ALTER TABLE garage_workers ADD COLUMN bankAccountName TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN bankAccountNumber TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN bankIFSC TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN bankVerified INTEGER DEFAULT 0"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -300,6 +309,10 @@ function initializeDatabase() {
             id TEXT PRIMARY KEY, garageId TEXT, name TEXT, phone TEXT, role TEXT, status TEXT DEFAULT 'available',
             panNumber TEXT, aadhaarNumber TEXT, panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT,
             kycStatus TEXT DEFAULT 'pending_submission', is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0,
+            address TEXT, city TEXT, state TEXT, rating REAL DEFAULT 5.0, dlUrl TEXT, profilePictureUrl TEXT,
+            panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT, bankName TEXT,
+            dlNumber TEXT, dlVerified INTEGER DEFAULT 0,
+            bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankVerified INTEGER DEFAULT 0,
             FOREIGN KEY(garageId) REFERENCES garages(id)
         )`);
         [
@@ -2112,7 +2125,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     { name: 'dlBackFile', maxCount: 1 }
 ]), async (req, res) => {
     const { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
-            bankAccountName, bankAccountNumber, bankIFSC,
+            bankAccountName, bankAccountNumber, bankIFSC, bankName,
             address, city, state, pincode } = req.body;
     const files = req.files || {};
 
@@ -2135,6 +2148,8 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         serverErrors.push('Invalid Account Number: must be 9-18 digits only.');
     if (!bankIFSC || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankIFSC.trim().toUpperCase()))
         serverErrors.push('Invalid IFSC Code. Expected format: SBIN0001234');
+    if (!bankName || bankName.trim().length < 3)
+        serverErrors.push('Invalid Bank Name: please select a bank from the list.');
 
     // Address validation
     if (kycStatus === 'pending_approval') {
@@ -2285,11 +2300,11 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
              dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
              address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
-             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20
-             WHERE id = $21`,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21
+             WHERE id = $22`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
              cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
-             panBackUrl, aadhaarBackUrl, dlBackUrl, req.params.id]
+             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName, req.params.id]
         ).catch(() => {}); // ignore if no garage_worker row
 
         // Sync into core users table (marshals live here)
@@ -2298,11 +2313,11 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
              dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
              address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
-             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20
-             WHERE id = $21`,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21
+             WHERE id = $22`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
              cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
-             panBackUrl, aadhaarBackUrl, dlBackUrl, req.params.id]
+             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName, req.params.id]
         );
 
         if (userUpdateRes.rowCount === 0) {
