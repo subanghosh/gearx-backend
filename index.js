@@ -2162,6 +2162,44 @@ apiRouter.post('/users/:id/profile-picture', upload.single('file'), async (req, 
     }
 });
 
+apiRouter.post('/workers/:id/kyc-file', upload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    try {
+        const { docType } = req.body;
+        const id = req.params.id;
+
+        const docTypeMap = {
+            'pan': 'panurl',
+            'panback': 'panbackurl',
+            'aadhaar': 'aadhaarurl',
+            'aadhaarback': 'aadhaarbackurl',
+            'face': 'facephotourl',
+            'dl': 'dlurl',
+            'dlback': 'dlbackurl'
+        };
+
+        const colName = docTypeMap[docType];
+        if (!colName) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(400).json({ error: 'Invalid docType: ' + docType });
+        }
+
+        const file = req.file;
+        const data = fs.readFileSync(file.path);
+        const base64Data = `data:${file.mimetype};base64,${data.toString('base64')}`;
+        fs.unlink(file.path, () => {});
+
+        // Update both users and garage_workers tables
+        await pool.query(`UPDATE users SET ${colName} = $1 WHERE id = $2`, [base64Data, id]);
+        await pool.query(`UPDATE garage_workers SET ${colName} = $1 WHERE id = $2`, [base64Data, id]).catch(() => {});
+
+        res.json({ success: true, fileUrl: base64Data });
+    } catch (err) {
+        console.error('KYC file upload error:', err.message);
+        res.status(500).json({ error: 'Failed to upload document: ' + err.message });
+    }
+});
+
 apiRouter.put('/workers/:id/kyc', upload.fields([
     { name: 'panFile', maxCount: 1 }, 
     { name: 'panBackFile', maxCount: 1 }, 
