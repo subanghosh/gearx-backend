@@ -2293,7 +2293,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         ).catch(() => {}); // ignore if no garage_worker row
 
         // Sync into core users table (marshals live here)
-        await pool.query(
+        const userUpdateRes = await pool.query(
             `UPDATE users SET name = $1, email = $2, pannumber = $3, aadhaarnumber = $4,
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
              dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
@@ -2304,6 +2304,10 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
              cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
              panBackUrl, aadhaarBackUrl, dlBackUrl, req.params.id]
         );
+
+        if (userUpdateRes.rowCount === 0) {
+            return res.status(404).json({ error: 'User not found in system.' });
+        }
 
         res.json({ success: true, kycStatus: finalKycStatus });
     } catch (err) {
