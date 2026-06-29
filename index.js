@@ -734,15 +734,6 @@ apiRouter.get('/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly' });
 });
 
-apiRouter.get('/debug-user', async (req, res) => {
-    try {
-        const result = await pool.query("SELECT id, name, phone, kycstatus, role FROM users WHERE phone LIKE '%7003540798%' OR id = 'marshal_1782608426482'");
-        res.json({ rows: result.rows });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // --- GOOGLE MAPS PROXY & QUOTA CONTROL ---
 async function checkAndIncrementQuota() {
     const apiKey = GOOGLE_MAPS_API_KEY;
