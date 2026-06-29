@@ -7,20 +7,13 @@ const pool = new Pool({
 
 async function main() {
     try {
-        console.log("Checking customer vehicles...");
+        console.log("Checking columns of users table in Postgres...");
         const res = await pool.query(`
-            SELECT customerid, COUNT(*) as count 
-            FROM vehicles 
-            GROUP BY customerid 
-            HAVING COUNT(*) > 1
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'users'
         `);
-        console.log("Customers with multiple vehicles:", res.rows);
-        
-        for (const r of res.rows) {
-            const customerId = r.customerid;
-            const vehs = await pool.query("SELECT * FROM vehicles WHERE customerid = $1", [customerId]);
-            console.log(`Vehicles for customer ${customerId}:`, vehs.rows);
-        }
+        console.log("Columns:", res.rows);
     } catch (e) {
         console.error("Error:", e);
     } finally {

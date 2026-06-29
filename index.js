@@ -259,11 +259,17 @@ function initializeDatabase() {
             "ALTER TABLE users ADD COLUMN facePhotoUrl TEXT",
             "ALTER TABLE users ADD COLUMN kycStatus TEXT DEFAULT 'pending_submission'",
             "ALTER TABLE users ADD COLUMN is_online INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN address TEXT",
+            "ALTER TABLE users ADD COLUMN city TEXT",
+            "ALTER TABLE users ADD COLUMN state TEXT",
             "ALTER TABLE users ADD COLUMN pincode TEXT",
             "ALTER TABLE users ADD COLUMN is_payment_on_hold INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN rating REAL DEFAULT 5.0",
             "ALTER TABLE trips ADD COLUMN rating REAL",
             "ALTER TABLE garage_workers ADD COLUMN rating REAL DEFAULT 5.0",
+            "ALTER TABLE garage_workers ADD COLUMN address TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN city TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN state TEXT",
             "ALTER TABLE users ADD COLUMN dlUrl TEXT",
             "ALTER TABLE garage_workers ADD COLUMN dlUrl TEXT",
             "ALTER TABLE users ADD COLUMN profilePictureUrl TEXT",
@@ -2301,8 +2307,8 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
 
         res.json({ success: true, kycStatus: finalKycStatus });
     } catch (err) {
-        console.error('KYC update error:', err.message);
-        res.status(500).json({ error: 'Failed to save KYC: ' + err.message });
+        console.error('KYC update error:', err);
+        res.status(500).json({ error: 'Unable to save KYC details due to a system error. Please try again later or contact support.' });
     }
 });
 apiRouter.post('/upload-kyc', upload.single('file'), (req, res) => {
