@@ -663,7 +663,68 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('CRITICAL UNHANDLED REJECTION:', reason);
 });
 
+
+// --- FIREBASE FCM SETUP ---
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getMessaging } = require('firebase-admin/messaging');
+
+let fcmInitialized = false;
+try {
+    const serviceAccount = require('./firebaseServiceAccountKey.json');
+    initializeApp({
+        credential: cert(serviceAccount)
+    });
+    fcmInitialized = true;
+    console.log('Firebase Admin initialized.');
+} catch(e) {
+    console.warn('Firebase Admin init failed (missing key json or error). FCM disabled.');
+}
+
+async function ensureFcmTokenColumn() {
+    try {
+        await pool.query('ALTER TABLE users ADD COLUMN fcmToken TEXT');
+        console.log('Added fcmToken to users table.');
+    } catch(e) {
+        // likely already exists
+    }
+}
+ensureFcmTokenColumn();
+
+async function notifyMarshalsFCM(title, body, payloadData = {}) {
+    try {
+        if (!fcmInitialized) return;
+        const res = await pool.query("SELECT fcmToken FROM users WHERE role = 'marshal' AND fcmToken IS NOT NULL");
+        const tokens = res.rows.map(r => r.fcmtoken || r.fcmToken).filter(Boolean);
+        if (tokens.length === 0) return;
+        await getMessaging().sendEachForMulticast({
+            tokens: tokens,
+            notification: { title, body },
+            data: payloadData,
+            android: { priority: 'high', notification: { channel_id: 'marshal-alerts', default_sound: true } }
+        });
+        console.log('Sent FCM to marshals', tokens.length);
+    } catch(e) { console.error('FCM Error:', e); }
+}
+
+async function notifyUserFCM(userId, title, body, payloadData = {}) {
+    try {
+        if (!fcmInitialized) return;
+        const res = await pool.query("SELECT fcmToken FROM users WHERE id = $1 AND fcmToken IS NOT NULL", [userId]);
+        if (res.rows.length === 0) return;
+        const token = res.rows[0].fcmtoken || res.rows[0].fcmToken;
+        if (!token) return;
+        await getMessaging().send({
+            token: token,
+            notification: { title, body },
+            data: payloadData,
+            android: { priority: 'high', notification: { channel_id: 'marshal-alerts', default_sound: true } }
+        });
+        console.log('Sent FCM to user:', userId);
+    } catch(e) { console.error('FCM Error for user:', userId, e); }
+}
+
 const apiRouter = express.Router();
+
 
 apiRouter.get('/admin/system/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly', timestamp: new Date() });
@@ -1161,6 +1222,17 @@ apiRouter.patch('/users/:id', async (req, res) => {
         vals.push(id);
         await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`, vals);
 
+        const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
+        if (kycStatusVal !== undefined) {
+            if (kycStatusVal === 'verified' || kycStatusVal === 'approved') {
+                notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
+            } else if (kycStatusVal === 'rejected') {
+                notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
+            } else if (kycStatusVal === 'pending_submission') {
+                notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
+            }
+        }
+
         // Also update garages/customers if applicable
         const userRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
         const user = userRes.rows[0];
@@ -1277,6 +1349,19 @@ apiRouter.patch('/users/:id', async (req, res) => {
 });
 
 // Alias PUT to PATCH for /users/:id to support PUT requests from frontend
+
+apiRouter.put('/users/:id/fcm-token', async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) return res.status(400).json({ error: 'Token required' });
+        await pool.query("UPDATE users SET fcmToken = $1 WHERE id = $2", [fcmToken, req.params.id]);
+        res.json({ success: true });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
 apiRouter.put('/users/:id', async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
@@ -1318,6 +1403,17 @@ apiRouter.put('/users/:id', async (req, res) => {
 
         vals.push(id);
         await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`, vals);
+
+        const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
+        if (kycStatusVal !== undefined) {
+            if (kycStatusVal === 'verified' || kycStatusVal === 'approved') {
+                notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
+            } else if (kycStatusVal === 'rejected') {
+                notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
+            } else if (kycStatusVal === 'pending_submission') {
+                notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
+            }
+        }
         
         // Also update garages/customers if applicable
         const userRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
