@@ -730,12 +730,6 @@ apiRouter.get('/admin/system/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly', timestamp: new Date() });
 });
 
-apiRouter.get('/debug-db', (req, res) => {
-    const connStr = process.env.DATABASE_URL || '';
-    const masked = connStr.replace(/:([^:@]+)@/, ':xxxx@');
-    res.json({ db: masked });
-});
-
 apiRouter.get('/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly' });
 });
