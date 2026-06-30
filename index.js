@@ -20,7 +20,7 @@ if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
     throw new Error('CRITICAL CONFIG ERROR: JWT_SECRET environment variable is missing!');
 }
 const BCRYPT_ROUNDS = 12;
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBoc7eGvtpa-MPQ9W_FwWTdO9xAWn43TM0';
 if (!GOOGLE_MAPS_API_KEY && process.env.NODE_ENV === 'production') {
     console.warn('WARNING: GOOGLE_MAPS_API_KEY is missing in production.');
 }
@@ -769,13 +769,34 @@ async function checkAndIncrementQuota() {
     }
 }
 
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Earth radius in meters
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return Math.round(R * c); // Distance in meters
+}
+
 apiRouter.get('/maps/config', (req, res) => {
     const hasKey = !!GOOGLE_MAPS_API_KEY;
-    res.json({ googleMapsActive: hasKey });
+    res.json({ 
+        googleMapsActive: hasKey,
+        googleMapsKey: GOOGLE_MAPS_API_KEY || ''
+    });
 });
 
 apiRouter.get('/maps/autocomplete', async (req, res) => {
     const query = req.query.q;
+    const biasLat = req.query.lat ? parseFloat(req.query.lat) : null;
+    const biasLng = req.query.lng ? parseFloat(req.query.lng) : null;
+
     if (!query || query.trim().length < 3) {
         return res.json([]);
     }
@@ -784,7 +805,10 @@ apiRouter.get('/maps/autocomplete', async (req, res) => {
     if (useGoogle) {
         try {
             const apiKey = GOOGLE_MAPS_API_KEY;
-            const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:in&key=${apiKey}`;
+            let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:in&key=${apiKey}`;
+            if (biasLat !== null && biasLng !== null && !isNaN(biasLat) && !isNaN(biasLng)) {
+                url += `&location=${biasLat},${biasLng}&radius=50000&origin=${biasLat},${biasLng}`;
+            }
             const response = await fetch(url);
             const data = await response.json();
             
@@ -793,6 +817,7 @@ apiRouter.get('/maps/autocomplete', async (req, res) => {
                     name: pred.structured_formatting ? pred.structured_formatting.main_text : pred.description.split(',')[0],
                     address: pred.description,
                     place_id: pred.place_id,
+                    distance_meters: pred.distance_meters || null,
                     source: 'google'
                 }));
                 return res.json(mapped);
@@ -815,11 +840,20 @@ apiRouter.get('/maps/autocomplete', async (req, res) => {
                 const parts = item.display_name.split(',');
                 const name = parts[0] || 'Pinpoint Location';
                 const address = parts.slice(1).join(',').trim();
+                const itemLat = parseFloat(item.lat);
+                const itemLng = parseFloat(item.lon);
+                
+                let distMeters = null;
+                if (biasLat !== null && biasLng !== null && !isNaN(biasLat) && !isNaN(biasLng) && !isNaN(itemLat) && !isNaN(itemLng)) {
+                    distMeters = haversineDistance(biasLat, biasLng, itemLat, itemLng);
+                }
+
                 return {
                     name: name,
                     address: address || item.display_name,
-                    lat: parseFloat(item.lat),
-                    lng: parseFloat(item.lon),
+                    lat: itemLat,
+                    lng: itemLng,
+                    distance_meters: distMeters,
                     source: 'osm'
                 };
             });
