@@ -76,8 +76,8 @@ app.use(cors({
     origin: (origin, cb) => {
         // Allow requests with no origin (mobile apps, curl, Postman) or string 'null' (file:// URL)
         if (!origin || origin === 'null') return cb(null, true);
-        // Allow any localhost / 127.0.0.1 / capacitor origins
-        if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('capacitor://')) return cb(null, true);
+        // Allow any localhost / 127.0.0.1 / capacitor origins (supporting http/https protocols)
+        if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.startsWith('capacitor://')) return cb(null, true);
         // If FRONTEND_URL is set, check against whitelist; otherwise allow all
         if (!process.env.FRONTEND_URL || allowedOrigins.includes(origin)) return cb(null, true);
         cb(new Error('CORS: Origin not allowed'));
