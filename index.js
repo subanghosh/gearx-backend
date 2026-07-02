@@ -74,8 +74,10 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, cb) => {
-        // Allow requests with no origin (mobile apps, curl, Postman)
-        if (!origin) return cb(null, true);
+        // Allow requests with no origin (mobile apps, curl, Postman) or string 'null' (file:// URL)
+        if (!origin || origin === 'null') return cb(null, true);
+        // Allow any localhost / 127.0.0.1 / capacitor origins
+        if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('capacitor://')) return cb(null, true);
         // If FRONTEND_URL is set, check against whitelist; otherwise allow all
         if (!process.env.FRONTEND_URL || allowedOrigins.includes(origin)) return cb(null, true);
         cb(new Error('CORS: Origin not allowed'));
@@ -244,7 +246,7 @@ function initializeDatabase() {
             countryCode TEXT DEFAULT '+91', altPhone TEXT, altPhoneVerified INTEGER DEFAULT 0, lat REAL, lng REAL,
             panUrl TEXT, aadhaarUrl TEXT, facePhotoUrl TEXT, kycStatus TEXT DEFAULT 'pending_submission',
             is_online INTEGER DEFAULT 0, pincode TEXT, is_payment_on_hold INTEGER DEFAULT 0, dlUrl TEXT, profilePictureUrl TEXT, panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT,
-            bankName TEXT
+            bankName TEXT, kycRejectionReason TEXT
         )`);
 
         // Migration: Ensure new columns exist for existing databases
@@ -288,7 +290,9 @@ function initializeDatabase() {
             "ALTER TABLE garage_workers ADD COLUMN bankAccountName TEXT",
             "ALTER TABLE garage_workers ADD COLUMN bankAccountNumber TEXT",
             "ALTER TABLE garage_workers ADD COLUMN bankIFSC TEXT",
-            "ALTER TABLE garage_workers ADD COLUMN bankVerified INTEGER DEFAULT 0"
+            "ALTER TABLE garage_workers ADD COLUMN bankVerified INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN kycRejectionReason TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN kycRejectionReason TEXT"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -313,6 +317,7 @@ function initializeDatabase() {
             panBackUrl TEXT, aadhaarBackUrl TEXT, dlBackUrl TEXT, bankName TEXT,
             dlNumber TEXT, dlVerified INTEGER DEFAULT 0,
             bankAccountName TEXT, bankAccountNumber TEXT, bankIFSC TEXT, bankVerified INTEGER DEFAULT 0,
+            kycRejectionReason TEXT,
             FOREIGN KEY(garageId) REFERENCES garages(id)
         )`);
         [
@@ -338,6 +343,7 @@ function initializeDatabase() {
             service_category TEXT DEFAULT 'Standard Service', inspection_fee REAL DEFAULT 299,
             parts_cost REAL DEFAULT 0, labor_cost REAL DEFAULT 0, marshal_commission REAL DEFAULT 0,
             lat REAL, lng REAL, pickup_address TEXT, drop_address TEXT, issue TEXT, created_at BIGINT,
+            booking_flow TEXT, pickup_drop_type TEXT, route_stops TEXT,
             FOREIGN KEY(workerId) REFERENCES users(id)
         )`);
         db.run("ALTER TABLE service_requests ADD COLUMN workerId TEXT", () => {});
@@ -356,6 +362,7 @@ function initializeDatabase() {
         db.run("ALTER TABLE service_requests ADD COLUMN created_at BIGINT", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN booking_flow TEXT", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN pickup_drop_type TEXT", () => {});
+        db.run("ALTER TABLE service_requests ADD COLUMN route_stops TEXT", () => {});
 
         // Trips Table (Marshal Operations)
         db.run(`CREATE TABLE IF NOT EXISTS trips (
@@ -680,15 +687,19 @@ try {
     console.warn('Firebase Admin init failed (missing key json or error). FCM disabled.');
 }
 
-async function ensureFcmTokenColumn() {
+async function ensureKycColumns() {
     try {
-        await pool.query('ALTER TABLE users ADD COLUMN fcmToken TEXT');
-        console.log('Added fcmToken to users table.');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS fcmToken TEXT').catch(() => {});
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
+        await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
+        await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
+        console.log('Postgres columns ensured.');
     } catch(e) {
-        // likely already exists
+        console.warn('Postgres columns ensure failed:', e.message);
     }
 }
-ensureFcmTokenColumn();
+ensureKycColumns();
 
 async function notifyMarshalsFCM(title, body, payloadData = {}) {
     try {
@@ -735,6 +746,9 @@ apiRouter.get('/health', (req, res) => {
 });
 
 // --- GOOGLE MAPS PROXY & QUOTA CONTROL ---
+let inMemoryQuotaCount = 0;
+let inMemoryQuotaDay = '';
+
 async function checkAndIncrementQuota() {
     const apiKey = GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
@@ -743,30 +757,27 @@ async function checkAndIncrementQuota() {
     }
     
     const today = new Date().toISOString().split('T')[0];
-    
-    try {
-        // Query current count
-        const result = await pool.query(
-            "INSERT INTO daily_api_usage (usage_date, request_count) VALUES ($1, 0) ON CONFLICT (usage_date) DO UPDATE SET request_count = daily_api_usage.request_count + 0 RETURNING request_count",
-            [today]
-        );
-        const count = result.rows[0] ? result.rows[0].request_count : 0;
-        
-        if (count >= 500) {
-            console.warn(`[Google Maps Proxy] Daily quota limit of 500 requests exceeded (${count} requests today). Falling back to OpenStreetMap.`);
-            return false;
-        }
-        
-        // Increment count
-        await pool.query(
-            "UPDATE daily_api_usage SET request_count = request_count + 1 WHERE usage_date = $1",
-            [today]
-        );
-        return true;
-    } catch (err) {
-        console.error('[Google Maps Proxy] Quota check database error:', err.message);
-        return false; // Fallback to OSM on database error
+    if (inMemoryQuotaDay !== today) {
+        inMemoryQuotaDay = today;
+        inMemoryQuotaCount = 0;
     }
+    
+    if (inMemoryQuotaCount >= 500) {
+        console.warn(`[Google Maps Proxy] Daily quota limit of 500 requests exceeded (${inMemoryQuotaCount} requests today). Falling back to OpenStreetMap.`);
+        return false;
+    }
+    
+    inMemoryQuotaCount++;
+    
+    // Asynchronously update/save usage count in database so it NEVER blocks the main thread
+    pool.query(
+        "INSERT INTO daily_api_usage (usage_date, request_count) VALUES ($1, 1) ON CONFLICT (usage_date) DO UPDATE SET request_count = daily_api_usage.request_count + 1",
+        [today]
+    ).catch(err => {
+        // Quietly ignore DB logging errors to keep it fast and non-blocking
+    });
+    
+    return true;
 }
 
 function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -871,12 +882,14 @@ apiRouter.get('/maps/details', async (req, res) => {
         return res.status(400).json({ error: 'place_id is required' });
     }
     
-    // 1. Check cache first!
+    // 1. Check cache first (ignore if it contains a Plus Code '+')
     try {
         const cacheResult = await pool.query("SELECT * FROM cached_places WHERE place_id = $1", [placeId]);
         if (cacheResult.rows.length > 0) {
             const row = cacheResult.rows[0];
-            return res.json({ lat: row.lat, lng: row.lng, address: row.description, source: 'cache' });
+            if (row.description && !row.description.includes('+')) {
+                return res.json({ lat: row.lat, lng: row.lng, address: row.description, source: 'cache' });
+            }
         }
     } catch (err) {
         console.error('[Google Maps Details Cache] Query error:', err.message);
@@ -893,17 +906,33 @@ apiRouter.get('/maps/details', async (req, res) => {
             if (data && data.status === 'OK' && data.result && data.result.geometry && data.result.geometry.location) {
                 const lat = data.result.geometry.location.lat;
                 const lng = data.result.geometry.location.lng;
-                const address = data.result.formatted_address;
+                let address = data.result.formatted_address;
                 
-                // Save to cache
+                // If Google details returns a Plus Code, fall back to OpenStreetMap Nominatim reverse geocode for a human-readable address
+                if (address && address.includes('+')) {
+                    try {
+                        const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
+                        const osmResponse = await fetch(osmUrl, { headers: { 'User-Agent': 'GearX-App/1.0' } });
+                        if (osmResponse.ok) {
+                            const osmData = await osmResponse.json();
+                            if (osmData && osmData.display_name) {
+                                address = osmData.display_name;
+                            }
+                        }
+                    } catch (osmErr) {
+                        console.error('[Details OSM Fallback] Reverse geocode failed:', osmErr.message);
+                    }
+                }
+                
+                // Save/overwrite in cache
                 pool.query(
-                    "INSERT INTO cached_places (place_id, description, lat, lng) VALUES ($1, $2, $3, $4) ON CONFLICT (place_id) DO NOTHING",
+                    "INSERT INTO cached_places (place_id, description, lat, lng) VALUES ($1, $2, $3, $4) ON CONFLICT (place_id) DO UPDATE SET description = EXCLUDED.description, lat = EXCLUDED.lat, lng = EXCLUDED.lng",
                     [placeId, address, lat, lng]
                 ).catch(e => console.error('[Google Maps Details Cache] Save error:', e.message));
                 
                 return res.json({ lat, lng, address, source: 'google' });
             } else {
-                console.warn('[Google Maps Details] API returned non-OK status:', data.status);
+                console.warn('[Google Maps Details] API returned non-OK status:', data ? data.status : 'No response');
             }
         } catch (err) {
             console.error('[Google Maps Details] Fetch error:', err.message);
@@ -929,10 +958,15 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
             const response = await fetch(url);
             const data = await response.json();
             
-            if (data && data.status === 'OK' && Array.isArray(data.results) && data.results[0]) {
-                return res.json({ address: data.results[0].formatted_address, source: 'google' });
+            if (data && data.status === 'OK' && Array.isArray(data.results) && data.results.length > 0) {
+                // Find first geocoded result that is not a Plus Code (has no '+' symbol and no 'plus_code' type)
+                let bestResult = data.results.find(r => r.types && !r.types.includes('plus_code') && !(r.formatted_address && r.formatted_address.includes('+')));
+                if (bestResult) {
+                    return res.json({ address: bestResult.formatted_address, source: 'google' });
+                }
+                console.log('[Google Maps Reverse Geocode] Only Plus Codes found. Falling back to OpenStreetMap.');
             } else {
-                console.warn('[Google Maps Reverse Geocode] API returned non-OK status:', data.status);
+                console.warn('[Google Maps Reverse Geocode] API returned non-OK status:', data ? data.status : 'No response data');
             }
         } catch (err) {
             console.error('[Google Maps Reverse Geocode] Fetch error:', err.message);
@@ -1222,7 +1256,7 @@ apiRouter.patch('/users/:id', async (req, res) => {
             id = userLookup.rows[0].id;
         }
     }
-    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng', 'is_online', 'pincode'];
+    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng', 'is_online', 'pincode', 'kycRejectionReason'];
     const fields = [];
     const vals = [];
     let idx = 1;
@@ -1258,9 +1292,9 @@ apiRouter.patch('/users/:id', async (req, res) => {
 
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
-            if (kycStatusVal === 'verified' || kycStatusVal === 'approved') {
+            if (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved') {
                 notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
-            } else if (kycStatusVal === 'rejected') {
+            } else if (kycStatusVal === 'rejected' || kycStatusVal === 'Re-submit KYC') {
                 notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
             } else if (kycStatusVal === 'pending_submission') {
                 notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
@@ -1340,6 +1374,12 @@ apiRouter.patch('/users/:id', async (req, res) => {
             if (req.body.phone) { sqFields.push("phone = ?"); sqVals.push(req.body.phone); }
             if (req.body.lat !== undefined) { sqFields.push("lat = ?"); sqVals.push(req.body.lat); }
             if (req.body.lng !== undefined) { sqFields.push("lng = ?"); sqVals.push(req.body.lng); }
+            if (req.body.kycStatus !== undefined) { sqFields.push("kycStatus = ?"); sqVals.push(req.body.kycStatus); }
+            if (req.body.kycRejectionReason !== undefined) { sqFields.push("kycRejectionReason = ?"); sqVals.push(req.body.kycRejectionReason); }
+            if (req.body.panVerified !== undefined) { sqFields.push("panVerified = ?"); sqVals.push(req.body.panVerified); }
+            if (req.body.aadhaarVerified !== undefined) { sqFields.push("aadhaarVerified = ?"); sqVals.push(req.body.aadhaarVerified); }
+            if (req.body.bankVerified !== undefined) { sqFields.push("bankVerified = ?"); sqVals.push(req.body.bankVerified); }
+            if (req.body.dlVerified !== undefined) { sqFields.push("dlVerified = ?"); sqVals.push(req.body.dlVerified); }
             if (sqFields.length > 0) {
                 sqVals.push(id);
                 const sqCustFields = [];
@@ -1440,9 +1480,9 @@ apiRouter.put('/users/:id', async (req, res) => {
 
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
-            if (kycStatusVal === 'verified' || kycStatusVal === 'approved') {
+            if (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved') {
                 notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
-            } else if (kycStatusVal === 'rejected') {
+            } else if (kycStatusVal === 'rejected' || kycStatusVal === 'Re-submit KYC') {
                 notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
             } else if (kycStatusVal === 'pending_submission') {
                 notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
@@ -2390,7 +2430,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         serverErrors.push('Invalid Bank Name: please select a bank from the list.');
 
     // Address validation
-    if (kycStatus === 'pending_approval') {
+    if (kycStatus === 'pending_approval' || kycStatus === 'Pending Approval') {
         if (!address || address.trim().length < 5) serverErrors.push('Please enter a valid Street Address.');
         if (!city || city.trim().length < 2) serverErrors.push('Please enter a valid City.');
         if (!state || state.trim().length < 2) serverErrors.push('Please enter a valid State.');
@@ -2409,7 +2449,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     }
 
     // File checks (only enforced when requesting pending_approval status and not already uploaded)
-    if (kycStatus === 'pending_approval') {
+    if (kycStatus === 'pending_approval' || kycStatus === 'Pending Approval') {
         if (!files.panFile && !existingUser.panurl) serverErrors.push('PAN Card front photo is required.');
         if (!files.panBackFile && !existingUser.panbackurl) serverErrors.push('PAN Card back photo is required.');
         if (!files.aadhaarFile && !existingUser.aadhaarurl) serverErrors.push('Aadhaar front photo is required.');
@@ -2511,7 +2551,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     const cleanPan = panNumber.trim().toUpperCase();
     const cleanDL = dlNumber.replace(/[^A-Z0-9]/g, '').toUpperCase();
     const cleanIFSC = bankIFSC.trim().toUpperCase();
-    const finalKycStatus = kycStatus || 'pending_approval';
+    const finalKycStatus = kycStatus || 'Pending Approval';
 
     try {
         if (cleanPan) {
@@ -2828,23 +2868,44 @@ const createRequest = (req, res) => {
     const {
         id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
         lat, lng, pickup_address, drop_address,
-        issue, serviceType, bookingFlow, pickupDropType
+        issue, serviceType, bookingFlow, pickupDropType, route_stops
     } = req.body;
     // Normalise service category — accept either field name
     const serviceCategory = serviceType || issue || 'Standard Service';
+
+    let routeStopsParsed = [];
+    try {
+        if (route_stops) {
+            const parsed = typeof route_stops === 'string' ? JSON.parse(route_stops) : route_stops;
+            if (Array.isArray(parsed)) {
+                routeStopsParsed = parsed.map(stop => {
+                    return {
+                        address: stop.address || '',
+                        lat: parseFloat(stop.lat),
+                        lng: parseFloat(stop.lng),
+                        otp: stop.otp || String(Math.floor(1000 + Math.random() * 9000)),
+                        otpVerified: stop.otpVerified || false
+                    };
+                });
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to parse route_stops:", e);
+    }
+    const routeStopsString = JSON.stringify(routeStopsParsed);
     
     const insertReq = (assignedGarageId) => {
         db.run(
             `INSERT INTO service_requests
              (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-              lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 id, customerId, vehicleId, assignedGarageId || garageId || null,
                 date, status || 'pending', totalCustomerPrice || 0, workerId || null,
                 lat || null, lng || null,
                 pickup_address || null, drop_address || null,
-                issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', Date.now()
+                issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString, Date.now()
             ], (err) => {
                 if (err) {
                     console.error('Error creating request:', err.message);
@@ -2988,7 +3049,7 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
         if (!marshal) {
             return res.status(404).json({ error: 'Marshal not found in CRM database' });
         }
-        if (marshal.kycstatus !== 'approved' && marshal.kycstatus !== 'verified') {
+        if (marshal.kycstatus !== 'approved' && marshal.kycstatus !== 'verified' && marshal.kycstatus !== 'Approved') {
             return res.status(400).json({ error: `Action Blocked: Your KYC documents status is '${marshal.kycstatus}'. You cannot accept Pickups until approved.` });
         }
 
@@ -3080,6 +3141,60 @@ function verifyHandoverMedia(tripId, expectedDocTypes, callback) {
         callback(null, allUploaded);
     });
 }
+
+apiRouter.post('/trips/:id/verify-stop-otp', (req, res) => {
+    const tripId = req.params.id;
+    const { stopIndex, otp } = req.body;
+    
+    if (stopIndex === undefined || !otp) {
+        return res.status(400).json({ error: "Missing stopIndex or otp in request body" });
+    }
+
+    db.get(
+        `SELECT r.id, r.route_stops 
+         FROM service_requests r
+         JOIN trips t ON r.id = t.serviceRequestId
+         WHERE t.id = ?`,
+        [tripId],
+        (err, reqRow) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (!reqRow) return res.status(404).json({ error: "Trip or service request not found" });
+
+            let stops = [];
+            try {
+                if (reqRow.route_stops) {
+                    stops = JSON.parse(reqRow.route_stops);
+                }
+            } catch (e) {
+                return res.status(500).json({ error: "Failed to parse route stops from database" });
+            }
+
+            const idx = parseInt(stopIndex, 10);
+            if (isNaN(idx) || idx < 0 || idx >= stops.length) {
+                return res.status(400).json({ error: "Invalid stopIndex" });
+            }
+
+            const stop = stops[idx];
+            if (stop.otp !== String(otp).trim()) {
+                return res.status(400).json({ error: "Incorrect verification OTP" });
+            }
+
+            stop.otpVerified = true;
+
+            const updatedStopsString = JSON.stringify(stops);
+            db.run(
+                `UPDATE service_requests SET route_stops = ? WHERE id = ?`,
+                [updatedStopsString, reqRow.id],
+                (errU) => {
+                    if (errU) return res.status(500).json({ error: errU.message });
+
+                    const allStopsVerified = stops.every(s => s.otpVerified);
+                    res.json({ success: true, allStopsVerified });
+                }
+            );
+        }
+    );
+});
 
 apiRouter.put('/trips/:id/status', (req, res) => {
     const { status, startOdometer, garageDropOdometer, endOdometer } = req.body;
