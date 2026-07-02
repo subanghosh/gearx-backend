@@ -2295,7 +2295,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const storage = multer.diskStorage({
-    destination: 'uploads/',
+    destination: require('os').tmpdir(),
     filename: (req, file, cb) => {
         // Sanitize filename to prevent path traversal
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
