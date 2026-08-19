@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReDrivo Command Center</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+
+    <div class="app-wrapper">
+        <!-- Top Navigation -->
+        <header class="top-nav" style="display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--bg-surface); border-bottom:1px solid var(--border); width: 100%; z-index: 100;">
+            <div style="display:flex; align-items:center; gap: 16px;">
+                <button class="btn-icon mobile-menu-btn" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; display:none;" onclick="document.querySelector('.sidebar').classList.toggle('active');"><i data-lucide="menu"></i></button>
+                <div class="logo" style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.25rem;">
+                    <i data-lucide="shield-check" style="color:var(--primary);"></i>
+                    <span>Re<span style="color: #FACC15;">D</span>rivo <span style="font-weight:400; color:var(--text-muted);">Command Center</span></span>
+                </div>
+            </div>
+            
+            <div style="display:flex; align-items:center; gap:16px;">
+                <button class="btn-icon" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i data-lucide="bell"></i></button>
+                <div class="user-profile" style="display:flex; align-items:center; gap:12px; padding-left:16px; border-left:1px solid var(--border);">
+                    <div style="text-align:right;">
+                        <div style="font-size:0.85rem; font-weight:700; color:#fff;" id="top-user-name">Admin User</div>
+                        <div style="font-size:0.7rem; color:var(--text-dim); text-transform:uppercase; font-weight:800; letter-spacing:1px;" id="top-user-role">Super Admin</div>
+                    </div>
+                    <div style="width:36px; height:36px; border-radius:50%; background:var(--primary-dim); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:800; border:1px solid rgba(245, 158, 11, 0.3);">
+                        <span id="top-user-initial">A</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <nav class="nav-group">
+                    <a onclick="router.navigate('dashboard')" class="nav-link active" id="nav-dashboard">
+                        <i data-lucide="layout-dashboard"></i> <span>Executive Dashboard</span>
+                    </a>
+                    <a onclick="router.navigate('crm')" class="nav-link" id="nav-crm">
+                        <i data-lucide="truck"></i> <span>Fleet Operations</span>
+                    </a>
+                    <a onclick="router.navigate('requests')" class="nav-link" id="nav-requests">
+                        <i data-lucide="file-text"></i> <span>Service Requests</span>
+                    </a>
+                    <div class="sidebar-label">Provider Network</div>
+                    <a onclick="router.navigate('garages')" class="nav-link" id="nav-garages">
+                        <i data-lucide="warehouse"></i> <span>Garages</span>
+                    </a>
+                    <a onclick="router.navigate('mechanics')" class="nav-link" id="nav-mechanics">
+                        <i data-lucide="wrench"></i> <span>Mechanics</span>
+                    </a>
+                    <a onclick="router.navigate('drivers')" class="nav-link" id="nav-drivers">
+                        <i data-lucide="shield"></i> <span>Drivers</span>
+                    </a>
+                    <a onclick="router.navigate('rental-partners')" class="nav-link" id="nav-rental-partners">
+                        <i data-lucide="key"></i> <span>Rental Partners</span>
+                    </a>
+                    
+                    <div class="sidebar-label">Inventory & Rates</div>
+                    
+                    <a onclick="router.navigate('sku-catalog')" class="nav-link" id="nav-sku-catalog">
+                        <i data-lucide="package"></i> <span>SKU Inventory</span>
+                    </a>
+                    <a onclick="router.navigate('charges')" class="nav-link" id="nav-charges">
+                        <i data-lucide="tag"></i> <span>Rate Charts</span>
+                    </a>
+                    <a onclick="router.navigate('incentives')" class="nav-link" id="nav-incentives">
+                        <i data-lucide="percent"></i> <span>Driver Ops</span>
+                    </a>
+                    
+                    <div class="sidebar-label">Insights</div>
+                    <a onclick="router.navigate('surveys')" class="nav-link" id="nav-surveys">
+                        <i data-lucide="message-square"></i> <span>Survey Feedback</span>
+                    </a>
+                    
+                    <div class="sidebar-label">Approvals</div>
+                    
+                    <a onclick="router.navigate('disputes')" class="nav-link" id="nav-disputes">
+                        <i data-lucide="scale"></i> <span>Dispute Board</span>
+                    </a>
+                </nav>
+
+                <footer class="sidebar-footer">
+                    <a href="#" onclick="handleLogout(); return false;" class="nav-link" style="color: var(--danger)">
+                        <i data-lucide="log-out"></i> <span>Exit Portal</span>
+                    </a>
+                </footer>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <div id="app">
+                    <!-- Dynamic Content Loaded Here -->
+                </div>
+            </main>
+        </div>
+    </div> <!-- Close app-wrapper -->
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Modals -->
+    <div id="modal-container"></div>
+
+    <!-- Scripts -->
+    <script src="data.js?v=3"></script>
+    <script src="app.js?v=1782635900000"></script>
+</body>
+</html>

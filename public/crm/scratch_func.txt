@@ -1,0 +1,385 @@
+function renderMarshals(container) {
+    const garageMarshals = PROTOTYPE_STATE.workers.filter(w => w.role && w.role.toLowerCase().includes('marshal'));
+    const platformMarshals = PROTOTYPE_STATE.users.filter(u => u.role && u.role.toLowerCase() === 'marshal' && !PROTOTYPE_STATE.workers.some(w => w.id === u.id));
+    
+    // Combine both types of marshals
+    let marshals = [
+        ...platformMarshals.map(m => ({ ...m, type: 'Platform', kycStatus: m.kycStatus || m.kycstatus })),
+        ...garageMarshals.map(m => {
+            const actualGarageId = m.garageId || m.garageid;
+            const garage = PROTOTYPE_STATE.garages.find(g => g.id === actualGarageId);
+            return { ...m, type: 'Garage', lat: garage?.lat, lng: garage?.lng, garageName: garage?.name, kycStatus: m.kycStatus || m.kycstatus };
+        })
+    ];
+
+    // Tab Filter State
+    const tab = window.marshalTab || 'active';
+    const isVerified = (m) => m.kycStatus === 'verified' || m.kycStatus === 'approved';
+    const counts = {
+        active: marshals.filter(m => isVerified(m) && m.status === 'active').length,
+        online: marshals.filter(m => m.is_online === 1).length,
+        verified: marshals.filter(m => isVerified(m) && m.status !== 'active').length,
+        pending: marshals.filter(m => m.kycStatus === 'pending_approval' || m.kycStatus === 'pending_submission').length,
+        registered: marshals.filter(m => !m.kycStatus || m.kycStatus === 'rejected').length,
+    };
+
+    const onlineMarshalsCount = counts.online;
+
+    marshals = marshals.filter(m => {
+        if (tab === 'active') return isVerified(m) && m.status === 'active';
+        if (tab === 'online') return m.is_online === 1;
+        if (tab === 'verified') return isVerified(m) && m.status !== 'active';
+        if (tab === 'pending') return m.kycStatus === 'pending_approval' || m.kycStatus === 'pending_submission';
+        if (tab === 'registered') return !m.kycStatus || m.kycStatus === 'rejected';
+        return true;
+    });
+
+    // Proximity Filter State
+    const searchLat = window.marshalSearchLat || null;
+    const searchLng = window.marshalSearchLng || null;
+    const radius = 10; // 10km limit
+
+    if (searchLat && searchLng) {
+        marshals = marshals.filter(m => {
+            m.distance = calculateDistance(searchLat, searchLng, m.lat, m.lng);
+            return m.distance <= radius;
+        }).sort((a, b) => a.distance - b.distance);
+    }
+
+    const html = `
+        <div class="fade-in">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Fleet Marshals</h1>
+                    <p style="color: var(--text-dim); margin-top: 4px;">Real-time logistics and field agent tracking &bull; <strong>${onlineMarshalsCount} Marshals Online</strong></p>
+                </div>
+                <div style="display:flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label class="label" style="font-size:0.65rem;">GENERAL SEARCH</label>
+                        <div class="search-box" style="width:250px;">
+                            <i data-lucide="search" style="width:16px; color:var(--primary)"></i>
+                            <input type="text" placeholder="Search name, phone, etc..." class="search-input" oninput="const q = this.value.toLowerCase(); document.querySelectorAll('.marshal-card').forEach(c => c.style.display = c.dataset.searchString.includes(q) ? '' : 'none');">
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label class="label" style="font-size:0.65rem;">PROXIMITY SEARCH</label>
+                        <div class="search-box" style="width:250px;">
+                            <i data-lucide="map-pin" style="width:16px; color:var(--primary)"></i>
+                            <input type="text" id="marshal-location-search" placeholder="Lat, Lng (e.g. 18.5, 73.8)" class="search-input" value="${searchLat ? `${searchLat}, ${searchLng}` : ''}" onchange="filterMarshalsByProximity(this.value)">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" style="height:42px;" onclick="window.marshalSearchLat = null; renderMarshals(document.getElementById('app'))">
+                        Reset
+                    </button>
+                    <button class="btn btn-primary" style="height:42px;" onclick="openAddUserModal()">
+                        <i data-lucide="plus"></i> Onboard Marshal
+                    </button>
+                </div>
+            </header>
+
+            <!-- Pincode Matching Dashboard Widgets -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                <!-- Left: Customer Demand by Pincode -->
+                <div class="card" style="padding: 20px; border: 1px solid var(--border); background: var(--bg-surface);">
+                    <h3 style="margin-top: 0; font-size: 0.95rem; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="activity" style="width:16px; height:16px;"></i> Customer Demand by Pincode
+                    </h3>
+                    <p style="font-size:0.75rem; color:var(--text-dim); margin: 4px 0 12px 0;">Active request pickup pincodes aggregated from customer requests</p>
+                    <div style="max-height: 180px; overflow-y: auto;">
+                        ${(() => {
+                            const activeRequests = PROTOTYPE_STATE.serviceRequests.filter(r => !['completed', 'cancelled', 'returned', 'drop_completed'].includes(r.status));
+                            const counts = {};
+                            activeRequests.forEach(r => {
+                                const addr = r.pickup_address || '';
+                                const match = addr.match(/\d{6}/);
+                                const pin = match ? match[0] : 'Unknown Pincode';
+                                counts[pin] = (counts[pin] || 0) + 1;
+                            });
+                            const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
+                            if (sorted.length === 0) return '<div style="color: var(--text-dim); font-size: 0.85rem; padding: 10px 0;">No active customer pickup requests.</div>';
+                            return `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border); color: var(--text-dim); text-transform: uppercase; font-size:0.7rem; letter-spacing:0.5px;">
+                                            <th style="text-align: left; padding: 6px 0;">Pincode</th>
+                                            <th style="text-align: right; padding: 6px 0;">Active Requests</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${sorted.map(([pin, count]) => `
+                                            <tr style="border-bottom: 1px dashed rgba(255,255,255,0.05);">
+                                                <td style="padding: 8px 0; color: var(--text-main); font-weight: 600;">${pin}</td>
+                                                <td style="padding: 8px 0; text-align: right; color: var(--primary); font-weight: 700;">${count} requests</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            `;
+                        })()}
+                    </div>
+                </div>
+
+                <!-- Right: Online Marshals by Pincode -->
+                <div class="card" style="padding: 20px; border: 1px solid var(--border); background: var(--bg-surface);">
+                    <h3 style="margin-top: 0; font-size: 0.95rem; color: var(--success); display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="shield" style="width:16px; height:16px;"></i> Online Marshals by Pincode
+                    </h3>
+                    <p style="font-size:0.75rem; color:var(--text-dim); margin: 4px 0 12px 0;">Currently online and active fleet agents grouped by pincode</p>
+                    <div style="max-height: 180px; overflow-y: auto;">
+                        ${(() => {
+                            const onlineList = PROTOTYPE_STATE.users.filter(u => u.role === 'marshal' && u.is_online === 1);
+                            const grouped = {};
+                            onlineList.forEach(m => {
+                                const pin = m.pincode || 'Pincode Not Set';
+                                if (!grouped[pin]) grouped[pin] = [];
+                                grouped[pin].push(m.name);
+                            });
+                            const sorted = Object.entries(grouped).sort((a,b) => b[1].length - a[1].length);
+                            if (sorted.length === 0) return '<div style="color: var(--text-dim); font-size: 0.85rem; padding: 10px 0;">No marshals online currently.</div>';
+                            return `
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border); color: var(--text-dim); text-transform: uppercase; font-size:0.7rem; letter-spacing:0.5px;">
+                                            <th style="text-align: left; padding: 6px 0;">Pincode</th>
+                                            <th style="text-align: right; padding: 6px 0;">Marshals Online</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${sorted.map(([pin, list]) => `
+                                            <tr style="border-bottom: 1px dashed rgba(255,255,255,0.05);">
+                                                <td style="padding: 8px 0; color: var(--text-main); font-weight: 600;">${pin}</td>
+                                                <td style="padding: 8px 0; text-align: right; color: var(--success); font-weight: 700;" title="${list.join(', ')}">${list.length} online (${list.join(', ')})</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            `;
+                        })()}
+                    </div>
+                </div>
+            </div>
+
+            ${searchLat ? `
+                <div style="margin-bottom:20px; padding:12px 20px; background:rgba(16,185,129,0.1); border:1px solid var(--success); border-radius:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--success); font-weight:600;">Showing marshals within 10km of ${searchLat}, ${searchLng}</span>
+                    <span class="badge badge-success">${marshals.length} Found</span>
+                </div>
+            ` : ''}
+
+            ${counts.pending > 0 ? `
+                <div style="margin-bottom:20px; padding:15px 25px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <i data-lucide="user-check" style="color:#ffc107; width:20px;"></i>
+                        <div>
+                            <div style="color:#ffc107; font-weight:700;">Pending Onboarding Requests</div>
+                            <div style="font-size:0.75rem; color:var(--text-dim);">${counts.pending} agents are waiting for document approval</div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px; margin-bottom: 20px; border-radius: 12px; overflow-x: auto;">
+                <button class="tab-btn ${tab === 'active' ? 'active' : ''}" onclick="window.marshalTab='active'; renderMarshals(document.getElementById('app'))">Active Marshal (${counts.active})</button>
+                <button class="tab-btn ${tab === 'online' ? 'active' : ''}" onclick="window.marshalTab='online'; renderMarshals(document.getElementById('app'))">Online Marshal (${counts.online})</button>
+                <button class="tab-btn ${tab === 'verified' ? 'active' : ''}" onclick="window.marshalTab='verified'; renderMarshals(document.getElementById('app'))">Verified Marshal (${counts.verified})</button>
+                <button class="tab-btn ${tab === 'pending' ? 'active' : ''}" onclick="window.marshalTab='pending'; renderMarshals(document.getElementById('app'))">Pending for Approval (${counts.pending})</button>
+                <button class="tab-btn ${tab === 'registered' ? 'active' : ''}" onclick="window.marshalTab='registered'; renderMarshals(document.getElementById('app'))">Registered Marshal (${counts.registered})</button>
+            </div>
+
+            <div class="grid-3">
+                ${marshals.map(m => `
+                    <div class="marshal-card" data-search-string="${[m.name, m.phone, m.pincode, m.type, m.kycStatus].join(' ').toLowerCase()}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 16px;">
+                            <div style="display:flex; align-items:center; gap: 16px; flex:1;">
+                                <div class="marshal-avatar" style="overflow:hidden; border:2px solid var(--border); background:var(--bg-surface);">
+                                    ${(m.facePhotoUrl || m.facephotourl) ? 
+                                        `<img src="${getAttachmentUrl(m.facePhotoUrl || m.facephotourl)}" style="width:100%; height:100%; object-fit:cover;">` : 
+                                        m.name.charAt(0).toUpperCase()
+                                    }
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-main); margin-bottom: 2px;">${m.name}</div>
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                        <span class="chip ${m.is_online === 1 ? 'chip-success' : 'chip-danger'}" style="width: 8px; height: 8px; padding: 0; border-radius: 50%; background: ${m.is_online === 1 ? '#10b981' : '#ef4444'};"></span>
+                                        <span style="color: var(--text-dim); font-size: 0.8rem; font-weight: 500;">${m.is_online === 1 ? 'Online & Active' : 'Offline'}</span>
+                                    </div>
+                                    <div style="color: var(--text-main); font-weight:600; font-size: 0.9rem; display:flex; align-items:center; gap:6px;">
+                                        <i data-lucide="phone" style="width:14px; height:14px; color:var(--text-dim);"></i> ${m.phone}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                                ${isVerified(m) ? `
+                                    <div style="display:flex; gap:6px;">
+                                        <button class="btn btn-secondary btn-sm" style="padding:4px 10px; font-size:0.75rem;" onclick="reviewMarshalKYC('${m.id}')">Docs</button>
+                                        <button class="btn btn-secondary btn-sm" style="padding:4px 10px; font-size:0.75rem;" onclick="showAlert('History', 'History feature is coming soon.', 'Close', 'info')">History</button>
+                                    </div>
+                                ` : `
+                                    <button class="btn btn-primary btn-sm" style="font-weight:700; font-size:0.75rem; padding:4px 10px;" onclick="reviewMarshalKYC('${m.id}')">
+                                        <i data-lucide="shield-alert" style="width:12px; margin-right:4px;"></i> ${(m.kycStatus === 'pending_approval' || m.kycStatus === 'pending_submission') ? 'Review KYC' : 'Check KYC'}
+                                    </button>
+                                `}
+                                <button onclick="const details = this.parentElement.parentElement.nextElementSibling; const isHidden = details.style.display === 'none'; details.style.display = isHidden ? 'flex' : 'none'; this.innerHTML = isHidden ? 'View Less <i data-lucide=\\'chevron-up\\' style=\\'width:14px;\\'></i>' : 'View More <i data-lucide=\\'chevron-down\\' style=\\'width:14px;\\'></i>'; lucide.createIcons();" style="background:transparent; border:none; color:var(--primary); font-size:0.75rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; padding:0; width:max-content; margin-top:2px;">
+                                    View More <i data-lucide="chevron-down" style="width:12px;"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="expanded-details" style="display:none; background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px; flex-direction:column; gap:12px; border: 1px solid var(--border); margin-top: 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Pincode</span>
+                                <span style="color:var(--text-main); font-weight:600; font-size: 0.9rem;">${m.pincode || 'Not Set'}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Source</span>
+                                <div style="text-align:right">
+                                    <span class="badge ${m.type === 'Platform' ? 'badge-primary' : 'badge-secondary'}">${m.type}</span>
+                                    ${m.garageName ? `<div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px;">${m.garageName}</div>` : ''}
+                                </div>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">KYC Status</span>
+                                <span class="badge ${isVerified(m) ? 'badge-success' : (m.kycStatus === 'pending_approval' ? 'badge-warning' : 'badge-secondary')}">
+                                    ${(m.kycStatus || 'Not Started').replace('_', ' ').toUpperCase()}
+                                </span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Assigned Zone</span>
+                                <span class="badge badge-outline">${m.distance ? (m.distance.toFixed(1) + ' km away') : (m.location || 'Central Pune')}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">GPS Coordinates</span>
+                                <span style="color:var(--text-main); font-weight:600; font-size: 0.85rem; font-family:monospace;">
+                                    ${(m.lat && m.lng) ? `${parseFloat(m.lat).toFixed(4)}, ${parseFloat(m.lng).toFixed(4)}` : 'Not Detected'}
+                                </span>
+                            </div>
+                            ${(m.lat && m.lng) ? `
+                            <div style="display:flex; justify-content:space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px; margin-top: 2px;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Tracking</span>
+                                <a href="https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}" target="_blank" style="color:var(--primary); font-weight:700; font-size: 0.8rem; text-decoration:none; display:flex; align-items:center; gap:4px;">
+                                    <i data-lucide="map-pin" style="width:12px; height:12px;"></i> View on Google Maps
+                                </a>
+                            </div>` : ''}
+                        </div>
+                    </div>              </div>
+                </div>
+            </div>
+
+            ${searchLat ? `
+                <div style="margin-bottom:20px; padding:12px 20px; background:rgba(16,185,129,0.1); border:1px solid var(--success); border-radius:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--success); font-weight:600;">Showing marshals within 10km of ${searchLat}, ${searchLng}</span>
+                    <span class="badge badge-success">${marshals.length} Found</span>
+                </div>
+            ` : ''}
+
+            ${counts.pending > 0 ? `
+                <div style="margin-bottom:20px; padding:15px 25px; background:rgba(255,193,7,0.1); border:1px solid rgba(255,193,7,0.3); border-radius:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <i data-lucide="user-check" style="color:#ffc107; width:20px;"></i>
+                        <div>
+                            <div style="color:#ffc107; font-weight:700;">Pending Onboarding Requests</div>
+                            <div style="font-size:0.75rem; color:var(--text-dim);">${counts.pending} agents are waiting for document approval</div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px; margin-bottom: 20px; border-radius: 12px; overflow-x: auto;">
+                <button class="tab-btn ${tab === 'active' ? 'active' : ''}" onclick="window.marshalTab='active'; renderMarshals(document.getElementById('app'))">Active Marshal (${counts.active})</button>
+                <button class="tab-btn ${tab === 'online' ? 'active' : ''}" onclick="window.marshalTab='online'; renderMarshals(document.getElementById('app'))">Online Marshal (${counts.online})</button>
+                <button class="tab-btn ${tab === 'verified' ? 'active' : ''}" onclick="window.marshalTab='verified'; renderMarshals(document.getElementById('app'))">Verified Marshal (${counts.verified})</button>
+                <button class="tab-btn ${tab === 'pending' ? 'active' : ''}" onclick="window.marshalTab='pending'; renderMarshals(document.getElementById('app'))">Pending for Approval (${counts.pending})</button>
+                <button class="tab-btn ${tab === 'registered' ? 'active' : ''}" onclick="window.marshalTab='registered'; renderMarshals(document.getElementById('app'))">Registered Marshal (${counts.registered})</button>
+            </div>
+
+            <div class="grid-3">
+                ${marshals.map(m => `
+                    <div class="marshal-card" data-search-string="${[m.name, m.phone, m.pincode, m.type, m.kycStatus].join(' ').toLowerCase()}">
+                        <div style="display:flex; align-items:center; gap: 16px; margin-bottom: 20px;">
+                            <div class="marshal-avatar" style="overflow:hidden; border:2px solid var(--border); background:var(--bg-surface);">
+                                ${(m.facePhotoUrl || m.facephotourl) ? 
+                                    `<img src="${getAttachmentUrl(m.facePhotoUrl || m.facephotourl)}" style="width:100%; height:100%; object-fit:cover;">` : 
+                                    m.name.charAt(0).toUpperCase()
+                                }
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-main); margin-bottom: 2px;">${m.name}</div>
+                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                    <span class="chip ${m.is_online === 1 ? 'chip-success' : 'chip-danger'}" style="width: 8px; height: 8px; padding: 0; border-radius: 50%; background: ${m.is_online === 1 ? '#10b981' : '#ef4444'};"></span>
+                                    <span style="color: var(--text-dim); font-size: 0.8rem; font-weight: 500;">${m.is_online === 1 ? 'Online & Active' : 'Offline'}</span>
+                                </div>
+                                <div style="color: var(--text-main); font-weight:600; font-size: 0.9rem; display:flex; align-items:center; gap:6px;">
+                                    <i data-lucide="phone" style="width:14px; height:14px; color:var(--text-dim);"></i> ${m.phone}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="expanded-details" style="display:none; background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px; flex-direction:column; gap:12px; border: 1px solid var(--border); margin-bottom: 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Pincode</span>
+                                <span style="color:var(--text-main); font-weight:600; font-size: 0.9rem;">${m.pincode || 'Not Set'}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Source</span>
+                                <div style="text-align:right">
+                                    <span class="badge ${m.type === 'Platform' ? 'badge-primary' : 'badge-secondary'}">${m.type}</span>
+                                    ${m.garageName ? `<div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px;">${m.garageName}</div>` : ''}
+                                </div>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">KYC Status</span>
+                                <span class="badge ${isVerified(m) ? 'badge-success' : (m.kycStatus === 'pending_approval' ? 'badge-warning' : 'badge-secondary')}">
+                                    ${(m.kycStatus || 'Not Started').replace('_', ' ').toUpperCase()}
+                                </span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Assigned Zone</span>
+                                <span class="badge badge-outline">${m.distance ? (m.distance.toFixed(1) + ' km away') : (m.location || 'Central Pune')}</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items: center;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">GPS Coordinates</span>
+                                <span style="color:var(--text-main); font-weight:600; font-size: 0.85rem; font-family:monospace;">
+                                    ${(m.lat && m.lng) ? `${parseFloat(m.lat).toFixed(4)}, ${parseFloat(m.lng).toFixed(4)}` : 'Not Detected'}
+                                </span>
+                            </div>
+                            ${(m.lat && m.lng) ? `
+                            <div style="display:flex; justify-content:space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px; margin-top: 2px;">
+                                <span style="color:var(--text-dim); font-size: 0.85rem;">Tracking</span>
+                                <a href="https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}" target="_blank" style="color:var(--primary); font-weight:700; font-size: 0.8rem; text-decoration:none; display:flex; align-items:center; gap:4px;">
+                                    <i data-lucide="map-pin" style="width:12px; height:12px;"></i> View on Google Maps
+                                </a>
+                            </div>` : ''}
+                        </div>
+                        
+                        <button onclick="const details = this.previousElementSibling; const isHidden = details.style.display === 'none'; details.style.display = isHidden ? 'flex' : 'none'; this.innerHTML = isHidden ? 'View Less <i data-lucide=\\'chevron-up\\' style=\\'width:14px;\\'></i>' : 'View More <i data-lucide=\\'chevron-down\\' style=\\'width:14px;\\'></i>'; lucide.createIcons();" style="background:transparent; border:none; color:var(--primary); font-size:0.85rem; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px; margin-bottom:15px; padding:0; width:max-content;">
+                            View More <i data-lucide="chevron-down" style="width:14px;"></i>
+                        </button>
+
+                        <div style="margin-top: 20px; display:flex; gap:10px;">
+                            ${isVerified(m) ? `
+                                <button class="btn btn-secondary btn-sm" style="flex:1" onclick="reviewMarshalKYC('${m.id}')">View Docs</button>
+                                <button class="btn btn-secondary btn-sm" style="flex:1" onclick="showAlert('History', 'History feature is coming soon.', 'Close', 'info')">History</button>
+                                <button class="btn btn-primary btn-sm" style="flex:1" onclick="showAlert('Assign Task', 'Task assignment is coming soon.', 'Close', 'info')">Assign Task</button>
+                            ` : `
+                                <button class="btn btn-primary" style="flex:1; padding:12px; font-weight:700;" onclick="reviewMarshalKYC('${m.id}')">
+                                    <i data-lucide="shield-alert" style="width:16px; margin-right:8px;"></i> ${(m.kycStatus === 'pending_approval' || m.kycStatus === 'pending_submission') ? 'Action Required: Review KYC' : 'Check KYC Progress'}
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                `).join('')}
+                ${marshals.length === 0 ? `
+                    <div style="grid-column: 1/-1; padding: 80px; text-align:center; background: var(--bg-surface); border-radius: 20px; border: 1px dashed var(--border);">
+                        <div style="font-size: 3rem; margin-bottom: 20px;">👤</div>
+                        <h3 style="color: var(--text-main); margin-bottom: 10px;">No Marshals Found</h3>
+                        <p style="color: var(--text-dim); max-width: 400px; margin: 0 auto;">Field agents help in auditing service requests and collecting vehicles.</p>
+                        <button class="btn btn-primary" style="margin-top: 25px;" onclick="openAddUserModal()">Add Your First Marshal</button>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
+}
+

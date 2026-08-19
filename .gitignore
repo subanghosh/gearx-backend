@@ -32,3 +32,43 @@ Thumbs.db
 
 # Firebase service account key
 firebaseServiceAccountKey.json
+
+# Scratch & Temporary Testing
+scratch/
+cloudflared.exe
+*.traineddata
+
+# Root test & debug scratch scripts
+check_*.js
+check-*.js
+test_*.js
+test-*.js
+scratch_*.js
+query_*.js
+print_*.js
+find_*.js
+find-*.js
+fix_*.js
+fix-*.js
+patch_*.js
+search_*.js
+measure_*.js
+poll_*.js
+force_*.js
+delete_*.js
+dump_*.js
+create_*.js
+run_*.js
+update_*.js
+verify_*.js
+extract_*.js
+purge_*.js
+full_reset.js
+cloud_test_flow.js
+debug_counts.js
+migrate_*.js
+*.md
+!README.md
+*.json
+!package.json
+!package-lock.json

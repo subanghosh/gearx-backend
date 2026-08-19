@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ReDrivo Marshal - Fleet Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #121212;
+            color: #e5e2e1;
+        }
+        .tonal-layer-1 { background-color: #1E1E1E; }
+        .tonal-layer-2 { background-color: #2A2A2A; }
+        .glass-effect {
+            background: rgba(30, 30, 30, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#fff6df",
+                        "on-secondary-fixed": "#1b1c1c",
+                        "tertiary-fixed": "#e2e2e2",
+                        "surface-container-high": "#2a2a2a",
+                        "on-surface-variant": "#d0c6ab",
+                        "secondary-fixed": "#e4e2e1",
+                        "inverse-primary": "#705d00",
+                        "on-secondary-container": "#b6b5b4",
+                        "on-tertiary": "#2f3131",
+                        "inverse-surface": "#e5e2e1",
+                        "secondary-container": "#474746",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "surface-container": "#201f1f",
+                        "surface-variant": "#353534",
+                        "surface-bright": "#393939",
+                        "secondary": "#c8c6c5",
+                        "on-primary-container": "#705e00",
+                        "surface-dim": "#131313",
+                        "on-background": "#e5e2e1",
+                        "on-primary-fixed-variant": "#544600",
+                        "secondary-fixed-dim": "#c8c6c5",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "outline-variant": "#4d4732",
+                        "tertiary": "#f6f6f6",
+                        "on-primary-fixed": "#221b00",
+                        "on-secondary": "#303030",
+                        "on-surface": "#e5e2e1",
+                        "on-error-container": "#ffdad6",
+                        "outline": "#999077",
+                        "surface": "#131313",
+                        "primary-fixed": "#ffe16d",
+                        "on-tertiary-container": "#5e5f60",
+                        "on-secondary-fixed-variant": "#474746",
+                        "primary-container": "#ffd700",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-lowest": "#0e0e0e",
+                        "tertiary-container": "#d9dada",
+                        "surface-container-highest": "#353534",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "on-primary": "#3a3000",
+                        "error-container": "#93000a",
+                        "background": "#131313",
+                        "surface-tint": "#e9c400",
+                        "primary-fixed-dim": "#e9c400",
+                        "inverse-on-surface": "#313030"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "md": "24px",
+                        "base": "8px",
+                        "lg": "40px",
+                        "xs": "4px",
+                        "gutter": "24px",
+                        "xl": "64px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "48px",
+                        "sm": "12px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "label-sm": ["Plus Jakarta Sans"],
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-md": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                        "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 bg-surface border-b border-white/10 px-margin-mobile h-16 flex justify-between items-center">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-primary-container/30">
+<img alt="Service Marshal Avatar" class="w-full h-full object-cover" data-alt="A professional close-up portrait of a South Asian male service marshal in a sleek, modern technical uniform. The lighting is dramatic and high-contrast, characteristic of a premium tech-forward brand. He looks confident and authoritative. The background is a blurred high-tech workspace with subtle amber lighting accents, matching the ReDrivo brand aesthetic of performance and precision." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE2jaD0D2a-_EvNV6181KpLe_vnBA9lY2scQwtC3bZVDdtn-j19ntNmHvtywWmUxmGKHFjZeHL7mRW4yWUkxFCIFtra9H_hl56lXebqaRff2iUYFHz85ic1dKmbVpVREH2ljIx1Xg-jnh5KYOOGlFEzNlFH9mql8KQeO5iQqC_oLeON3iGFG9eco9bMghqKRGTo9v-T31nF-EW5v31dwjmbxVFJv2d-4Gi_UqtvjUXMtp-_zJvY9aVvhOyPy1C79EBg4BAuBycC5Y"/>
+</div>
+<div>
+<p class="text-label-md font-label-md text-on-surface-variant">Hi, Sirajuddin</p>
+<h1 class="text-headline-md font-headline-md font-extrabold text-on-surface">ReDrivo Marshal</h1>
+</div>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-container/10 border border-primary-container/20">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+<span class="text-label-md font-label-md text-primary-container">ONLINE</span>
+</div>
+</header>
+<main class="mt-20 px-margin-mobile max-w-2xl mx-auto">
+<!-- Dashboard Header Info -->
+<section class="mb-8 flex justify-between items-end">
+<div>
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile font-bold text-white mb-1">Nearby Pickups</h2>
+<p class="text-label-md font-label-md text-on-surface-variant">4 Active opportunities in your zone</p>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-xl tonal-layer-1 border border-white/10">
+<span class="material-symbols-outlined text-primary-container">tune</span>
+</button>
+</section>
+<!-- Pickup Feed -->
+<div class="space-y-4">
+<!-- Pickup Card 1 -->
+<div class="tonal-layer-1 rounded-xl p-md border border-white/10 transition-all active:scale-95 duration-100">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<span class="text-headline-md font-headline-md font-bold text-white">2.5 km away</span>
+</div>
+<div class="px-3 py-1 rounded-full bg-white/5 text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Urgent</div>
+</div>
+<div class="flex items-center gap-4 mb-6">
+<div class="w-12 h-12 rounded-lg tonal-layer-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface">directions_car</span>
+</div>
+<div>
+<p class="text-body-md font-body-md text-white font-semibold">Rahul M.</p>
+<p class="text-label-md font-label-md text-on-surface-variant">Honda City • Silver</p>
+</div>
+</div>
+<div class="flex items-center gap-3 mb-6 p-3 rounded-lg bg-surface-container-lowest/50 border border-white/5">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">schedule</span>
+<p class="text-label-md font-label-md text-on-surface-variant">Ready for pickup in 10 mins</p>
+</div>
+<button class="w-full h-14 bg-primary-container hover:bg-primary-fixed transition-colors rounded-lg flex items-center justify-center gap-2 group">
+<span class="text-black font-bold uppercase tracking-widest text-label-md">Accept Trip</span>
+<span class="material-symbols-outlined text-black group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+<!-- Pickup Card 2 -->
+<div class="tonal-layer-1 rounded-xl p-md border border-white/10 transition-all active:scale-95 duration-100">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<span class="text-headline-md font-headline-md font-bold text-white">0.8 km away</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mb-6">
+<div class="w-12 h-12 rounded-lg tonal-layer-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface">airport_shuttle</span>
+</div>
+<div>
+<p class="text-body-md font-body-md text-white font-semibold">Aditi Verma</p>
+<p class="text-label-md font-label-md text-on-surface-variant">Toyota Fortuner • White</p>
+</div>
+</div>
+<button class="w-full h-14 bg-primary-container hover:bg-primary-fixed transition-colors rounded-lg flex items-center justify-center gap-2 group">
+<span class="text-black font-bold uppercase tracking-widest text-label-md">Accept Trip</span>
+<span class="material-symbols-outlined text-black group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+<!-- Pickup Card 3 -->
+<div class="tonal-layer-1 rounded-xl p-md border border-white/10 transition-all active:scale-95 duration-100">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<span class="text-headline-md font-headline-md font-bold text-white">4.2 km away</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mb-6">
+<div class="w-12 h-12 rounded-lg tonal-layer-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface">electric_car</span>
+</div>
+<div>
+<p class="text-body-md font-body-md text-white font-semibold">Kevin S.</p>
+<p class="text-label-md font-label-md text-on-surface-variant">Tesla Model 3 • Midnight Blue</p>
+</div>
+</div>
+<button class="w-full h-14 bg-primary-container hover:bg-primary-fixed transition-colors rounded-lg flex items-center justify-center gap-2 group">
+<span class="text-black font-bold uppercase tracking-widest text-label-md">Accept Trip</span>
+<span class="material-symbols-outlined text-black group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Atmospheric map background element (subtle) -->
+<div class="fixed inset-0 -z-10 opacity-10 pointer-events-none">
+<img class="w-full h-full object-cover" data-alt="A dark, stylized aerial map of a modern metropolitan city grid at night. The view is minimalist, focusing on the geometric patterns of streets and highways illuminated by subtle, glowing amber and white light paths. The color palette is strictly deep charcoals and blacks with soft Kinetic Yellow highlights. It serves as a sophisticated background pattern that reinforces the high-performance fleet management theme." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC44CrAaMDk-Bjcmeilu-02VEjqQMjcprgnVdHgA5_c4I_9P-wG9QKleWdRnB310xzJB2Ps_7QPK8fpT0-FStwVbvshh4VKhCPziZQcDfnHjuw0WaHO1J5fWjcYaLKX9fZxUfCViSBI1tasonJTmc2AwVH4ANk_wU3aTchc7qUR4KBpj19Scg6GVYiRS5d3CaGibfIGC3RNPHu9Cckq0jUjBI1juyFgiY2wpUNE5A0AxI9dFWeG1vezFvEfnb0HwnocYTdkqblkor8"/>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 bg-surface-container border-t border-white/10 shadow-lg rounded-t-xl">
+<button class="flex flex-col items-center justify-center text-primary-container font-bold active:scale-90 duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+<span class="text-label-sm font-label-sm">Fleet</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">assignment</span>
+<span class="text-label-sm font-label-sm">Tasks</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150 relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="text-label-sm font-label-sm">Alerts</span>
+<span class="absolute top-0 right-1/4 w-2 h-2 bg-error rounded-full border border-surface-container"></span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-label-sm font-label-sm">Profile</span>
+</button>
+</nav>
+<script>
+        // Micro-interaction for buttons
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('mousedown', () => {
+                button.classList.add('scale-95');
+            });
+            button.addEventListener('mouseup', () => {
+                button.classList.remove('scale-95');
+            });
+            button.addEventListener('mouseleave', () => {
+                button.classList.remove('scale-95');
+            });
+        });
+
+        // Simulating loading of cards
+        window.addEventListener('load', () => {
+            const cards = document.querySelectorAll('.tonal-layer-1');
+            cards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                setTimeout(() => {
+                    card.style.transition = 'all 0.5s ease-out';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, 100 * index);
+            });
+        });
+    </script>
+</body></html>

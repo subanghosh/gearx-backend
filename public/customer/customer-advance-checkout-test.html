@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReDrivo — Customer Advance Payment Verification</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        :root {
+            --bg: #0B0F17;
+            --card: #131B2A;
+            --border: #1F2E47;
+            --primary: #FACC15;
+            --text: #F8FAFC;
+            --text-muted: #94A3B8;
+            --success: #22C55E;
+            --danger: #EF4444;
+            --info: #38BDF8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(250, 204, 21, 0.1);
+            color: var(--primary);
+            border: 1px solid rgba(250, 204, 21, 0.25);
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        h1 { font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; color: #fff; }
+        p.subtitle { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px; }
+
+        .scenario-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 14px;
+            transition: all 0.2s ease;
+        }
+        .scenario-box:hover { border-color: rgba(250, 204, 21, 0.4); }
+        .scenario-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .scenario-title { font-size: 0.95rem; font-weight: 800; color: #fff; }
+        .scenario-badge { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+        .badge-normal { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+        .badge-cancel { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+        .badge-timeout { background: rgba(56, 189, 248, 0.15); color: var(--info); }
+
+        .scenario-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px; }
+        .btn-action {
+            width: 100%;
+            background: var(--primary);
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.9rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-action:hover { background: #EAB308; }
+        .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #live-log-box {
+            display: none;
+            margin-top: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        #live-log-box.active { display: block; }
+        .log-title { font-size: 0.85rem; font-weight: 800; color: var(--primary); margin-bottom: 8px; }
+        pre.log-content {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: #E2E8F0;
+            overflow-x: auto;
+            max-height: 250px;
+        }
+        .code-pill {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="badge">Customer Advance Payment Testing Suite</div>
+    <h1>Ride Advance Payment — Gateway Scenarios</h1>
+    <p class="subtitle">Complete real Razorpay test checkouts to verify upfront escrow, free cancellations, and 60s search timeout refunds.</p>
+
+    <!-- Scenario 1: Normal Advance Payment -->
+    <div class="scenario-box">
+        <div class="scenario-header">
+            <span class="scenario-title">Scenario 1: Normal Advance Payment</span>
+            <span class="scenario-badge badge-normal">Published to Drivers</span>
+        </div>
+        <div class="scenario-desc">
+            Creates a live Razorpay Order for ₹199 advance ride booking, opens the real Razorpay modal, verifies the HMAC signature, and publishes the ride to drivers with <span class="code-pill">is_advance_paid = true</span>.
+        </div>
+        <button class="btn-action" onclick="runScenario(1)">Pay ₹199 &amp; Publish Ride</button>
+    </div>
+
+    <!-- Scenario 2: Booking Cancellation (Free Window) -->
+    <div class="scenario-box">
+        <div class="scenario-header">
+            <span class="scenario-title">Scenario 2: Cancellation in Free Window</span>
+            <span class="scenario-badge badge-cancel">100% Instant Refund</span>
+        </div>
+        <div class="scenario-desc">
+            Completes real checkout, then simulates customer cancelling before driver assignment. Triggers Razorpay Refunds API for <span class="code-pill">100% full refund</span> (₹0 cancellation fee).
+        </div>
+        <button class="btn-action" onclick="runScenario(2)" style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4);">Pay ₹199 &amp; Cancel for 100% Refund</button>
+    </div>
+
+    <!-- Scenario 3: 60-Second No Driver Found Auto-Refund -->
+    <div class="scenario-box">
+        <div class="scenario-header">
+            <span class="scenario-title">Scenario 3: 60s Search Timeout Auto-Refund</span>
+            <span class="scenario-badge badge-timeout">100% Auto-Refund</span>
+        </div>
+        <div class="scenario-desc">
+            Completes real checkout, holds funds in escrow, and triggers 60s search timeout auto-refund via Razorpay Refunds API, updating payment status to <span class="code-pill">refunded</span>.
+        </div>
+        <button class="btn-action" onclick="runScenario(3)" style="background: rgba(56, 189, 248, 0.2); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.4);">Pay ₹199 &amp; Trigger Search Timeout Refund</button>
+    </div>
+
+    <div id="live-log-box">
+        <div class="log-title" id="log-title">Live Transaction Log:</div>
+        <pre class="log-content" id="log-output">Ready...</pre>
+    </div>
+</div>
+
+<script>
+    const customerId = 'cust_live_adv_user';
+
+    function log(msg) {
+        const box = document.getElementById('live-log-box');
+        const out = document.getElementById('log-output');
+        box.classList.add('active');
+        out.textContent += '\n' + (typeof msg === 'object' ? JSON.stringify(msg, null, 2) : msg);
+        out.scrollTop = out.scrollHeight;
+    }
+
+    async function runScenario(type) {
+        const box = document.getElementById('live-log-box');
+        const out = document.getElementById('log-output');
+        box.classList.add('active');
+        out.textContent = `=== STARTING SCENARIO ${type} ===`;
+
+        try {
+            log('1. Creating real order on api.razorpay.com...');
+            const orderRes = await fetch('/api/customer/booking/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerId,
+                    distanceKm: 8.5,
+                    pricingMode: 'distance',
+                    vehicleType: 'car',
+                    pickup_address: 'Indiranagar 100ft Rd, Bengaluru',
+                    drop_address: 'Koramangala 5th Block, Bengaluru'
+                })
+            });
+            const orderData = await orderRes.json();
+            if (!orderRes.ok) throw new Error(orderData.error || 'Order creation failed');
+            log(`✓ Real Razorpay Order ID: ${orderData.orderId} (Amount: ₹${orderData.amountInRupees})`);
+
+            log('2. Opening official Razorpay Checkout SDK Modal...');
+            const options = {
+                key: orderData.keyId,
+                amount: orderData.amount,
+                currency: orderData.currency,
+                name: 'ReDrivo — Ride Advance Payment',
+                description: `Scenario ${type} Live Verification`,
+                order_id: orderData.orderId,
+                prefill: {
+                    name: 'Kiran Customer',
+                    contact: '9988776655',
+                    email: 'kiran@redrivo.com'
+                },
+                theme: { color: '#FACC15' },
+                handler: async function (response) {
+                    log(`✓ Payment Captured on Gateway: ${response.razorpay_payment_id}`);
+                    log(`✓ Signature: ${response.razorpay_signature.slice(0, 20)}...`);
+
+                    log('3. Verifying signature on backend /customer/booking/verify-advance...');
+                    const verifyRes = await fetch('/api/customer/booking/verify-advance', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderId: response.razorpay_order_id,
+                            paymentId: response.razorpay_payment_id,
+                            signature: response.razorpay_signature,
+                            draftRequestId: orderData.draftRequestId
+                        })
+                    });
+                    const verifyData = await verifyRes.json();
+                    if (!verifyRes.ok) throw new Error(verifyData.error || 'Verification failed');
+                    log(`✓ Verification Result: ${verifyData.message}`);
+
+                    if (type === 1) {
+                        log('\n=== SCENARIO 1 COMPLETE: Ride Published & Advance Paid! ===');
+                        log('Verify in DB: ride_payments.status = captured, service_requests.is_advance_paid = true');
+                    } else if (type === 2) {
+                        log('\n4. Executing Scenario 2: Cancelling booking within free window...');
+                        const cancelRes = await fetch('/api/customer/booking/cancel', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                requestId: orderData.draftRequestId,
+                                customerId,
+                                reason: 'User requested cancellation in free window'
+                            })
+                        });
+                        const cancelData = await cancelRes.json();
+                        log(`✓ Gateway Refund Result: ${cancelData.message}`);
+                        log(`✓ Real Refund ID: ${cancelData.refundId}`);
+                        log('\n=== SCENARIO 2 COMPLETE: 100% Refund Issued via Gateway! ===');
+                        log('Check your Razorpay Dashboard -> Refunds tab to see the live refund record.');
+                    } else if (type === 3) {
+                        log('\n4. Executing Scenario 3: Triggering 60s Search Timeout Auto-Refund...');
+                        const timeoutRes = await fetch('/api/customer/booking/timeout-refund', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                requestId: orderData.draftRequestId
+                            })
+                        });
+                        const timeoutData = await timeoutRes.json();
+                        log(`✓ Timeout Refund Result: ${timeoutData.message}`);
+                        log(`✓ Real Refund ID: ${timeoutData.refundId}`);
+                        log('\n=== SCENARIO 3 COMPLETE: 60s Timeout Auto-Refund Verified! ===');
+                        log('Check your Razorpay Dashboard -> Refunds tab to confirm this refund.');
+                    }
+                }
+            };
+
+            const rzp = new Razorpay(options);
+            rzp.open();
+
+        } catch (err) {
+            log('ERROR: ' + err.message);
+        }
+    }
+</script>
+
+</body>
+</html>

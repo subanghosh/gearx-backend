@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReDrivo Driver Portal</title>
+    <!-- TEMPORARY DEBUG CODE -->
+    <!--
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+        if (typeof eruda !== 'undefined') {
+            eruda.init();
+        }
+    </script>
+    -->
+    <!-- END TEMPORARY DEBUG CODE -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="socket.io.js" defer></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- New UI Dependencies -->
+    <script>
+        window.googleMapsReady = false;
+        window.onGoogleMapsLoaded = function() {
+            window.googleMapsReady = true;
+            
+        };
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBdPccZc8vH4N0YdIePz2yjrcXoKlC9LRU&libraries=places,geometry&v=weekly&callback=onGoogleMapsLoaded" async defer></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js" defer></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <style>
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+        .tonal-layer-1 { background-color: #1E1E1E; }
+        .tonal-layer-2 { background-color: #2A2A2A; }
+        /* Earnings Filter Buttons */
+        .earnings-filter-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .earnings-filter-btn.active {
+            background: var(--primary-container);
+            color: var(--on-primary-container);
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(204, 255, 0, 0.2);
+        }
+        .suggestions-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: #2D2D2D;
+            border: 1px solid #444;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .suggestion-item {
+            padding: 10px 14px;
+            color: #E2E8F0;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #3d3d3d;
+            transition: background 0.15s ease;
+        }
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .suggestion-item:hover {
+            background: #3D3D3D;
+            color: #CCFF00;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            corePlugins: { preflight: false },
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#fff6df", "on-secondary-fixed": "#1b1c1c", "tertiary-fixed": "#e2e2e2", "surface-container-high": "#2a2a2a", "on-surface-variant": "#d0c6ab", "secondary-fixed": "#e4e2e1", "inverse-primary": "#705d00", "on-secondary-container": "#b6b5b4", "on-tertiary": "#2f3131", "inverse-surface": "#e5e2e1", "secondary-container": "#474746", "on-error": "#690005", error: "#ffb4ab", "on-tertiary-fixed": "#1a1c1c", "surface-container": "#201f1f", "surface-variant": "#353534", "surface-bright": "#393939", secondary: "#c8c6c5", "on-primary-container": "#705e00", "surface-dim": "#131313", "on-background": "#e5e2e1", "on-primary-fixed-variant": "#544600", "secondary-fixed-dim": "#c8c6c5", "on-tertiary-fixed-variant": "#454747", "outline-variant": "#4d4732", tertiary: "#f6f6f6", "on-primary-fixed": "#221b00", "on-secondary": "#303030", "on-surface": "#e5e2e1", "on-error-container": "#ffdad6", outline: "#999077", surface: "#131313", "primary-fixed": "#ffe16d", "on-tertiary-container": "#5e5f60", "on-secondary-fixed-variant": "#474746", "primary-container": "#ffd700", "surface-container-low": "#1c1b1b", "surface-container-lowest": "#0e0e0e", "tertiary-container": "#d9dada", "surface-container-highest": "#353534", "tertiary-fixed-dim": "#c6c6c7", "on-primary": "#3a3000", "error-container": "#93000a", background: "#131313", "surface-tint": "#e9c400", "primary-fixed-dim": "#e9c400", "inverse-on-surface": "#313030"
+                    },
+                    fontFamily: { "body-lg": ["Plus Jakarta Sans"], "label-sm": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "display-lg": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "body-md": ["Plus Jakarta Sans"], "label-md": ["Plus Jakarta Sans"], "headline-lg-mobile": ["Plus Jakarta Sans"] }
+                }
+            }
+        }
+    </script>
+    
+</head>
+
+<body class="mx-auto max-w-[480px] relative border-x border-white/10 shadow-2xl min-h-screen">
+
+    <div id="app">
+                <!-- Splash / Loading Screen -->
+        <div id="splash-screen" class="auth-container" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: #F8A002; position: fixed; inset: 0; z-index: 9999;">
+            <div style="text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <img src="assets/redrivo_marshal_logo_full.png" alt="ReDrivo Driver Logo" style="width: 80%; max-width: 320px; height: auto; animation: splashLogoAnim 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: scale(0.8);" />
+                <div style="margin-top: 12px; font-family: 'Inter', sans-serif; font-size: 20px; font-weight: 700; color: #1E1E1E; opacity: 0; animation: splashSloganAnim 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: 0.3s; letter-spacing: -0.5px;">Drive on, fikar gone</div>
+            </div>
+            <style>
+                @keyframes splashLogoAnim {
+                    0% { opacity: 0; transform: scale(0.8); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+                @keyframes splashSloganAnim {
+                    0% { opacity: 0; transform: translateY(10px); }
+                    100% { opacity: 1; transform: translateY(0); }
+                }
+            </style>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="login-screen" class="auth-container" style="display: none;">
+            <div class="glass-card">
+                <div class="brand">
+                    <span class="logo-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></span>
+                    <h1>Re<span style="color: #FACC15;">D</span>rivo Driver</h1>
+                    <p>Safety & Trust Logistics</p>
+                </div>
+                <div class="auth-form">
+                    <h2>Driver Secure Login</h2>
+                    <div class="form-group">
+                        <label>Phone Number (10 Digits)</label>
+                        <div class="phone-input-group">
+                            <span class="prefix">+91</span>
+                            <input type="tel" id="login-id" placeholder="Enter your 10 Digits Mobile Number" maxlength="10" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                        </div>
+                    </div>
+                    <div class="form-group" id="login-otp-group" style="display:none;">
+                        <label>Secure OTP</label>
+                        <div class="otp-boxes" data-target="login-otp">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        </div>
+                        <input type="hidden" id="login-otp" value="">
+                        <div style="text-align: right; margin-top: 8px;">
+                            <a href="#" id="resend-login-otp" onclick="handleResendOTP()" style="font-size: 0.85rem; color: var(--primary); display: none; text-decoration: none; font-weight: 600;">Resend OTP</a>
+                            <span id="resend-login-timer" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+                        </div>
+                    </div>
+                    
+
+                    <button class="btn btn-primary" id="btn-login-action" onclick="handleLoginAction()">Send OTP</button>
+                    
+                    <p style="text-align: center; font-size: 0.75rem; color: #8B949E; margin-top: 24px; line-height: 1.4;">
+                        By logging in, you agree to our <a href="#" onclick="openTermsModal(); return false;" style="color: #D4AF37; text-decoration: underline;">Terms & Conditions</a> and <a href="#" onclick="openPrivacyModal(); return false;" style="color: #D4AF37; text-decoration: underline;">Privacy Policy</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <!-- KYC Screen -->
+        <div id="kyc-screen" class="auth-container hidden" style="overflow-y: auto;">
+            <div class="glass-card scrollable">
+                    <div class="brand">
+                        <h1>KYC Verification</h1>
+                        <p>Upload your documents to unlock pickups. (Subject to Admin Approval)</p>
+                    </div>
+                    
+                    <!-- KYC Progress Stepper -->
+                    <div class="kyc-progress-container" style="margin-bottom: 24px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 700; margin-bottom: 8px; color: var(--text-muted);">
+                            <span id="kyc-step-label-1" class="kyc-step-label active" style="color: var(--primary); transition: color 0.3s ease;">1. Profile</span>
+                            <span id="kyc-step-label-2" class="kyc-step-label" style="transition: color 0.3s ease;">2. Documents</span>
+                            <span id="kyc-step-label-3" class="kyc-step-label" style="transition: color 0.3s ease;">3. Payout</span>
+                        </div>
+                        <div class="kyc-progress-bar" style="background: rgba(255, 255, 255, 0.08); height: 6px; border-radius: 3px; position: relative; overflow: hidden;">
+                            <div id="kyc-progress-fill" style="background: var(--primary); height: 100%; width: 33.33%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="auth-form">
+                        <!-- Step 1: Personal & Address Details -->
+                        <!-- Step 1: Contact Info -->
+                        <div id="kyc-step-1" class="kyc-step-container">
+                            <h2 style="font-size: 1.1rem; margin-bottom: 8px; color: var(--primary);">Step 1: Contact Info</h2>
+                            <p class="text-slate-400 text-xs mb-6">Enter your email address to receive ride notifications and payout statements.</p>
+                            
+                            <div class="form-group" style="margin-bottom: 24px;">
+                                <label>Email Address <span style="color:#ef4444">*</span></label>
+                                <input type="email" id="on-email" placeholder="john@example.com" autocomplete="email" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px; font-size: 0.95rem; width: 100%;">
+                            </div>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+                                <button type="button" class="btn btn-primary" id="btn-kyc-next-1" onclick="goToKycStep(2)">Next: Upload Documents</button>
+                                <button type="button" class="btn btn-secondary" onclick="skipOnboarding()" style="width: 100%; border: 1px solid var(--border); color: var(--text-muted); background: transparent;">Skip and Continue Later</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Document Details -->
+                        <div id="kyc-step-2" class="kyc-step-container" style="display: none; padding: 20px;">
+                            <!-- Header Bar -->
+                            <div class="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+                                <button type="button" onclick="prevWizardSubStep()" class="wizard-header-btn" id="btn-wizard-back">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                                </button>
+                                <span id="kyc-wizard-title" class="font-semibold text-lg text-white" style="font-family: 'Manrope', sans-serif;">Vehicle Type</span>
+                                <div class="flex gap-2">
+                                    <button type="button" class="wizard-header-btn" onclick="showKycHelp()">
+                                        <span class="material-symbols-outlined" style="font-size: 1.2rem;">help</span>
+                                    </button>
+                                    <button type="button" class="wizard-header-btn" onclick="callKycSupport()">
+                                        <span class="material-symbols-outlined" style="font-size: 1.2rem;">call</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Name Mismatch Warning Banner -->
+                            <div id="name-mismatch-banner" class="hidden bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-3 rounded-xl text-xs font-semibold mb-4 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-base">warning</span>
+                                <span id="name-mismatch-text">Name mismatch detected across documents. Please verify.</span>
+                            </div>
+
+                            <!-- Sub-step 0: Vehicle Selection -->
+                            <div id="wizard-substep-vehicle" class="wizard-substep-section">
+                                <p class="text-slate-400 text-sm mb-6">Select all vehicle categories you can operate (select one or both).</p>
+                                <div class="grid grid-cols-2 gap-4 mb-8">
+                                    <div id="vehicle-card-bike" class="vehicle-card active" onclick="toggleWizardVehicle('bike')">
+                                        <img src="images/bike.png" class="h-12 mb-3 object-contain" />
+                                        <span class="font-bold text-sm text-white">Bike</span>
+                                        <div class="checkbox-indicator flex items-center justify-center">
+                                            <span class="material-symbols-outlined text-sm">check</span>
+                                        </div>
+                                    </div>
+                                    <div id="vehicle-card-car" class="vehicle-card" onclick="toggleWizardVehicle('car')">
+                                        <img src="images/hatchback.png" class="h-12 mb-3 object-contain" />
+                                        <span class="font-bold text-sm text-white">Car</span>
+                                        <div class="checkbox-indicator flex items-center justify-center">
+                                            <span class="material-symbols-outlined text-sm">check</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button type="button" class="btn btn-secondary" onclick="prevWizardSubStep()" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">Back</button>
+                                    <button type="button" class="btn btn-primary" onclick="nextWizardSubStep()">Continue</button>
+                                </div>
+                            </div>
+
+                            <!-- Sub-step: ID Type Choice (Aadhaar or PAN) -->
+                            <div id="wizard-substep-id-choice" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-4">Choose which government ID you would like to use for KYC verification.</p>
+                                <div class="grid grid-cols-1 gap-3 mb-6">
+                                    <!-- Aadhaar Option -->
+                                    <div id="id-choice-card-aadhaar" class="vehicle-card active" onclick="selectWizardIdChoice('aadhaar')" style="flex-direction: row; justify-content: space-between; align-items: center; padding: 16px 18px; text-align: left;">
+                                        <div style="display:flex; align-items:center; gap:12px;">
+                                            <span class="material-symbols-outlined text-3xl" style="color: #10b981;">badge</span>
+                                            <div>
+                                                <div class="font-bold text-sm text-white flex items-center gap-2">
+                                                    Aadhaar Card
+                                                    <span style="font-size: 10px; background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 2px 6px; border-radius: 9999px;">Recommended</span>
+                                                </div>
+                                                <div class="text-xs text-slate-400">Auto-extracts Name, DOB & Gender</div>
+                                            </div>
+                                        </div>
+                                        <div class="radio-indicator"></div>
+                                    </div>
+
+                                    <!-- PAN Option -->
+                                    <div id="id-choice-card-pan" class="vehicle-card" onclick="selectWizardIdChoice('pan')" style="flex-direction: row; justify-content: space-between; align-items: center; padding: 16px 18px; text-align: left;">
+                                        <div style="display:flex; align-items:center; gap:12px;">
+                                            <span class="material-symbols-outlined text-3xl" style="color: #38bdf8;">credit_card</span>
+                                            <div>
+                                                <div class="font-bold text-sm text-white">PAN Card</div>
+                                                <div class="text-xs text-slate-400">Auto-extracts Name & PAN Number</div>
+                                            </div>
+                                        </div>
+                                        <div class="radio-indicator"></div>
+                                    </div>
+                                </div>
+                                <div class="flex gap-3">
+                                    <button type="button" class="btn btn-secondary flex-1" onclick="prevWizardSubStep()" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Back</button>
+                                    <button type="button" class="btn btn-primary flex-1" onclick="nextWizardSubStep()">Continue</button>
+                                </div>
+                            </div>
+
+                            <!-- Sub-step: Combined PAN Screen -->
+                            <div id="wizard-substep-pan" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-4">Capture FRONT & BACK of your PAN Card. Document number will be auto-detected.</p>
+                                
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <!-- Front Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="pan-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="pan-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('pan')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="pan-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">badge</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">PAN Front</div>
+                                            <button id="on-pan-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('pan')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="pan-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-pan-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+
+                                    <!-- Back Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="panback-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="panback-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('panback')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="panback-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">badge</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">PAN Back</div>
+                                            <button id="on-panback-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('panback')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="panback-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-panback-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+                                </div>
+
+                                <!-- PAN Number Field (Auto-extracted via OCR) -->
+                                <div class="form-group mb-6">
+                                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">PAN Card Number</label>
+                                    <div class="relative">
+                                        <input type="text" id="on-pan" placeholder="ABCDE1234F" maxlength="10" autocomplete="off" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base tracking-widest uppercase focus:border-amber-500 focus:outline-none pr-10" style="letter-spacing: 2px;">
+                                        <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-pan')" title="Edit PAN Number">edit</span>
+                                    </div>
+                                    <div id="pan-ocr-badge" class="hidden text-emerald-400 text-xs mt-1 flex items-center gap-1 font-medium">
+                                        <span class="material-symbols-outlined text-sm">check_circle</span> Auto-captured via OCR
+                                    </div>
+                                </div>
+
+                                <button type="button" id="btn-pan-next" class="btn btn-primary" onclick="nextWizardSubStep()" disabled style="opacity: 0.5;">Continue</button>
+                            </div>
+
+                            <!-- Sub-step 2: Combined Aadhaar Screen -->
+                            <div id="wizard-substep-aadhaar" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-4">Capture FRONT & BACK of your Aadhaar Card. Name & Number will be auto-filled.</p>
+                                
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <!-- Front Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="aadhaar-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="aadhaar-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('aadhaar')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="aadhaar-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">contact_mail</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">Aadhaar Front</div>
+                                            <button id="on-aadhaar-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('aadhaar')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="aadhaar-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-aadhaar-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+
+                                    <!-- Back Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="aadhaarback-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="aadhaarback-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('aadhaarback')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="aadhaarback-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">contact_mail</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">Aadhaar Back</div>
+                                            <button id="on-aadhaarback-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('aadhaarback')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="aadhaarback-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-aadhaarback-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+                                </div>
+
+                                <!-- Aadhaar Number Field -->
+                                <div class="form-group mb-6">
+                                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Aadhaar Card Number</label>
+                                    <div class="relative">
+                                        <input type="text" id="on-aadhaar" placeholder="1234 5678 9012" maxlength="14" inputmode="numeric" autocomplete="off" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base tracking-widest focus:border-amber-500 focus:outline-none pr-10">
+                                        <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-aadhaar')" title="Edit Aadhaar Number">edit</span>
+                                    </div>
+                                    <div id="aadhaar-ocr-badge" class="hidden text-emerald-400 text-xs mt-1 flex items-center gap-1 font-medium">
+                                        <span class="material-symbols-outlined text-sm">check_circle</span> Auto-captured via OCR
+                                    </div>
+                                </div>
+
+                                <button type="button" id="btn-aadhaar-next" class="btn btn-primary" onclick="nextWizardSubStep()" disabled style="opacity: 0.5;">Continue</button>
+                            </div>
+
+                            <!-- Sub-step 3: Selfie View -->
+                            <div id="wizard-substep-selfie" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-6">Take a live selfie to verify your identity.</p>
+                                
+                                <div id="camera-section" class="form-group">
+                                    <div id="face-photo-preview-container" class="hidden align-items-center gap-10 mb-8 bg-emerald-500/10 p-4 border border-emerald-500/20 rounded-xl">
+                                        <img id="face-photo-preview" src="" class="w-16 h-16 rounded-xl object-cover bg-black" />
+                                        <div style="flex:1;">
+                                            <div style="font-size:0.85rem; font-weight:600; color:#34d399;">Selfie Uploaded Successfully</div>
+                                            <div style="font-size:0.7rem; color:var(--text-muted);">Existing photo will be kept</div>
+                                        </div>
+                                        <button type="button" class="btn btn-secondary" onclick="changeUploadedPhoto('face')" style="padding:6px 12px; font-size:0.75rem; width:auto; margin:0;">Retake</button>
+                                    </div>
+
+                                    <div id="camera-container" class="hidden flex-col items-center gap-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5 mb-6">
+                                        <div class="relative w-full max-w-[280px] aspect-square rounded-full overflow-hidden bg-black border-2 border-white/10">
+                                            <video id="camera-preview" autoplay playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
+                                            <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                                <svg width="100%" height="100%" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M 0,0 L 200,0 L 200,200 L 0,200 Z M 100,20 C 60,20 60,110 60,130 C 60,165 80,180 100,180 C 120,180 140,165 140,130 C 140,110 140,20 100,20 Z" fill="black" fill-opacity="0.6" fill-rule="evenodd"/>
+                                                    <path d="M 100,20 C 60,20 60,110 60,130 C 60,165 80,180 100,180 C 120,180 140,165 140,130 C 140,110 140,20 100,20 Z" stroke="#CCFF00" stroke-width="2" stroke-dasharray="4 4"/>
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" id="btn-capture-photo" onclick="captureSelfie()"><span class="material-symbols-outlined">photo_camera</span> Take Photo</button>
+                                        <button type="button" class="btn btn-secondary" onclick="stopKycCamera()">Cancel</button>
+                                    </div>
+
+                                    <div id="photo-preview-container" class="hidden flex-col items-center gap-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5 mb-6">
+                                        <img id="captured-photo" class="w-full max-w-[280px] rounded-2xl border-2 border-white/10" />
+                                        <button type="button" id="btn-submit-selfie" class="btn btn-primary" onclick="uploadSingleKycFile('face')" style="background:#D4AF37; color:#000; font-weight:bold; border:none;">Submit Selfie</button>
+                                        <button type="button" class="btn btn-secondary" onclick="retakeSelfie()">Retake</button>
+                                    </div>
+
+                                    <button type="button" id="btn-start-camera" class="btn btn-secondary" onclick="startKycCamera()" style="border: 1px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.01); padding: 16px;">
+                                        <span class="material-symbols-outlined mr-2">photo_camera</span> Open Selfie Camera
+                                    </button>
+                                    <input type="file" id="on-face-file" accept="image/jpeg,image/png,image/jpg" class="hidden">
+                                </div>
+                                
+                                <button type="button" id="btn-selfie-next" class="btn btn-primary mt-6" onclick="nextWizardSubStep()" disabled style="opacity: 0.5;">Continue</button>
+                            </div>
+
+                            <!-- Sub-step 4: Combined Driving License Screen -->
+                            <div id="wizard-substep-dl" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-4">Capture FRONT & BACK of your Driving License. Number will be auto-detected.</p>
+                                
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <!-- Front Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="dl-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="dl-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('dl')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="dl-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">card_membership</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">DL Front</div>
+                                            <button id="on-dl-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('dl')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="dl-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-dl-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+
+                                    <!-- Back Slot -->
+                                    <div class="doc-upload-box p-3 border border-white/10 rounded-xl bg-zinc-900/40 text-center">
+                                        <div id="dlback-wizard-preview-container" class="hidden relative rounded-lg overflow-hidden mb-2 bg-black">
+                                            <img id="dlback-photo-preview" src="" class="w-full h-28 object-contain rounded-lg" />
+                                            <button type="button" onclick="triggerFileSelect('dlback')" class="absolute top-2 right-2 bg-black/80 hover:bg-black border-none rounded-full px-2 py-1 text-[10px] font-semibold text-white cursor-pointer flex items-center gap-1">
+                                                Retake
+                                            </button>
+                                        </div>
+                                        <div id="dlback-wizard-upload-placeholder" class="py-3">
+                                            <span class="material-symbols-outlined text-3xl text-slate-500 mb-1">card_membership</span>
+                                            <div class="font-bold text-xs text-slate-300 mb-2">DL Back</div>
+                                            <button id="on-dlback-upload-btn" type="button" class="btn btn-primary mx-auto flex items-center justify-center gap-1" onclick="triggerFileSelect('dlback')" style="width: auto; padding: 6px 14px; font-size: 0.75rem; background: var(--primary); border-radius: 6px;">
+                                                <span class="material-symbols-outlined" style="font-size: 14px;">photo_camera</span> Take Photo
+                                            </button>
+                                        </div>
+                                        <span id="dlback-file-name" class="hidden">No file chosen</span>
+                                        <button id="on-dlback-clear-btn" type="button" class="hidden"></button>
+                                    </div>
+                                </div>
+
+                                <!-- DL Number Field -->
+                                <div class="form-group mb-6">
+                                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Driving License Number <span style="color:#ef4444">*</span></label>
+                                    <div class="relative">
+                                        <input type="text" id="on-dl" placeholder="MH12 20101234567" maxlength="16" autocomplete="off" style="text-transform:uppercase;" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base focus:border-amber-500 focus:outline-none pr-10">
+                                        <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-dl')" title="Edit DL Number">edit</span>
+                                    </div>
+                                    <div id="dl-ocr-unread-banner" class="hidden mt-2 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-300">
+                                        <span class="material-symbols-outlined text-base">info</span>
+                                        <span>Couldn't auto-read document. Please verify or type the number manually.</span>
+                                    </div>
+                                </div>
+
+                                <button type="button" id="btn-dl-next" class="btn btn-primary" onclick="nextWizardSubStep()" disabled style="opacity: 0.5;">Continue</button>
+                            </div>
+
+                            <!-- Sub-step 5: Review & Confirm Profile Details -->
+                            <div id="wizard-substep-confirm" class="wizard-substep-section hidden">
+                                <p class="text-slate-400 text-sm mb-4">We've auto-filled your details from your documents. Please review and make any corrections.</p>
+
+                                <!-- Full Name Input -->
+                                <div class="form-group mb-4">
+                                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Full Name <span style="color:#ef4444">*</span></label>
+                                    <div class="relative">
+                                        <input type="text" id="on-name" placeholder="Full Name from Aadhaar" autocomplete="name" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base focus:border-amber-500 focus:outline-none pr-10">
+                                        <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-name')" title="Edit Full Name">edit</span>
+                                    </div>
+                                </div>
+
+                                <!-- Date of Birth & Gender -->
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <div class="form-group">
+                                        <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Date of Birth <span style="color:#ef4444">*</span></label>
+                                        <div class="relative">
+                                            <input type="text" id="on-dob" placeholder="DD/MM/YYYY" maxlength="10" autocomplete="bday" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base focus:border-amber-500 focus:outline-none pr-10">
+                                            <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-dob')" title="Edit DOB">edit</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Gender <span style="color:#ef4444">*</span></label>
+                                        <div class="relative">
+                                            <input type="text" id="on-gender" placeholder="Male / Female" maxlength="15" autocomplete="sex" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base focus:border-amber-500 focus:outline-none pr-10">
+                                            <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-gender')" title="Edit Gender">edit</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Operating City (Single canonical #on-city element) -->
+                                <div class="form-group mb-6 relative">
+                                    <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Operating City <span style="color:#ef4444">*</span></label>
+                                    <div class="relative">
+                                        <input type="text" id="on-city" placeholder="Auto-detecting city..." autocomplete="off" class="w-full bg-[#1e1b18] border border-white/5 rounded-xl p-3 text-white text-base focus:border-amber-500 focus:outline-none pr-10">
+                                        <span class="absolute right-3 top-3.5 material-symbols-outlined text-slate-400 hover:text-amber-400 text-lg cursor-pointer transition-colors" onclick="focusAndEditField('on-city')" title="Edit City">edit</span>
+                                    </div>
+                                    <div id="city-dropdown" class="search-dropdown hidden"></div>
+                                </div>
+
+                                <!-- Navigation Action Buttons -->
+                                <div class="flex gap-4">
+                                    <button type="button" class="btn btn-secondary" onclick="prevWizardSubStep()" style="flex: 1;">Previous</button>
+                                    <button type="button" class="btn btn-primary btn-glow" id="btn-submit-kyc" onclick="submitOnboarding()" style="flex: 2;">Submit for Approval</button>
+                                </div>
+                                <button type="button" class="btn btn-secondary mt-4" onclick="skipOnboarding()" style="width: 100%; border: 1px solid var(--border); color: var(--text-muted); background: transparent;">Skip and Continue Later</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <div id="main-app" class="hidden">
+
+            <!-- Full-Screen Mandatory Battery Optimization Gate -->
+            <div id="battery-optimization-gate-overlay" class="fixed inset-0 z-[9999] flex flex-col justify-center items-center px-margin-mobile text-center" style="display: none; background: #12161D;">
+                <div class="glass-card p-8 max-w-sm rounded-2xl border border-white/10 flex flex-col items-center gap-4">
+                    <div class="w-16 h-16 rounded-full flex items-center justify-center bg-warning/10 border border-warning/30 animate-pulse" style="background: rgba(250,204,21,0.08); border: 1px solid rgba(250,204,21,0.25);">
+                        <span class="material-symbols-outlined text-warning text-4xl" style="color: #FACC15; font-size: 36px;">notifications_active</span>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mt-2">Stay Online, Stay Earning</h2>
+                    <p class="text-sm text-on-surface-variant leading-relaxed">
+                        Turn off battery optimization for ReDrivo so you never miss a pickup — just like WhatsApp calls.
+                    </p>
+                    <button onclick="triggerBackgroundAccessSettings()" class="btn btn-primary w-full mt-4 py-3" style="background: #FACC15; color: #000; font-weight: bold; border: none; border-radius: 12px; font-size: 0.9rem;">Turn On</button>
+                </div>
+            </div>
+
+            <header class="absolute top-0 left-0 w-full z-40 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-md border-b border-white/10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border border-primary-container/30">
+<img id="user-avatar-display" alt="Service Driver Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE2jaD0D2a-_EvNV6181KpLe_vnBA9lY2scQwtC3bZVDdtn-j19ntNmHvtywWmUxmGKHFjZeHL7mRW4yWUkxFCIFtra9H_hl56lXebqaRff2iUYFHz85ic1dKmbVpVREH2ljIx1Xg-jnh5KYOOGlFEzNlFH9mql8KQeO5iQqC_oLeON3iGFG9eco9bMghqKRGTo9v-T31nF-EW5v31dwjmbxVFJv2d-4Gi_UqtvjUXMtp-_zJvY9aVvhOyPy1C79EBg4BAuBycC5Y"/>
+</div>
+<div>
+<p id="user-name-display" class="text-label-md font-label-md text-on-surface-variant">Hi, Driver</p>
+<h1 class="text-lg font-headline-md font-extrabold text-on-surface">Re<span style="color: #FACC15;">D</span>rivo Driver</h1>
+</div>
+</div>
+<div class="flex items-center gap-3">
+    <label class="relative inline-flex items-center cursor-pointer">
+        <input type="checkbox" id="status-toggle" class="sr-only peer" checked onchange="toggleMarshalStatus(this)">
+        <div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
+    </label>
+    <span id="status-dot" class="w-2 h-2 rounded-full bg-green-500"></span>
+    <span id="status-label" class="text-label-md font-label-md text-primary-container uppercase tracking-wider font-bold">ONLINE</span>
+    <button onclick="logout()" class="ml-2 material-symbols-outlined text-white cursor-pointer hover:text-error transition-colors">logout</button>
+</div>
+</header>
+
+<div class="dashboard-content pt-20 pb-24">
+    <!-- Profile Section -->
+    <div id="tab-profile" class="tab-panel">
+        <!-- Profile Picture Upload Area -->
+        <div class="flex flex-col items-center mt-6 mb-8">
+            <div class="relative w-28 h-28 rounded-full overflow-hidden border-2 border-primary-container cursor-pointer group" onclick="document.getElementById('profile-pic-upload').click()">
+                <img id="profile-page-avatar" alt="Driver Avatar" class="w-full h-full object-cover" src="https://ui-avatars.com/api/?name=Driver&background=random"/>
+                <div class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <span class="material-symbols-outlined text-white text-3xl">photo_camera</span>
+                </div>
+            </div>
+            <input type="file" id="profile-pic-upload" accept="image/*" class="hidden" onchange="uploadProfilePicture(event)">
+            <h2 id="profile-page-name" class="mt-4 text-xl font-bold text-white">Driver Name</h2>
+            <p class="text-sm text-on-surface-variant mt-1">Re<span style="color: #FACC15;">D</span>rivo Fleet Member</p>
+        </div>
+
+        <div class="status-banner" id="verification-status-banner">
+            <div class="status-content">
+                <i data-lucide="shield-alert" class="status-icon"></i>
+                <div>
+                    <h3 id="status-title">Pending Verification</h3>
+                    <p id="status-desc">Your documents are under review. You'll be notified once approved.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-grid">
+                        <div class="v-card">
+                            <h3>Document Status</h3>
+                            <div class="v-list">
+                                <div class="v-item" id="v-email" style="flex-direction: column; align-items: stretch;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                        <span>Email Verification</span>
+                                        <span class="v-badge pending">Pending</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                        <input type="email" id="email-display" readonly style="flex:1; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 12px; font-size: 0.9rem;">
+                                        <button class="btn btn-secondary" id="email-edit-btn" onclick="toggleEdit('email')" style="padding: 0 12px; font-size: 0.8rem; width: max-content;">Edit</button>
+                                        <button class="btn btn-primary" id="email-send-otp-btn" onclick="sendEmailOTP()" style="padding: 0 12px; font-size: 0.8rem; width: max-content; background: var(--primary); color: #000; border: none; font-weight: bold; border-radius: 8px;">Send OTP</button>
+                                    </div>
+                                    <div id="email-otp-boxes-section" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted);">Enter 6-digit code sent to your email</div>
+                                        <div style="display: flex; gap: 8px; justify-content: flex-start;">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="email-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <button class="btn btn-primary" onclick="verifyEmailOTP()" style="padding: 0 16px; font-size: 0.9rem; width: max-content;">Verify</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="v-item" id="v-phone" style="flex-direction: column; align-items: stretch;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                        <span>Phone Verification</span>
+                                        <span class="v-badge pending">Pending</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                        <input type="text" id="phone-display" readonly style="flex:1; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 12px; font-size: 0.9rem;">
+                                        <button class="btn btn-secondary" id="phone-edit-btn" onclick="toggleEdit('phone')" style="padding: 0 12px; font-size: 0.8rem; width: max-content;">Edit</button>
+                                    </div>
+                                    <div id="phone-otp-boxes-section" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                        <div style="font-size: 0.8rem; color: var(--text-muted);">Enter 6-digit code sent to your phone</div>
+                                        <div style="display: flex; gap: 8px; justify-content: flex-start;">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <input type="tel" inputmode="numeric" pattern="[0-9]*" class="phone-otp-box" maxlength="1" style="width: 40px; height: 48px; text-align: center; font-size: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--text);">
+                                            <button class="btn btn-primary" onclick="verifyPhoneOTP()" style="padding: 0 16px; font-size: 0.9rem; width: max-content;">Verify</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="v-item" id="v-pan" style="flex-direction: column; align-items: stretch;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                        <span>PAN Info</span>
+                                        <span class="v-badge pending">Pending</span>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-muted);" id="pan-display">-</div>
+                                </div>
+                                <div class="v-item" id="v-aadhaar" style="flex-direction: column; align-items: stretch;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                        <span>Aadhaar Info</span>
+                                        <span class="v-badge pending">Pending</span>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-muted);" id="aadhaar-display">-</div>
+                                </div>
+                                <div class="v-item" id="v-dl" style="flex-direction: column; align-items: stretch;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                        <span>Driving License</span>
+                                        <span class="v-badge pending">Pending</span>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-muted);" id="dl-display">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bank & Payout Card -->
+                        <div class="v-card" id="bank-payout-card" style="margin-bottom: 24px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="font-size: 1rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                    <span class="material-symbols-outlined" style="color: #FACC15; font-size: 20px;">account_balance</span>
+                                    Bank & Payout Account
+                                </h3>
+                                <span id="bank-status-badge" class="v-badge pending">Not Linked</span>
+                            </div>
+                            <div id="bank-payout-card-body">
+                                <!-- Dynamically rendered via renderUserStatus() -->
+                            </div>
+                        </div>
+
+                        <!-- Payout & Subscription Plan Card -->
+                        <div class="v-card" id="payout-plan-card" style="margin-bottom: 24px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="font-size: 1rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                    <span class="material-symbols-outlined" style="color: #FACC15; font-size: 20px;">payments</span>
+                                    Earnings & Payout Plan
+                                </h3>
+                                <span id="payout-plan-badge" class="v-badge" style="background: rgba(250,204,21,0.15); color: #FACC15; border: 1px solid rgba(250,204,21,0.3); font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem;">Commission Plan</span>
+                            </div>
+                            <div id="payout-plan-card-body">
+                                <!-- Dynamically rendered via renderPayoutPlanCard() -->
+                            </div>
+                        </div>
+
+                        <div class="v-card" style="margin-bottom: 24px;">
+                            <h3 style="margin-bottom: 16px;">Overview</h3>
+                            <div class="stats-mini" style="display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; scrollbar-width:none;">
+                                <div class="stat-box" style="flex: 0 0 120px; background: rgba(255,255,255,0.03); border:1px solid var(--border); padding:16px; border-radius:12px;">
+                                    <span class="stat-num" style="font-size:1.5rem; font-weight:800; color:var(--primary); display:block; margin-bottom:4px;">0</span>
+                                    <span class="stat-lab" style="font-size:0.7rem; text-transform:uppercase; color:var(--text-dim); font-weight:700;">Today's Trips</span>
+                                </div>
+                                <div class="stat-box" style="flex: 0 0 120px; background: rgba(255,255,255,0.03); border:1px solid var(--border); padding:16px; border-radius:12px;">
+                                    <span class="stat-num" style="font-size:1.5rem; font-weight:800; color:#fff; display:block; margin-bottom:4px;">₹0</span>
+                                    <span class="stat-lab" style="font-size:0.7rem; text-transform:uppercase; color:var(--text-dim); font-weight:700;">Total Earnings</span>
+                                </div>
+                                <div class="stat-box" style="flex: 0 0 120px; background: rgba(255,255,255,0.03); border:1px solid var(--border); padding:16px; border-radius:12px;">
+                                    <span class="stat-num" style="font-size:1.5rem; font-weight:800; color:var(--success); display:block; margin-bottom:4px;">0.0 <i data-lucide="star" style="width: 16px; height: 16px; display: inline-block;"></i></span>
+                                    <span class="stat-lab" style="font-size:0.7rem; text-transform:uppercase; color:var(--text-dim); font-weight:700;">Rating</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- App Settings Section -->
+                        <div class="v-card" style="margin-bottom: 24px;">
+                            <h3 style="margin-bottom: 12px; font-size: 1rem; color: #fff;">App Settings</h3>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 14px 16px; border-radius: 12px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span class="material-symbols-outlined" style="color: #D4AF37; font-size: 20px;">notifications_active</span>
+                                        <div>
+                                            <div style="font-size: 0.85rem; font-weight: 700; color: #fff;">Push Notifications</div>
+                                            <div style="font-size: 0.72rem; color: var(--text-muted);">Receive instant pickup offer alerts</div>
+                                        </div>
+                                    </div>
+                                    <button onclick="setupPushNotifications()" style="background: rgba(212,175,55,0.15); color: #D4AF37; border: 1px solid rgba(212,175,55,0.4); padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">Enable</button>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 14px 16px; border-radius: 12px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span class="material-symbols-outlined" style="color: #D4AF37; font-size: 20px;">battery_charging_full</span>
+                                        <div>
+                                            <div style="font-size: 0.85rem; font-weight: 700; color: #fff;">Background Access</div>
+                                            <div style="font-size: 0.72rem; color: var(--text-muted);">Allow app to run unrestricted for reliable alerts</div>
+                                        </div>
+                                    </div>
+                                    <button onclick="triggerBackgroundAccessSettings()" style="background: rgba(212,175,55,0.15); color: #D4AF37; border: 1px solid rgba(212,175,55,0.4); padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">Configure</button>
+                                </div>
+                            </div>
+                        </div>
+
+                    <!-- Legal Documents and DPDP Consent Withdrawal Links -->
+                    <div style="margin-top: 30px; padding: 20px; border-top: 1px solid rgba(255,255,255,0.05); text-align: center; display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                        <div style="display: flex; justify-content: center; gap: 20px; font-size: 0.8rem;">
+                            <a href="#" onclick="openTermsModal(); return false;" style="color: #D4AF37; text-decoration: none; font-weight: 600;">Terms & Conditions</a>
+                            <span style="color: rgba(255,255,255,0.1);">|</span>
+                            <a href="#" onclick="openPrivacyModal(); return false;" style="color: #D4AF37; text-decoration: none; font-weight: 600;">Privacy Policy</a>
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                            Pursuant to Indian DPDP Act 2023, you can request data erasure or withdraw consent.
+                            To do so, please contact our DPO at <a href="mailto:grievance@redrivo.com" style="color: #D4AF37; text-decoration: none;">grievance@redrivo.com</a>.
+                        </div>
+                        <button class="btn btn-secondary" onclick="logoutMarshal()" style="margin-top: 15px; width: 100%; border: 1px solid var(--error); color: var(--error); background: rgba(239, 68, 68, 0.05); padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer;">Logout</button>
+                    </div>
+                </div>
+            </div> <!-- Closes tab-profile -->
+
+                <!-- Trips Section -->
+                <div id="tab-trips" class="tab-panel active">
+<main class="mt-20 px-margin-mobile max-w-2xl mx-auto">
+<!-- Battery Optimization Guided Banner -->
+<div id="battery-optimization-banner-container"></div>
+<!-- Dashboard Header Info -->
+<section class="mb-8 flex justify-between items-end">
+<div>
+<h2 class="text-headline-lg-mobile font-headline-lg-mobile font-bold text-white mb-1">Nearby Pickups</h2>
+<p id="pickups-count-text" class="text-label-md font-label-md text-on-surface-variant">Checking available requests...</p>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-xl tonal-layer-1 border border-white/10">
+<span class="material-symbols-outlined text-primary-container">tune</span>
+</button>
+</section>
+
+<!-- High Demand Recommendations Widget -->
+<div id="high-demand-pincode-widget" class="v-card" style="display: none; margin-bottom: 20px; border: 1px solid rgba(245, 158, 11, 0.3); background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(20, 20, 22, 0.95) 100%); padding: 14px 16px; border-radius: 16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="color:#F59E0B; font-size:20px;">local_fire_department</span>
+            <h3 style="font-size:0.9rem; font-weight:800; color:#fff; margin:0; text-transform:uppercase; letter-spacing:0.5px;">High Demand Areas Near You</h3>
+        </div>
+        <span class="v-badge" style="background:rgba(245, 158, 11, 0.15); color:#F59E0B; border:1px solid rgba(245, 158, 11, 0.3); font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:4px;">2h Surge</span>
+    </div>
+    <div id="high-demand-pincode-list" style="display:flex; flex-direction:column; gap:8px;">
+        <!-- Dynamically populated via renderHighDemandWidget() -->
+    </div>
+</div>
+
+<!-- Booking Type Sub-Tabs inside Home -->
+<div class="flex bg-surface-container-low p-1 rounded-xl gap-1 mb-4" id="home-booking-type-switcher">
+
+    <button id="btn-home-instant" onclick="switchHomeBookingType('instant')" class="flex-1 py-3 px-2 rounded-lg font-label-md text-label-md bg-primary-container text-on-primary-container border-none transition-all">Instant Pickups</button>
+    <button id="btn-home-scheduled" onclick="switchHomeBookingType('scheduled')" class="flex-1 py-3 px-2 rounded-lg font-label-md text-label-md bg-transparent border-none text-on-surface-variant hover:bg-surface-container-high transition-colors">Scheduled Pickups</button>
+</div>
+
+<!-- Pickup Feed -->
+<div id="available-pickups-list" class="space-y-4">
+</div>
+</main>
+</div>
+<div id="tab-tasks" class="tab-panel">
+<main class="flex-1 pb-32">
+<!-- Tab Switcher -->
+<div class="sticky top-[64px] bg-background/95 backdrop-blur-md z-40 px-margin-mobile py-4 mb-4">
+<div class="flex bg-surface-container-low p-1 rounded-xl gap-1">
+<button id="btn-tasks-todo" onclick="switchTasksFilter('todo')" class="flex-1 py-3 px-2 rounded-lg font-label-md text-label-md bg-primary-container text-on-primary-container border-none transition-all">To Do</button>
+<button id="btn-tasks-inprogress" onclick="switchTasksFilter('inprogress')" class="flex-1 py-3 px-2 rounded-lg font-label-md text-label-md bg-transparent border-none text-on-surface-variant hover:bg-surface-container-high transition-colors">In Progress</button>
+<button id="btn-tasks-completed" onclick="switchTasksFilter('completed')" class="flex-1 py-3 px-2 rounded-lg font-label-md text-label-md bg-transparent border-none text-on-surface-variant hover:bg-surface-container-high transition-colors">Completed</button>
+</div>
+</div>
+<!-- Priority Tasks Section -->
+<section class="px-margin-mobile mb-gutter">
+<div class="flex justify-between items-end mb-sm">
+<h2 class="font-headline-md text-headline-md text-primary">Priority Tasks</h2>
+<span class="font-label-sm text-label-sm text-primary-container uppercase tracking-widest">Urgent Only</span>
+</div>
+<div id="my-trips-list" class="space-y-4"></div>
+</section>
+</main>
+</div>
+
+<div id="tab-map" class="tab-panel" style="display:none; padding: 0;">
+
+    <main class="relative flex-1 w-full overflow-hidden" style="height: 100vh;">
+        
+<div id="marshal-leaflet-map" class="absolute inset-0 z-0 bg-[#1E1E1E]"></div>
+<!-- Payment confirmation pending overlay -->
+<div id="map-pending-payment-overlay" style="display: none; position: absolute; inset: 0; background: rgba(11, 14, 20, 0.95); z-index: 50; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
+    <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); border: 2px dashed #facc15; display: flex; align-items: center; justify-content: center; color: #facc15; font-size: 2.2rem; margin-bottom: 24px;">
+        <span class="material-symbols-outlined" style="font-size: 40px;">hourglass_empty</span>
+    </div>
+    <h3 style="font-size: 1.4rem; font-weight: 800; color: #fff; margin-bottom: 8px;">Awaiting Payment Confirmation</h3>
+    <p style="font-size: 0.9rem; color: #a1a1aa; max-width: 320px; line-height: 1.5; margin-bottom: 30px;">Waiting for the customer to confirm their payment. The trip will automatically start once payment is received.</p>
+    <div style="font-size: 0.8rem; color: #facc15; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Automatic Cancellation in 5:00</div>
+</div>
+<!-- Customer selection pending overlay -->
+<div id="map-pending-selection-overlay" style="display: none; position: absolute; inset: 0; background: rgba(11, 14, 20, 0.95); z-index: 55; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;">
+    <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(96, 165, 250, 0.1); border: 2px dashed #60a5fa; display: flex; align-items: center; justify-content: center; color: #60a5fa; font-size: 2.2rem; margin-bottom: 24px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+    </div>
+    <h3 style="font-size: 1.4rem; font-weight: 800; color: #fff; margin-bottom: 8px;">Waiting for Customer Selection</h3>
+    <p style="font-size: 0.9rem; color: #a1a1aa; max-width: 320px; line-height: 1.5; margin-bottom: 30px;">Your bid has been submitted successfully. Waiting for the customer to choose their driver.</p>
+    <div style="font-size: 0.8rem; color: #60a5fa; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+        Awaiting Confirmation...
+    </div>
+</div>
+<!-- Map Navigation HUD Overlay -->
+<div class="absolute top-6 right-4 z-20 flex flex-col gap-3 items-end">
+<!-- Floating Navigate Button -->
+<button onclick="if(window.startNativeNavigation && typeof currentTripId !== 'undefined' && currentTripId) { window.startNativeNavigation(currentTripId); } else { drawMarshalRoute(); }" class="flex items-center gap-2 px-4 py-2 bg-[#D4AF37] text-black font-bold rounded-xl shadow-xl active:scale-95 transition-all duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">directions</span>
+<span class="text-sm">Navigate</span>
+</button>
+<!-- Route Info Bubble (Floating) -->
+<div class="bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10 flex flex-col items-end">
+<span class="text-xs text-gray-400 font-bold uppercase tracking-widest">Target</span>
+<span class="text-lg font-bold text-[#D4AF37]" id="map-target-title">Sector 62, Noida</span>
+</div>
+</div>
+
+
+    </main>
+    <section class="absolute bottom-16 left-0 w-full z-40">
+        
+<div class="bg-[#1a1a1a]/95 backdrop-blur-xl border-t border-white/10 rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.8)] flex flex-col p-6">
+<!-- Handle -->
+<div class="w-full flex justify-center mb-6">
+<div class="w-16 h-1.5 bg-white/20 rounded-full"></div>
+</div>
+<!-- Content Area -->
+<div class="flex-1 flex flex-col justify-between">
+<!-- Top Row: Trip Info -->
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="text-2xl font-bold text-white" id="map-customer-name">Loading...</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[18px] text-gray-400">directions_car</span>
+<span class="text-sm font-semibold text-gray-400" id="map-vehicle-info">Fetching details...</span>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="text-3xl font-black text-[#D4AF37] leading-none" id="map-distance">-.-<span class="text-lg ml-1">km</span></span>
+<span class="text-sm font-bold text-[#D4AF37]/70 mt-1" id="map-eta">-- mins ETA</span>
+</div>
+</div>
+<!-- Middle Row: Status Badge -->
+<div class="my-4">
+<div class="inline-flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl">
+<span class="material-symbols-outlined text-base text-[#D4AF37]" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<span class="text-sm font-bold text-gray-300" id="map-target-address">Fetching address...</span>
+</div>
+</div>
+<!-- Stop OTP Verification Area -->
+<div id="map-stop-otp-container" style="display: none; flex-direction: column; gap: 8px; width: 100%; margin-top: 12px; margin-bottom: 12px; background: rgba(250, 204, 21, 0.05); border: 1px dashed rgba(250, 204, 21, 0.3); border-radius: 14px; padding: 12px;">
+    <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Stop Arrival OTP</span>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="text" id="map-stop-otp-input" placeholder="Enter 4-Digit OTP" maxlength="4" style="flex: 1; height: 44px; padding: 0 12px; background: rgba(0,0,0,0.5); border: 1.5px solid rgba(250,204,21,0.3); border-radius: 10px; color: #fff; font-size: 0.95rem; font-weight: bold; outline: none; text-align: center; letter-spacing: 4px;">
+        <button id="map-stop-otp-verify-btn" style="height: 44px; padding: 0 16px; background: #facc15; border: none; border-radius: 10px; color: #0b0e14; font-size: 0.9rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+            Verify Arrival
+        </button>
+    </div>
+    <div id="map-stop-halt-timer" style="display: none; align-items: center; justify-content: space-between; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.8rem;">
+        <span style="color: #a1a1aa; font-weight: 600;">Halt Time Left:</span>
+        <span id="map-stop-halt-countdown" style="color: #facc15; font-weight: 800; font-family: monospace;">00:00</span>
+    </div>
+</div>
+
+<!-- Bottom Row: Action Buttons -->
+<div class="flex gap-4 items-center">
+<!-- Call Button (Secondary) -->
+<button id="map-call-btn" class="w-14 h-14 flex items-center justify-center rounded-xl border-2 border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 active:scale-90 transition-all duration-150">
+<span class="material-symbols-outlined text-[24px]">call</span>
+</button>
+<button id="map-action-btn" onclick="openMapNavigation(currentTripId || 123)" class="flex-1 h-14 bg-[#D4AF37] text-black font-extrabold text-lg rounded-xl shadow-[0_4px_20px_rgba(212,175,55,0.3)] flex items-center justify-center gap-2 active:scale-95 transition-all duration-150">
+            <span id="map-action-icon" class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">navigation</span>
+            <span id="map-action-text">Navigate to Pickup</span>
+        </button>
+</div>
+</div>
+</div>
+
+    </section>
+    
+</div>
+<div id="tab-alerts" class="tab-panel">
+    <!-- Earnings Dashboard Header -->
+    <div style="padding: 20px; background: linear-gradient(135deg, var(--surface-container) 0%, rgba(20,20,20,1) 100%); border-bottom: 1px solid var(--border); border-radius: 0 0 20px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+        <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--primary);">account_balance_wallet</span> 
+            Earnings
+        </h2>
+        
+        <!-- Period Filter -->
+        <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none;">
+            <button class="earnings-filter-btn active" onclick="setEarningsFilter('today')">Today</button>
+            <button class="earnings-filter-btn" onclick="setEarningsFilter('week')">This Week</button>
+            <button class="earnings-filter-btn" onclick="setEarningsFilter('month')">This Month</button>
+            <button class="earnings-filter-btn" onclick="setEarningsFilter('overall')">Overall</button>
+        </div>
+
+        <!-- Hero Metric -->
+        <div style="margin-top: 25px; text-align: center;">
+            <div style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;" id="earnings-period-label">TODAY'S EARNINGS</div>
+            <div style="font-size: 3.5rem; font-weight: 900; color: var(--primary); font-family: 'Inter', sans-serif; text-shadow: 0 0 20px rgba(204, 255, 0, 0.3); margin: 5px 0;" id="earnings-hero-amount">₹0</div>
+            <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border);">
+                <span class="material-symbols-outlined" style="font-size: 16px; color: var(--text-muted);">local_taxi</span>
+                <span style="font-size: 0.9rem; color: var(--text-main); font-weight: 600;"><span id="earnings-trip-count">0</span> Trips Completed</span>
+            </div>
+        </div>
+        <!-- Withdraw to Bank Section -->
+        <div style="margin-top: 20px; padding: 0 10px;" id="withdrawal-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 4px;">
+                <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 700;">Withdrawable Balance:</span>
+                <span style="font-size: 0.95rem; color: var(--primary); font-weight: 800;" id="withdrawable-balance-amount">₹0</span>
+            </div>
+            <button class="btn btn-primary" id="btn-withdraw-earnings" onclick="withdrawEarnings()" style="width:100%; height:48px; border-radius:24px; font-weight:bold; background:var(--primary); color:#000; border:none; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer;">
+                <span class="material-symbols-outlined">account_balance</span> Withdraw to Bank
+            </button>
+            <div id="payout-hold-banner" style="display:none; background:rgba(239, 68, 68, 0.15); border:1px solid #ef4444; border-radius:12px; padding:12px; margin-top:12px; color:#ef4444; font-size:0.8rem; text-align:center; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                <span class="material-symbols-outlined" style="font-size:16px;">lock</span> Payouts frozen due to active dispute.
+            </div>
+        </div>
+    </div>
+
+    <!-- Earnings Breakdown -->
+    <div style="padding: 20px;">
+        <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 15px; font-weight: 700;">Earnings Breakdown</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 25px;">
+            <div style="background: var(--surface-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Today</div>
+                <div style="font-size: 1.2rem; color: var(--text-main); font-weight: 800;" id="breakdown-today">₹0</div>
+            </div>
+            <div style="background: var(--surface-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">This Week</div>
+                <div style="font-size: 1.2rem; color: var(--text-main); font-weight: 800;" id="breakdown-week">₹0</div>
+            </div>
+            <div style="background: var(--surface-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">This Month</div>
+                <div style="font-size: 1.2rem; color: var(--text-main); font-weight: 800;" id="breakdown-month">₹0</div>
+            </div>
+            <div style="background: var(--surface-container); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Overall</div>
+                <div style="font-size: 1.2rem; color: var(--text-main); font-weight: 800;" id="breakdown-overall">₹0</div>
+            </div>
+        </div>
+
+        <h3 style="font-size: 1.1rem; color: var(--text-main); margin-bottom: 15px; font-weight: 700;">Recent Transactions</h3>
+        <div id="recent-transactions-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Transactions will be injected here. Empty state by default -->
+            <div style="background: var(--surface-container); padding: 20px; border-radius: 12px; border: 1px solid var(--border); text-align: center; color: var(--text-muted);">
+                <span class="material-symbols-outlined" style="font-size: 32px; opacity: 0.5; margin-bottom: 8px;">receipt_long</span>
+                <p style="font-size: 0.9rem;">No recent transactions.</p>
+            </div>
+        </div>
+    </div>
+</div>
+                </div>
+            <!-- Bottom Navigation -->
+            <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-3 bg-surface-container border-t border-white/10 shadow-lg rounded-t-xl pb-6">
+<button onclick="switchTab('trips')"  class="appearance-none bg-transparent border-none outline-none flex flex-col items-center justify-center text-primary-container font-bold active:scale-90 duration-150"><span  class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span><span class="text-[10px] font-label-sm mt-1">Home</span></button>
+<button onclick="switchTab('tasks')"  class="appearance-none bg-transparent border-none outline-none flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150"><span  class="material-symbols-outlined">format_list_bulleted</span><span class="text-[10px] font-label-sm mt-1">Deliveries</span></button>
+<button onclick="switchTab('alerts')"  class="appearance-none bg-transparent border-none outline-none flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150 relative"><span  class="material-symbols-outlined">monetization_on</span><span class="text-[10px] font-label-sm mt-1">Earnings</span><span class="absolute top-0 right-1/4 w-2 h-2 bg-error rounded-full border border-surface-container"></span></button>
+<button onclick="switchTab('profile')"  class="appearance-none bg-transparent border-none outline-none flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-150"><span  class="material-symbols-outlined">person</span><span class="text-[10px] font-label-sm mt-1">Profile</span></button>
+</nav>
+        </div>
+
+        <!-- Handover Modal -->
+        <div id="handover-modal" class="overlay hidden">
+            <div class="glass-card scrollable" style="position: relative;">
+                <div class="brand" style="margin-bottom: 20px;">
+                    <h2>Start Trip / Handover</h2>
+                    <button onclick="closeHandoverModal()" class="btn btn-outline btn-sm" style="position:absolute; right:15px; top:15px;">X</button>
+                </div>
+                <div id="handover-content" style="text-align: left;">
+                    <!-- Camera feed -->
+                    <video id="camera-feed" autoplay playsinline style="width: 100%; border-radius: 8px; background: #000; display: none; margin-bottom: 15px;"></video>
+                    <canvas id="camera-canvas" style="display: none;"></canvas>
+
+                    <div id="handover-step-1">
+                        <p style="margin-bottom: 5px;"><strong>Step 1: Odometer</strong></p>
+                        <input type="number" id="odo-reading" placeholder="Current Odometer (KM)" style="width:100%; margin-bottom:10px; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color:white;">
+                        <button class="btn btn-secondary btn-glow" id="btn-cam-odo" onclick="startCamera('odo')" style="width:100%; margin-bottom: 10px;"><i data-lucide="camera" style="vertical-align: middle;"></i> Capture Odometer Photo</button>
+                        <img id="odo-preview" style="width: 100%; display: none; margin-bottom: 10px; border-radius: 8px;" />
+                    </div>
+
+                    <div id="handover-step-2" style="margin-top: 20px;">
+                        <p style="margin-bottom: 5px;"><strong>Step 2: 360Â° Walkaround</strong></p>
+                        <button class="btn btn-secondary btn-glow" id="btn-record-360" onclick="startCamera('360')" style="width:100%; margin-bottom: 10px;"><i data-lucide="video" style="vertical-align: middle;"></i> Record 360 Video</button>
+                        <video id="video-preview" controls style="width: 100%; display: none; margin-bottom: 10px; border-radius: 8px; background:#111;"></video>
+                    </div>
+                    
+                    <div id="camera-controls" style="display: none; margin-top: 10px; text-align: center;">
+                        <button id="btn-capture-photo" class="btn btn-primary" style="display: none; width:100%; padding: 12px; font-weight: bold;" onclick="takePhoto()">ðŸ“¸ SNAP PHOTO</button>
+                        <button id="btn-start-record" class="btn btn-primary" style="display: none; width:100%; padding: 12px; font-weight: bold; background: #ef4444;" onclick="startRecording()">ðŸ”´ START RECORDING</button>
+                        <button id="btn-stop-record" class="btn btn-secondary" style="display: none; width:100%; padding: 12px; font-weight: bold;" onclick="stopRecording()">â¹ï¸ STOP RECORDING</button>
+                    </div>
+
+                    <div id="handover-step-3" style="margin-top: 20px; display: none;">
+                        <button class="btn btn-primary btn-glow" onclick="submitHandoverEvidence()" style="width:100%; padding: 12px; font-size: 1.1rem;">Upload Evidence</button>
+                    </div>
+
+                    <div id="handover-step-4" style="margin-top: 20px; display: none; padding: 15px; border: 1px solid var(--primary); border-radius: 8px; background: rgba(37, 99, 235, 0.05);">
+                        <h3 style="color: var(--primary); margin-bottom: 5px;">Enter Customer OTP</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 15px;">Ask the customer for the hand-over OTP from their app.</p>
+                        <div class="otp-boxes" data-target="handover-otp" style="margin-bottom: 15px;">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        </div>
+                        <input type="hidden" id="handover-otp" value="">
+                        <button class="btn btn-primary btn-glow" onclick="verifyHandoverOTP()" style="width:100%; padding: 12px;">Verify & Start Transit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <!-- GPS Prominent Disclosure Modal -->
+    <div id="gps-disclosure-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.95); backdrop-filter: blur(10px); z-index: 9999; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 440px; background: #12161D; border: 1.5px solid rgba(212, 175, 55, 0.2); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); text-align: center; font-family: 'Plus Jakarta Sans', sans-serif;">
+            <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #D4AF37; filter: drop-shadow(0 0 12px rgba(212, 175, 55, 0.45));"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            </div>
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; font-family: 'Manrope', sans-serif;">Location Access Consent</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 20px; text-align: left;">
+                Re<span style="color: #FACC15;">D</span>rivo collects and accesses your device's location data to enable:
+                <br><br>
+                • <b>Nearby Request Dispatch</b>: Show you available pickup requests in your immediate vicinity.
+                <br>
+                • <b>Transit Tracking</b>: Provide live location updates to the customer and operations dashboard while you are driving the vehicle.
+                <br><br>
+                <b>Background Location Access:</b> Since you must be tracked during vehicle transit, location is accessed in the background while your status is set to "ONLINE", even if the screen is off or the app is minimized.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button onclick="acceptGpsConsent()" class="btn btn-primary" style="width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; border: none; background: #D4AF37; color: #000; cursor: pointer; transition: all 0.2s;">
+                    Agree & Go Online
+                </button>
+                <button onclick="denyGpsConsent()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #fff; cursor: pointer; transition: all 0.2s;">
+                    No Thanks, Go Offline
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms & Conditions Modal -->
+    <div id="terms-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Terms & Conditions</h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
+                <h4>1. Professional Conduct & Licensing</h4>
+                <p>You agree to maintain a valid Indian driving license (DL) and verify that it remains in active, unexpired status. You must drive safely and comply with all local traffic laws during pickup and drop-off transits.</p>
+                <br>
+                <h4>2. Strict Protocol Adherence</h4>
+                <p>You are required to follow the 5-step handover protocol for both pickup (handover) and delivery. This includes taking a clear photo of the vehicle's odometer and recording a 360-degree walkaround video before taking possession or returning the vehicle. Falsification or skipping of these steps will result in suspension.</p>
+                <br>
+                <h4>3. Background Location Tracking</h4>
+                <p>You acknowledge that Re<span style="color: #FACC15;">D</span>rivo will track your location while you are set to ONLINE to manage dispatches and share live updates with customers. You agree to leave location permissions enabled.</p>
+            </div>
+            <button onclick="closeTermsModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: #D4AF37; color: #000; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Privacy Policy Modal (DPDP 2023 Compliant) -->
+    <div id="privacy-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Privacy Policy & Consent Notice</h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
+                <p><i>Compliant with the Digital Personal Data Protection (DPDP) Act, 2023 (India)</i></p>
+                <br>
+                <h4>1. Data We Process</h4>
+                <p>We collect and process your name, contact phone number, driving license number, PAN details, Aadhaar information (for identity verification), profile picture, and live GPS location coordinates.</p>
+                <br>
+                <h4>2. Purpose of Processing</h4>
+                <p>Your identification documents are processed for mandatory KYC verification before dispatching customer requests. Your location data is tracked live to calculate proximity to requests, manage trip dispatches, and show en-route progress to customers.</p>
+                <br>
+                <h4>3. Right to Erasure & DPO</h4>
+                <p>You can request correction or deletion of your personal records from Re<span style="color: #FACC15;">D</span>rivo's systems upon termination of your partnership, subject to regulatory retention laws. For any grievances, reach our Data Protection Officer:</p>
+                <p style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-top: 8px;">
+                    <b>Grievance Officer & DPO:</b> Rajesh Kumar<br>
+                    <b>Email:</b> grievance@redrivo.com / support@redrivo.com<br>
+                    <b>Address:</b> ReDrivo Tech Private Limited, BKC, Mumbai, India
+                </p>
+            </div>
+            <button onclick="closePrivacyModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: #D4AF37; color: #000; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <script src="kyc-validation.js?v=2"></script>
+    <script src="app.js?v=889"></script>
+    <script src="otp-boxes.js"></script>
+    <script>
+        lucide.createIcons();
+        // Wire up KYC validation on DOM ready
+        document.addEventListener('DOMContentLoaded', function () {
+            initFullNameInput(document.getElementById('on-name'));
+            initPanInput(document.getElementById('on-pan'));
+            initAadhaarInput(document.getElementById('on-aadhaar'));
+            initDLInput(document.getElementById('on-dl'));
+            initBankNameInput(document.getElementById('on-bank-name'));
+            initAccountNumberInput(document.getElementById('on-bank-acc'));
+            initIFSCInput(document.getElementById('on-bank-ifsc'));
+            if (typeof initBankSearchInput === 'function') {
+                initBankSearchInput(
+                    document.getElementById('on-bank-search'),
+                    document.getElementById('bank-suggestions-dropdown'),
+                    document.getElementById('on-bank-real-name')
+                );
+            }
+        });
+    </script>
+
+    <!-- Delivery OTP Modal -->
+    <div id="delivery-otp-modal" class="overlay hidden">
+        <div class="glass-card scrollable" style="position: relative; max-width: 400px; padding: 20px; max-height: 90vh;">
+            <div class="brand" style="margin-bottom: 20px;">
+                <span class="material-symbols-outlined text-primary" style="font-size: 32px;">vpn_key</span>
+                <div>
+                    <div style="font-size: 18px; font-weight: 800;">Customer Handover</div>
+                    <div style="font-size: 12px; color: var(--on-surface-variant);">Verify Delivery & Vehicle Details</div>
+                </div>
+                <button onclick="closeDeliveryOtpModal()" class="btn btn-outline btn-sm" style="position:absolute; right:15px; top:15px;">X</button>
+            </div>
+
+            <!-- Video/Canvas for Camera -->
+            <video id="delivery-camera-feed" autoplay playsinline style="width: 100%; border-radius: 8px; background: #000; display: none; margin-bottom: 15px;"></video>
+            <canvas id="delivery-camera-canvas" style="display: none;"></canvas>
+
+            <div id="delivery-main-content">
+                <!-- Step 1: Media Upload -->
+                <div id="delivery-step-media">
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <label>Final Odometer Reading (KM)</label>
+                        <input type="number" id="delivery-odo-reading" class="glass-input" placeholder="e.g. 12450">
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <button class="btn btn-secondary btn-glow w-full" id="btn-delivery-cam-odo" onclick="startDeliveryCamera('odo')"><span class="material-symbols-outlined" style="vertical-align: middle; font-size:18px;">camera</span> Capture Odometer Photo</button>
+                        <img id="delivery-odo-preview" style="width: 100%; display: none; margin-top: 10px; border-radius: 8px;" />
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <button class="btn btn-secondary btn-glow w-full" id="btn-delivery-record-360" onclick="startDeliveryCamera('360')"><span class="material-symbols-outlined" style="vertical-align: middle; font-size:18px;">videocam</span> Record 360 Video</button>
+                        <video id="delivery-video-preview" controls style="width: 100%; display: none; margin-top: 10px; border-radius: 8px; background:#111;"></video>
+                    </div>
+
+                    <button class="btn-primary w-full" id="btn-submit-delivery-media" style="margin-top: 15px;" onclick="submitDeliveryMedia()">Upload Media & Request Payment</button>
+                </div>
+
+                <!-- Step 2: OTP Entry -->
+                <div id="delivery-step-otp" class="hidden">
+                    <div style="text-align: center; margin-bottom: 15px; padding: 15px; background: rgba(59, 130, 246, 0.1); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <p style="font-size: 0.95rem; font-weight: bold; margin: 0; color: #60a5fa;">Waiting for Customer Payment</p>
+                        <p style="font-size: 0.8rem; margin: 5px 0 0 0; color: var(--on-surface-variant);">Once payment is completed, ask the customer for the 4-digit Handover OTP.</p>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <label>Enter 4-digit Handover OTP</label>
+                        <input type="text" id="delivery-otp" class="glass-input" placeholder="e.g. 1234" maxlength="4">
+                    </div>
+
+                    <button class="btn-primary w-full" id="btn-confirm-delivery" style="margin-top: 15px;" onclick="verifyDeliveryOtp()">Confirm Delivery & Handover</button>
+                </div>
+            </div>
+
+            <!-- Camera Controls (Visible during camera capture) -->
+            <div id="delivery-camera-controls" style="display: none; margin-top: 10px; text-align: center;">
+                <button id="btn-delivery-capture-photo" class="btn btn-primary w-full" style="display: none; padding: 12px; font-weight: bold;" onclick="takeDeliveryPhoto()">📸 SNAP PHOTO</button>
+                <button id="btn-delivery-start-record" class="btn btn-primary w-full" style="display: none; padding: 12px; font-weight: bold; background: #ef4444;" onclick="startDeliveryRecording()">🔴 START RECORDING</button>
+                <button id="btn-delivery-stop-record" class="btn btn-secondary w-full" style="display: none; padding: 12px; font-weight: bold;" onclick="stopDeliveryRecording()">⏹️ STOP RECORDING</button>
+            </div>
+            
+            <button class="btn-secondary w-full" style="margin-top: 10px;" onclick="closeDeliveryOtpModal()">Cancel</button>
+        </div>
+    </div>
+    <!-- Incoming Pickup Request Modal with 10-Second Timer -->
+    <div id="incoming-pickup-modal" class="overlay hidden" style="z-index: 100001; align-items: center; justify-content: center; display: none;">
+        <div class="glass-card" style="position: relative; width: 92%; max-width: 380px; padding: 24px; background: #121317; border: 1.5px solid #D4AF37; border-radius: 24px; box-shadow: 0 12px 50px rgba(0,0,0,0.9); overflow: hidden; display: flex; flex-direction: column; gap: 16px;">
+            
+            <!-- Header with circular countdown animation -->
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.5rem; display: flex; align-items: center;">⚡</span>
+                    <span style="font-size: 1rem; font-weight: 800; color: #fff; letter-spacing: 0.5px; text-transform: uppercase; font-family: 'Plus Jakarta Sans', sans-serif;">New Job Offer!</span>
+                </div>
+                <!-- Circular/Badge Timer -->
+                <div id="ip-timer-circle" style="width: 38px; height: 38px; border-radius: 50%; border: 3px solid #D4AF37; display: flex; align-items: center; justify-content: center; color: #D4AF37; font-weight: 900; font-size: 1rem; font-family: monospace;">10</div>
+            </div>
+
+            <!-- Request Details Card -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                    <div>
+                        <div id="ip-vehicle-name" style="font-size: 1.15rem; font-weight: 800; color: #E3E2E7; line-height: 1.2;">Tata Nexon EV</div>
+                        <div id="ip-vehicle-plate" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #8E8E93; margin-top: 2px;">MH 12 QW 3456</div>
+                    </div>
+                    <div style="width: 60px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                        <img id="ip-vehicle-image" src="images/suv.png" alt="Vehicle" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.06); margin: 0;">
+
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Earnings -->
+                    <div style="display: flex; align-items: center; gap: 6px; color: #10B981; font-weight: 800; font-size: 0.95rem; font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <span class="material-symbols-outlined" style="font-size: 18px;">payments</span>
+                        <span id="ip-earnings">₹450 Earning</span>
+                    </div>
+                    <!-- Distance -->
+                    <div style="display: flex; align-items: center; gap: 6px; color: #D4AF37; font-weight: 700; font-size: 0.82rem; font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">location_on</span>
+                        <span id="ip-distance">1.2 km away</span>
+                    </div>
+                    <!-- Address -->
+                    <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; color: #a1a1aa; display: flex; align-items: flex-start; gap: 4px; line-height: 1.4;">
+                        <span id="ip-address" style="word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">Salt Lake Sector 5, Kolkata</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 12px; width: 100%;">
+                <button onclick="declineIncomingPickup()" class="btn-secondary" style="flex: 1; padding: 14px; border-radius: 14px; font-weight: 700; font-size: 0.9rem; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); color: #ef4444; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;">Decline</button>
+                <button id="ip-btn-accept" onclick="acceptIncomingPickupDirect()" class="btn-primary" style="flex: 1.3; padding: 14px; border-radius: 14px; font-weight: 800; font-size: 0.9rem; background: #D4AF37; color: #0A0A0A; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(212,175,55,0.3); font-family: 'Plus Jakarta Sans', sans-serif;">ACCEPT (10s)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Action Modal -->
+    <div id="confirm-modal" class="overlay hidden" style="z-index: 100000; align-items: center; justify-content: center; display: none;">
+        <div class="glass-card" style="position: relative; width: 90%; max-width: 350px; padding: 25px; text-align: center; background: var(--surface-container); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+            <div style="margin-bottom: 15px;">
+                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--primary);">help_outline</span>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 800; color: var(--on-surface); margin-bottom: 10px;" id="confirm-modal-title">Are you sure?</h3>
+            <p style="font-size: 0.9rem; color: var(--on-surface-variant); margin-bottom: 25px; line-height: 1.4;" id="confirm-modal-message">Do you want to proceed with this action?</p>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-secondary" style="flex: 1; padding: 12px; border-radius: 12px; font-weight: 600;" onclick="closeConfirmModal(false)">Cancel</button>
+                <button class="btn-primary" style="flex: 1; padding: 12px; border-radius: 12px; font-weight: 800; background: #D4AF37; color: #0A0A0A; border: none; box-shadow: 0 4px 15px rgba(212,175,55,0.2);" onclick="closeConfirmModal(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Marshal Post-Service Feedback Modal -->
+    <div id="marshal-feedback-modal" class="overlay hidden" style="z-index: 100000; align-items: center; justify-content: center; display: none;">
+        <div class="glass-card" style="position: relative; width: 90%; max-width: 450px; padding: 25px; text-align: left; background: var(--surface-container); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto;">
+            <h3 style="font-size: 1.3rem; font-weight: 800; color: var(--primary); margin-bottom: 5px; text-align: center;">Delivery Completed!</h3>
+            <p style="font-size: 0.9rem; color: var(--on-surface-variant); margin-bottom: 20px; line-height: 1.4; text-align: center;">Great job! Please share your feedback to help us improve operations.</p>
+            
+            <input type="hidden" id="fb-marshal-trip-id">
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: var(--on-surface-variant); display: block; margin-bottom: 8px;">1. How smooth was the pickup and drop-off process with the customer?</label>
+                <select id="fb-marshal-smoothness" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.95rem;">
+                    <option value="Very Smooth">Very Smooth</option>
+                    <option value="Smooth">Smooth</option>
+                    <option value="Average">Average</option>
+                    <option value="Difficult">Difficult</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: var(--on-surface-variant); display: block; margin-bottom: 8px;">2. Were there any issues with the vehicle's condition that weren't reported?</label>
+                <select id="fb-marshal-vehicle-cond" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.95rem;">
+                    <option value="No, everything was fine">No, everything was fine</option>
+                    <option value="Yes, minor issues">Yes, minor issues</option>
+                    <option value="Yes, major issues">Yes, major issues</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 0.85rem; color: var(--on-surface-variant); display: block; margin-bottom: 8px;">3. What can Re<span style="color: #FACC15;">D</span>rivo do to make your job easier or improve the app?</label>
+                <textarea id="fb-marshal-improve" rows="3" placeholder="Your feedback..." style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.95rem; resize: none;"></textarea>
+            </div>
+            
+            <button class="btn-primary" style="width: 100%; padding: 14px; border-radius: 12px; font-weight: 800; background: var(--primary); color: #0A0A0A; border: none; box-shadow: 0 4px 15px rgba(212,175,55,0.2);" onclick="submitMarshalFeedback()">Submit Feedback</button>
+        </div>
+    </div>
+<!-- KYC Camera/Mic Permission Modal -->
+<div id="kyc-permission-modal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; padding: 24px;">
+    <div style="background:var(--surface); width:100%; max-width:400px; border-radius:24px; padding:30px 24px; text-align: center; border: 1px solid rgba(255,255,255,0.1);">
+        <div style="width: 64px; height: 64px; background: rgba(212, 175, 55, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; color: var(--primary);">
+            <span class="material-symbols-outlined" style="font-size: 32px;">videocam</span>
+        </div>
+        <h3 style="color:var(--on-surface); margin:0 0 12px 0; font-size:1.3rem; font-weight:800;">Camera & Mic Access</h3>
+        <p style="color:var(--on-surface-variant); font-size:0.95rem; line-height:1.5; margin-bottom:24px;">
+            Re<span style="color: #FACC15;">D</span>rivo requires access to your Camera and Microphone to record 360-degree walkaround videos of vehicles during handover verification.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <button onclick="acceptKycPermission()" style="width:100%; padding:14px; background:var(--primary); color:#0A0A0A; border:none; border-radius:12px; font-weight:700; font-size:1rem;">Allow Access</button>
+            <button onclick="denyKycPermission()" style="width:100%; padding:14px; background:transparent; color:#EF4444; border:1px solid rgba(239, 68, 68, 0.3); border-radius:12px; font-weight:700; font-size:1rem;">Deny</button>
+        </div>
+    </div>
+</div>
+
+<!-- Document Camera Modal -->
+<div id="document-camera-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:20000; flex-direction:column; overflow:hidden; font-family:system-ui, -apple-system, sans-serif;">
+    <!-- Live Preview View -->
+    <div id="doc-camera-live-view" style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:space-between;">
+        <video id="doc-camera-preview" autoplay playsinline style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1;"></video>
+        
+        <!-- Guide Frame Overlay -->
+        <div style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
+            <!-- Dimmed top backdrop -->
+            <div style="flex:1; width:100%; background:rgba(0,0,0,0.6); display:flex; align-items:flex-end; justify-content:center; padding-bottom:20px;">
+                <div id="doc-camera-instruction" style="color:#fff; font-size:1rem; font-weight:700; text-align:center; padding:10px 20px; border-radius:30px; background:rgba(0,0,0,0.7); box-shadow: 0 4px 15px rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); letter-spacing:0.5px;">Align Card Inside Frame</div>
+            </div>
+            
+            <!-- Middle row containing card cutout -->
+            <div style="display:flex; width:100%; align-items:center; justify-content:center;">
+                <!-- Dimmed left backdrop -->
+                <div style="flex:1; height:100%; background:rgba(0,0,0,0.6);"></div>
+                
+                <!-- The Guide Frame cutout (1.58 Aspect Ratio for ID cards) -->
+                <div id="doc-guide-frame" style="width:85vw; max-width:400px; aspect-ratio:1.58; border:3px dashed #10b981; border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,0.6); position:relative; box-sizing:border-box;">
+                    <!-- Corner brackets for visual accents -->
+                    <div style="position:absolute; top:-3px; left:-3px; width:20px; height:20px; border-top:5px solid #10b981; border-left:5px solid #10b981; border-top-left-radius:14px;"></div>
+                    <div style="position:absolute; top:-3px; right:-3px; width:20px; height:20px; border-top:5px solid #10b981; border-right:5px solid #10b981; border-top-right-radius:14px;"></div>
+                    <div style="position:absolute; bottom:-3px; left:-3px; width:20px; height:20px; border-bottom:5px solid #10b981; border-left:5px solid #10b981; border-bottom-left-radius:14px;"></div>
+                    <div style="position:absolute; bottom:-3px; right:-3px; width:20px; height:20px; border-bottom:5px solid #10b981; border-right:5px solid #10b981; border-bottom-right-radius:14px;"></div>
+                </div>
+                
+                <!-- Dimmed right backdrop -->
+                <div style="flex:1; height:100%; background:rgba(0,0,0,0.6);"></div>
+            </div>
+            
+            <!-- Dimmed bottom backdrop -->
+            <div style="flex:1; width:100%; background:rgba(0,0,0,0.6);"></div>
+        </div>
+        
+        <!-- Live View Header (Controls cancel) -->
+        <div style="position:absolute; top:20px; left:0; width:100%; z-index:3; display:flex; justify-content:space-between; padding:0 20px; pointer-events:none;">
+            <button id="btn-doc-camera-close" style="pointer-events:auto; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:50%; width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; cursor:pointer;">✕</button>
+            <div style="width:44px;"></div> <!-- placeholder -->
+        </div>
+
+        <!-- Live View Bottom controls -->
+        <div style="position:absolute; bottom:0; left:0; width:100%; z-index:3; display:flex; flex-direction:column; align-items:center; padding:30px 20px; background:linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0)); pointer-events:none;">
+            <!-- Large Shutter Capture Button -->
+            <button id="btn-doc-camera-capture" style="pointer-events:auto; width:76px; height:76px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,0.3); padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer; outline:none; transition:transform 0.15s ease;">
+                <div style="width:54px; height:54px; border-radius:50%; background:#fff; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Post-Capture Review View -->
+    <div id="doc-camera-review-view" style="position:relative; width:100%; height:100%; display:none; flex-direction:column; justify-content:space-between; background:#0a0a0a;">
+        <!-- Review Image -->
+        <div style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
+            <img id="doc-camera-captured-img" style="max-width:100%; max-height:80vh; object-fit:contain; border-radius:16px; border:2px solid #222; box-shadow:0 10px 30px rgba(0,0,0,0.5);" />
+        </div>
+        
+        <!-- Bottom Review Controls -->
+        <div style="display:flex; flex-direction:column; gap:12px; padding:24px 20px; background:#121212; border-top:1px solid #222; box-shadow:0 -10px 30px rgba(0,0,0,0.3);">
+            <div style="color:#aaa; font-size:0.85rem; font-weight:500; text-align:center; margin-bottom:4px; letter-spacing:0.5px;">Is the document readable and fully visible?</div>
+            <div style="display:flex; gap:16px; width:100%;">
+                <!-- Retake button -->
+                <button id="btn-doc-camera-retake" style="flex:1; padding:15px; background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); border-radius:12px; font-weight:700; font-size:1rem; cursor:pointer; transition:background 0.2s;">
+                    Retake
+                </button>
+                <!-- Use photo button -->
+                <button id="btn-doc-camera-confirm" style="flex:1; padding:15px; background:#D4AF37; color:#0A0A0A; border:none; border-radius:12px; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:0 4px 15px rgba(212,175,55,0.2); transition:background 0.2s;">
+                    Use this photo
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Bank Details Modal -->
+<div id="bank-details-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 hidden" style="display: none;">
+    <div class="glass-card max-w-md w-full p-6 rounded-2xl border border-white/10 flex flex-col gap-4 max-h-[90vh] overflow-y-auto" style="background: #18181b; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+        <div class="flex justify-between items-center pb-3 border-b border-white/10">
+            <h2 id="bank-modal-title" class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-warning" style="color: #FACC15;">account_balance</span>
+                Add Bank Account
+            </h2>
+            <button type="button" onclick="closeBankDetailsModal()" class="material-symbols-outlined text-gray-400 hover:text-white cursor-pointer" style="background: transparent; border: none; font-size: 24px;">close</button>
+        </div>
+
+        <p class="text-xs text-on-surface-variant leading-relaxed" style="color: #a1a1aa;">
+            Payouts for completed trips will be credited to this bank account. Please ensure the account details belong to the registered driver.
+        </p>
+
+        <!-- Account Holder Name -->
+        <div>
+            <label class="block text-xs font-bold text-gray-300 mb-1">Account Holder Name *</label>
+            <input type="text" id="payout-account-holder-name" placeholder="e.g. RAJESH KUMAR SHARMA" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+        </div>
+
+        <!-- Bank Name Search (Search-as-you-type list-only) -->
+        <div class="relative">
+            <label class="block text-xs font-bold text-gray-300 mb-1">Bank Name *</label>
+            <input type="text" id="payout-bank-search" placeholder="Type to search bank (e.g. State Bank of India)..." autocomplete="off" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+            <input type="hidden" id="payout-bank-name">
+            <div id="payout-bank-dropdown" class="search-dropdown hidden" style="max-height: 180px; overflow-y: auto;"></div>
+        </div>
+
+        <!-- Account Number -->
+        <div>
+            <label class="block text-xs font-bold text-gray-300 mb-1">Bank Account Number *</label>
+            <input type="tel" inputmode="numeric" id="payout-account-number" placeholder="Enter 9-18 digit account number" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+        </div>
+
+        <!-- Confirm Account Number -->
+        <div>
+            <label class="block text-xs font-bold text-gray-300 mb-1">Re-enter Account Number *</label>
+            <input type="tel" inputmode="numeric" id="payout-confirm-account-number" onpaste="return false;" placeholder="Re-enter exact account number" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+            <span class="text-[11px] text-gray-500 mt-0.5 block" style="color: #71717a;">Paste disabled to prevent typos.</span>
+        </div>
+
+        <!-- IFSC Code -->
+        <div>
+            <label class="block text-xs font-bold text-gray-300 mb-1">IFSC Code *</label>
+            <input type="text" id="payout-ifsc" maxlength="11" placeholder="e.g. SBIN0001234" style="text-transform: uppercase;" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3 mt-3">
+            <button type="button" onclick="closeBankDetailsModal()" class="btn btn-secondary flex-1 py-3" style="border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; border-radius: 10px;">Cancel</button>
+            <button type="button" id="btn-save-bank-details" onclick="savePayoutBankDetails()" class="btn btn-primary btn-glow flex-1 py-3 font-bold" style="background: #FACC15; color: #000; border-radius: 10px; border: none;">Save Bank Details</button>
+        </div>
+    </div>
+</div>
+
+<!-- Payout Plan Switch Modal -->
+<div id="payout-plan-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 hidden" style="display: none;">
+    <div class="glass-card max-w-md w-full p-6 rounded-2xl border border-white/10 flex flex-col gap-4 max-h-[90vh] overflow-y-auto" style="background: #18181b; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+        <div class="flex justify-between items-center pb-3 border-b border-white/10">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-warning" style="color: #FACC15;">payments</span>
+                Choose Payout Model
+            </h2>
+            <button type="button" onclick="closePayoutPlanModal()" class="material-symbols-outlined text-gray-400 hover:text-white cursor-pointer" style="background: transparent; border: none; font-size: 24px;">close</button>
+        </div>
+
+        <div id="payout-month-limit-banner" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-start gap-2">
+            <span class="material-symbols-outlined text-base mt-0.5">info</span>
+            <span>You have already switched your plan this calendar month. You can switch again starting 1st of next month.</span>
+        </div>
+
+        <p class="text-xs text-on-surface-variant leading-relaxed" style="color: #a1a1aa;">
+            Select your preferred earnings model. Plan switches take effect on your next billing cycle with zero mid-period proration.
+        </p>
+
+        <!-- Option 1: Commission Model -->
+        <label class="p-4 rounded-xl border border-white/10 bg-white/[0.02] flex items-start gap-3 cursor-pointer hover:border-amber-500/50 transition-colors" id="label-plan-commission">
+            <input type="radio" name="payout_model_choice" value="commission" class="mt-1 accent-amber-400" onchange="onPayoutPlanChoiceChanged()">
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-bold text-white text-sm">Commission Plan</span>
+                    <span class="text-xs font-bold text-amber-400" id="plan-commission-rate-display">20% Cut / Trip</span>
+                </div>
+                <p class="text-xs text-gray-400 m-0">Pay a platform commission percentage only when you complete trips. Zero upfront fees.</p>
+            </div>
+        </label>
+
+        <!-- Option 2: Subscription Model -->
+        <label class="p-4 rounded-xl border border-white/10 bg-white/[0.02] flex items-start gap-3 cursor-pointer hover:border-amber-500/50 transition-colors" id="label-plan-subscription">
+            <input type="radio" name="payout_model_choice" value="subscription" class="mt-1 accent-amber-400" onchange="onPayoutPlanChoiceChanged()">
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-bold text-white text-sm">Unlimited Subscription</span>
+                    <span class="text-xs font-bold text-green-400">0% Commission · Keep 100%</span>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">Pay a flat pass fee and keep 100% of all trip earnings.</p>
+
+                <!-- Billing Cycle Selector (visible when subscription selected) -->
+                <div id="subscription-cycles-container" class="space-y-2 mt-2 pt-2 border-t border-white/10">
+                    <div class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Select Billing Cycle</div>
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="p-2.5 rounded-lg border border-white/10 bg-black/40 flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <input type="radio" name="subscription_cycle_choice" value="daily" class="accent-amber-400">
+                                <span class="text-xs font-bold text-white">Daily</span>
+                            </div>
+                            <span class="text-xs font-bold text-amber-400" id="price-daily-display">₹99</span>
+                        </label>
+
+                        <label class="p-2.5 rounded-lg border border-white/10 bg-black/40 flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <input type="radio" name="subscription_cycle_choice" value="weekly" class="accent-amber-400">
+                                <span class="text-xs font-bold text-white">Weekly</span>
+                            </div>
+                            <span class="text-xs font-bold text-amber-400" id="price-weekly-display">₹499</span>
+                        </label>
+
+                        <label class="p-2.5 rounded-lg border border-white/10 bg-black/40 flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <input type="radio" name="subscription_cycle_choice" value="monthly" class="accent-amber-400" checked>
+                                <span class="text-xs font-bold text-white">Monthly</span>
+                            </div>
+                            <span class="text-xs font-bold text-amber-400" id="price-monthly-display">₹1,499</span>
+                        </label>
+
+                        <label class="p-2.5 rounded-lg border border-white/10 bg-black/40 flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <input type="radio" name="subscription_cycle_choice" value="annually" class="accent-amber-400">
+                                <span class="text-xs font-bold text-white">Annually</span>
+                            </div>
+                            <span class="text-xs font-bold text-amber-400" id="price-annual-display">₹14,999</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </label>
+
+        <div id="plan-effective-date-note" class="text-xs text-gray-400 p-2.5 bg-black/30 rounded-lg border border-white/5">
+            ℹ️ <span id="effective-date-text">Switches take effect on the 1st of next month.</span>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="flex gap-3 mt-2">
+            <button type="button" onclick="closePayoutPlanModal()" class="btn btn-secondary flex-1 py-3" style="border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; border-radius: 10px;">Cancel</button>
+            <button type="button" id="btn-save-payout-plan" onclick="submitPayoutPlanSwitch()" class="btn btn-primary btn-glow flex-1 py-3 font-bold" style="background: #FACC15; color: #000; border-radius: 10px; border: none;">Confirm Plan</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+
+
+

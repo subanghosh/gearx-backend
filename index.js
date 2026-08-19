@@ -85,7 +85,12 @@ app.use(cors({
     credentials: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 const globalLimiter = rateLimit({
@@ -292,7 +297,11 @@ function initializeDatabase() {
             "ALTER TABLE garage_workers ADD COLUMN bankIFSC TEXT",
             "ALTER TABLE garage_workers ADD COLUMN bankVerified INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN kycRejectionReason TEXT",
-            "ALTER TABLE garage_workers ADD COLUMN kycRejectionReason TEXT"
+            "ALTER TABLE garage_workers ADD COLUMN kycRejectionReason TEXT",
+            "ALTER TABLE users ADD COLUMN dob TEXT",
+            "ALTER TABLE users ADD COLUMN gender TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN dob TEXT",
+            "ALTER TABLE garage_workers ADD COLUMN gender TEXT"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -501,8 +510,9 @@ function initializeDatabase() {
         // New garage profile columns (will fail silently if already exist)
         ['serviceType TEXT', 'altPhone TEXT', 'altPhoneVerified INTEGER DEFAULT 0',
          'phoneVerified INTEGER DEFAULT 0', 'emailVerified INTEGER DEFAULT 0',
-         'lat REAL', 'lng REAL', 'accountType TEXT', 'govIdNumber TEXT', 'ownerCount INTEGER DEFAULT 1'
-        ].forEach(col => db.run(`ALTER TABLE garages ADD COLUMN ${col}`, () => {}));
+         'lat REAL', 'lng REAL', 'accountType TEXT', 'govIdNumber TEXT', 'ownerCount INTEGER DEFAULT 1',
+         'serviceCenterType TEXT DEFAULT \'local\'', 'authorizedCarBrands TEXT DEFAULT \'\'', 'authorizedBikeBrands TEXT DEFAULT \'\'']
+        .forEach(col => db.run(`ALTER TABLE garages ADD COLUMN ${col}`, () => {}));
 
         ['aadhaarPath TEXT', 'panPath TEXT'].forEach(col => db.run(`ALTER TABLE garage_owners ADD COLUMN ${col}`, () => {}));
 
@@ -692,8 +702,13 @@ async function ensureKycColumns() {
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS fcmToken TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_types TEXT DEFAULT \'bike\'').catch(() => {});
         await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
         await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
+        await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS vehicle_types TEXT DEFAULT \'bike\'').catch(() => {});
+        await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS serviceCenterType TEXT DEFAULT \'local\'').catch(() => {});
+        await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedCarBrands TEXT DEFAULT \'\'').catch(() => {});
+        await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedBikeBrands TEXT DEFAULT \'\'').catch(() => {});
         console.log('Postgres columns ensured.');
     } catch(e) {
         console.warn('Postgres columns ensure failed:', e.message);
@@ -929,6 +944,15 @@ apiRouter.get('/maps/details', async (req, res) => {
                     "INSERT INTO cached_places (place_id, description, lat, lng) VALUES ($1, $2, $3, $4) ON CONFLICT (place_id) DO UPDATE SET description = EXCLUDED.description, lat = EXCLUDED.lat, lng = EXCLUDED.lng",
                     [placeId, address, lat, lng]
                 ).catch(e => console.error('[Google Maps Details Cache] Save error:', e.message));
+
+                // Log customer search intent into pickup_searches
+                logPickupSearch({
+                    address,
+                    lat,
+                    lng,
+                    customerId: req.query.customerId || req.query.customer_id,
+                    searchType: 'autocomplete_select'
+                });
                 
                 return res.json({ lat, lng, address, source: 'google' });
             } else {
@@ -962,6 +986,13 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
                 // Find first geocoded result that is not a Plus Code (has no '+' symbol and no 'plus_code' type)
                 let bestResult = data.results.find(r => r.types && !r.types.includes('plus_code') && !(r.formatted_address && r.formatted_address.includes('+')));
                 if (bestResult) {
+                    logPickupSearch({
+                        address: bestResult.formatted_address,
+                        lat,
+                        lng,
+                        customerId: req.query.customerId || req.query.customer_id,
+                        searchType: 'map_pin'
+                    });
                     return res.json({ address: bestResult.formatted_address, source: 'google' });
                 }
                 console.log('[Google Maps Reverse Geocode] Only Plus Codes found. Falling back to OpenStreetMap.');
@@ -973,6 +1004,7 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
         }
         console.log('[Google Maps Reverse Geocode] Falling back to OpenStreetMap.');
     }
+
     
     // Fallback to OSM Nominatim
     try {
@@ -2084,7 +2116,7 @@ apiRouter.get('/garages/:id', (req, res) => {
 });
 
 apiRouter.put('/garages/:id', (req, res) => {
-    const allowed = ['name', 'owner', 'ownerCount', 'ownercount', 'address', 'contact', 'email', 'status', 'lat', 'lng', 'businessType', 'businesstype', 'gstNumber', 'gstnumber', 'bankAccountName', 'bankaccountname', 'bankAccountNumber', 'bankaccountnumber', 'bankIFSC', 'bankifsc', 'bankName', 'bankname', 'bankBranch', 'bankbranch', 'bankVerified', 'bankverified', 'serviceType', 'servicetype', 'panNumber', 'pannumber', 'panVerified', 'panverified', 'aadhaarNumber', 'aadhaar_number', 'aadhaarnumber', 'aadhaarVerified', 'aadhaarverified', 'emailVerified', 'emailverified', 'govIdType', 'govidtype', 'accountType', 'accounttype', 'govIdNumber', 'govidnumber'];
+    const allowed = ['name', 'owner', 'ownerCount', 'ownercount', 'address', 'contact', 'email', 'status', 'lat', 'lng', 'businessType', 'businesstype', 'gstNumber', 'gstnumber', 'bankAccountName', 'bankaccountname', 'bankAccountNumber', 'bankaccountnumber', 'bankIFSC', 'bankifsc', 'bankName', 'bankname', 'bankBranch', 'bankbranch', 'bankVerified', 'bankverified', 'serviceType', 'servicetype', 'panNumber', 'pannumber', 'panVerified', 'panverified', 'aadhaarNumber', 'aadhaar_number', 'aadhaarnumber', 'aadhaarVerified', 'aadhaarverified', 'emailVerified', 'emailverified', 'govIdType', 'govidtype', 'accountType', 'accounttype', 'govIdNumber', 'govidnumber', 'serviceCenterType', 'authorizedCarBrands', 'authorizedBikeBrands'];
     const fields = []; const vals = [];
     
     // Case-insensitive mapping
@@ -2380,67 +2412,30 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
     { name: 'dlBackFile', maxCount: 1 }
 ]), async (req, res) => {
     let { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
-            bankAccountName, bankAccountNumber, bankIFSC, bankName,
-            address, city, state, pincode } = req.body;
+            dob, gender, city, address, state, pincode,
+            bankAccountName, bankAccountNumber, bankIFSC, bankName } = req.body;
     const files = req.files || {};
 
-    // Auto-resolve bankName from bankIFSC if not sent by client (since UI doesn't collect it)
-    if ((!bankName || bankName.trim().length < 3) && bankIFSC) {
-        const prefix = bankIFSC.substring(0, 4).toUpperCase();
-        const bankMap = {
-            'SBIN': 'State Bank of India',
-            'HDFC': 'HDFC Bank',
-            'ICIC': 'ICICI Bank',
-            'BARB': 'Bank of Baroda',
-            'PUNB': 'Punjab National Bank',
-            'AXIS': 'Axis Bank',
-            'KKBK': 'Kotak Mahindra Bank',
-            'UTIB': 'Axis Bank',
-            'IBKL': 'IDBI Bank',
-            'YESB': 'Yes Bank',
-            'IDFB': 'IDFC First Bank',
-            'CNRB': 'Canara Bank',
-            'IOBA': 'Indian Overseas Bank',
-            'MAHB': 'Bank of Maharashtra',
-            'INDB': 'IndusInd Bank'
-        };
-        bankName = bankMap[prefix] || (prefix + ' Bank');
-    }
-
-    // ── Server-side KYC validation (mirrors frontend kyc-validation.js) ────
+    // ── Server-side KYC validation ──────────────────────────────────────────
     const serverErrors = [];
 
     if (!name || !/^[A-Za-z\s.'"-]{2,100}$/.test(name.trim()))
         serverErrors.push('Invalid Full Name: only letters and spaces allowed.');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()))
         serverErrors.push('Invalid Email Address.');
-    if (!panNumber || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNumber.trim().toUpperCase()))
-        serverErrors.push('Invalid PAN Number. Expected format: ABCDE1234F');
-    if (!aadhaarNumber || !/^[2-9][0-9]{11}$/.test(aadhaarNumber.replace(/\D/g, '')))
-        serverErrors.push('Invalid Aadhaar Number: must be exactly 12 digits starting with 2-9.');
     if (!dlNumber || !/^[A-Z]{2}[0-9]{11,13}$/.test(dlNumber.replace(/[^A-Z0-9]/g, '').toUpperCase()))
         serverErrors.push('Invalid Driving License format.');
-    if (!bankAccountName || !/^[A-Za-z\s.]{2,100}$/.test(bankAccountName.trim()))
-        serverErrors.push('Invalid Account Holder Name: only letters and spaces allowed.');
-    if (!bankAccountNumber || !/^[0-9]{9,18}$/.test(bankAccountNumber.trim()))
-        serverErrors.push('Invalid Account Number: must be 9-18 digits only.');
-    if (!bankIFSC || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankIFSC.trim().toUpperCase()))
-        serverErrors.push('Invalid IFSC Code. Expected format: SBIN0001234');
-    if (!bankName || bankName.trim().length < 3)
-        serverErrors.push('Invalid Bank Name: please select a bank from the list.');
-
-    // Address validation
-    if (kycStatus === 'pending_approval' || kycStatus === 'Pending Approval') {
-        if (!address || address.trim().length < 5) serverErrors.push('Please enter a valid Street Address.');
-        if (!city || city.trim().length < 2) serverErrors.push('Please enter a valid City.');
-        if (!state || state.trim().length < 2) serverErrors.push('Please enter a valid State.');
-        if (!pincode || !/^[1-9][0-9]{5}$/.test(pincode.trim())) serverErrors.push('Invalid Pincode: must be exactly 6 digits.');
-    }
+    if (!city || city.trim().length < 2)
+        serverErrors.push('Invalid City: minimum 2 characters required.');
+    if (dob && !/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/.test(dob.trim()))
+        serverErrors.push('Invalid Date of Birth: expected DD/MM/YYYY format.');
+    if (gender && gender.trim().length < 3)
+        serverErrors.push('Invalid Gender selection.');
 
     // Fetch existing user to preserve files if they aren't being re-uploaded
     let existingUser = {};
     try {
-        const existingRes = await pool.query('SELECT panurl, panbackurl, aadhaarurl, aadhaarbackurl, facephotourl, dlurl, dlbackurl FROM users WHERE id = $1', [req.params.id]);
+        const existingRes = await pool.query('SELECT panurl, panbackurl, aadhaarurl, aadhaarbackurl, facephotourl, dlurl, dlbackurl, pannumber, aadhaarnumber, dob, gender, city, vehicle_types FROM users WHERE id = $1', [req.params.id]);
         if (existingRes.rows.length > 0) {
             existingUser = existingRes.rows[0];
         }
@@ -2448,15 +2443,43 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         console.error('Error fetching existing user for KYC preservation:', e);
     }
 
-    // File checks (only enforced when requesting pending_approval status and not already uploaded)
+    // Flexible ID validation: Enforce either PAN (number + front + back) OR Aadhaar (number + front + back)
+    const effectivePanNumber = (panNumber || existingUser.pannumber || '').trim().toUpperCase();
+    const isPanFormatValid = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(effectivePanNumber);
+    const hasPanFront = !!(files.panFile || existingUser.panurl);
+    const hasPanBack = !!(files.panBackFile || existingUser.panbackurl);
+    const isPanComplete = isPanFormatValid && hasPanFront && hasPanBack;
+
+    const effectiveAadhaarRaw = (aadhaarNumber || existingUser.aadhaarnumber || '');
+    const cleanAadhaarCheck = effectiveAadhaarRaw.replace(/\D/g, '');
+    const isAadhaarFormatValid = /^[2-9][0-9]{11}$/.test(cleanAadhaarCheck);
+    const hasAadhaarFront = !!(files.aadhaarFile || existingUser.aadhaarurl);
+    const hasAadhaarBack = !!(files.aadhaarBackFile || existingUser.aadhaarbackurl);
+    const isAadhaarComplete = isAadhaarFormatValid && hasAadhaarFront && hasAadhaarBack;
+
+    // File & completeness checks (only enforced when requesting pending_approval status)
     if (kycStatus === 'pending_approval' || kycStatus === 'Pending Approval') {
-        if (!files.panFile && !existingUser.panurl) serverErrors.push('PAN Card front photo is required.');
-        if (!files.panBackFile && !existingUser.panbackurl) serverErrors.push('PAN Card back photo is required.');
-        if (!files.aadhaarFile && !existingUser.aadhaarurl) serverErrors.push('Aadhaar front photo is required.');
-        if (!files.aadhaarBackFile && !existingUser.aadhaarbackurl) serverErrors.push('Aadhaar back photo is required.');
+        if (!isPanComplete && !isAadhaarComplete) {
+            if (!effectivePanNumber && !cleanAadhaarCheck) {
+                serverErrors.push('Identity verification requires either PAN Card or Aadhaar Card.');
+            } else if (effectivePanNumber && !isPanComplete) {
+                if (!isPanFormatValid) serverErrors.push('Invalid PAN Number. Expected format: ABCDE1234F');
+                if (!hasPanFront) serverErrors.push('PAN Card front photo is required.');
+                if (!hasPanBack) serverErrors.push('PAN Card back photo is required.');
+            } else if (cleanAadhaarCheck && !isAadhaarComplete) {
+                if (!isAadhaarFormatValid) serverErrors.push('Invalid Aadhaar Number: must be exactly 12 digits starting with 2-9.');
+                if (!hasAadhaarFront) serverErrors.push('Aadhaar front photo is required.');
+                if (!hasAadhaarBack) serverErrors.push('Aadhaar back photo is required.');
+            }
+        }
+
+        // Live Selfie and Driving License are strictly mandatory for all drivers
         if (!files.faceFile && !existingUser.facephotourl) serverErrors.push('Live Selfie photo is required.');
         if (!files.dlFile && !existingUser.dlurl) serverErrors.push('Driving License front photo is required.');
         if (!files.dlBackFile && !existingUser.dlbackurl) serverErrors.push('Driving License back photo is required.');
+    } else {
+        if (effectivePanNumber && !isPanFormatValid) serverErrors.push('Invalid PAN Number. Expected format: ABCDE1234F');
+        if (cleanAadhaarCheck && !isAadhaarFormatValid) serverErrors.push('Invalid Aadhaar Number: must be exactly 12 digits starting with 2-9.');
     }
 
     if (serverErrors.length > 0) {
@@ -2547,11 +2570,23 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         }
     }
 
-    const cleanAadhaar = aadhaarNumber.replace(/\D/g, '');
-    const cleanPan = panNumber.trim().toUpperCase();
-    const cleanDL = dlNumber.replace(/[^A-Z0-9]/g, '').toUpperCase();
-    const cleanIFSC = bankIFSC.trim().toUpperCase();
+    const cleanAadhaar = aadhaarNumber ? aadhaarNumber.replace(/\D/g, '') : (existingUser.aadhaarnumber || null);
+    const cleanPan = panNumber ? panNumber.trim().toUpperCase() : (existingUser.pannumber || null);
+    const cleanDL = dlNumber ? dlNumber.replace(/[^A-Z0-9]/g, '').toUpperCase() : (existingUser.dlnumber || null);
+    const cleanIFSC = bankIFSC ? bankIFSC.trim().toUpperCase() : null;
     const finalKycStatus = kycStatus || 'Pending Approval';
+    const finalDob = dob || existingUser.dob || null;
+    const finalGender = gender || existingUser.gender || null;
+    const finalCity = city || existingUser.city || null;
+
+    const rawVehicleTypes = req.body.vehicleTypes || req.body.vehicleType || existingUser.vehicle_types || 'bike';
+    let cleanVehicleTypes = 'bike';
+    if (Array.isArray(rawVehicleTypes)) {
+        cleanVehicleTypes = rawVehicleTypes.filter(Boolean).join(',');
+    } else if (typeof rawVehicleTypes === 'string') {
+        cleanVehicleTypes = rawVehicleTypes.trim();
+    }
+    if (!cleanVehicleTypes) cleanVehicleTypes = 'bike';
 
     try {
         if (cleanPan) {
@@ -2562,6 +2597,7 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
             const aadhaarCheck = await pool.query(`SELECT id FROM users WHERE aadhaarnumber = $1 AND id != $2 UNION ALL SELECT id FROM garage_workers WHERE aadhaarnumber = $1 AND id != $2`, [cleanAadhaar, req.params.id]);
             if (aadhaarCheck.rows.length > 0) return res.status(400).json({ error: 'Aadhaar Number is already registered.' });
         }
+
         if (email) {
             const emailCheck = await pool.query(`SELECT id FROM users WHERE email = $1 AND id != $2`, [email, req.params.id]);
             if (emailCheck.rows.length > 0) return res.status(400).json({ error: 'Email is already registered.' });
@@ -2578,11 +2614,12 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
              dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
              address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
-             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21
-             WHERE id = $22`,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21,
+             dob = $22, gender = $23, vehicle_types = $24
+             WHERE id = $25`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
-             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
-             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName, req.params.id]
+             cleanDL, bankAccountName || null, bankAccountNumber || null, cleanIFSC, address || null, finalCity, state || null, pincode || null, dlUrl,
+             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName || null, finalDob, finalGender, cleanVehicleTypes, req.params.id]
         ).catch(() => {}); // ignore if no garage_worker row
 
         // Sync into core users table (marshals live here)
@@ -2591,11 +2628,12 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
              panurl = $5, aadhaarurl = $6, facephotourl = $7, kycstatus = $8,
              dlnumber = $9, bankaccountname = $10, bankaccountnumber = $11, bankifsc = $12,
              address = $13, city = $14, state = $15, pincode = $16, dlurl = $17,
-             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21
-             WHERE id = $22`,
+             panbackurl = $18, aadhaarbackurl = $19, dlbackurl = $20, bankname = $21,
+             dob = $22, gender = $23, vehicle_types = $24
+             WHERE id = $25`,
             [name, email, cleanPan, cleanAadhaar, panUrl, aadhaarUrl, facePhotoUrl, finalKycStatus,
-             cleanDL, bankAccountName, bankAccountNumber, cleanIFSC, address, city, state, pincode, dlUrl,
-             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName, req.params.id]
+             cleanDL, bankAccountName || null, bankAccountNumber || null, cleanIFSC, address || null, finalCity, state || null, pincode || null, dlUrl,
+             panBackUrl, aadhaarBackUrl, dlBackUrl, bankName || null, finalDob, finalGender, cleanVehicleTypes, req.params.id]
         );
 
         if (userUpdateRes.rowCount === 0) {
@@ -2608,6 +2646,1394 @@ apiRouter.put('/workers/:id/kyc', upload.fields([
         res.status(500).json({ error: 'Unable to save KYC details due to a system error. Please try again later or contact support.' });
     }
 });
+
+const TOP_INDIAN_BANKS = [
+    "State Bank of India", "HDFC Bank", "ICICI Bank", "Axis Bank", "Punjab National Bank",
+    "Bank of Baroda", "Kotak Mahindra Bank", "Canara Bank", "Union Bank of India", "Bank of India",
+    "IndusInd Bank", "IDBI Bank", "Yes Bank", "Federal Bank", "Central Bank of India",
+    "Indian Bank", "UCO Bank", "Indian Overseas Bank", "Punjab & Sind Bank", "IDFC FIRST Bank",
+    "Bandhan Bank", "RBL Bank", "Au Small Finance Bank", "Equitas Small Finance Bank",
+    "Airtel Payments Bank", "Paytm Payments Bank", "Jio Payments Bank", "India Post Payments Bank"
+];
+
+async function handleBankDetailsUpdate(req, res) {
+    try {
+        const id = req.params.id;
+        const { accountHolderName, bankName, accountNumber, ifscCode } = req.body;
+        
+        const serverErrors = [];
+
+        // 1. Account Holder Name
+        if (!accountHolderName || !/^[A-Za-z\s.]{2,100}$/.test(accountHolderName.trim())) {
+            serverErrors.push('Invalid Account Holder Name: must contain letters, dots, and spaces only (min 2 characters).');
+        }
+
+        // 2. Bank Name (List-only validation)
+        const cleanBank = (bankName || '').trim();
+        if (!cleanBank || !TOP_INDIAN_BANKS.includes(cleanBank)) {
+            serverErrors.push('Invalid Bank Name: please select a valid bank from the search list.');
+        }
+
+        // 3. Account Number
+        const cleanAcc = (accountNumber || '').trim();
+        if (!cleanAcc || !/^[0-9]{9,18}$/.test(cleanAcc)) {
+            serverErrors.push('Invalid Account Number: must be 9-18 numeric digits.');
+        }
+
+        // 4. IFSC Code
+        const cleanIfsc = (ifscCode || '').trim().toUpperCase();
+        if (!cleanIfsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
+            serverErrors.push('Invalid IFSC Code: must follow 11-character format (e.g. SBIN0001234).');
+        }
+
+        if (serverErrors.length > 0) {
+            return res.status(400).json({ error: serverErrors.join(' ') });
+        }
+
+        // 1-to-1 Column Mapping Updates
+        await pool.query(`
+            UPDATE users 
+            SET bankaccountname = $1, bankname = $2, bankaccountnumber = $3, bankifsc = $4, bankverified = 1
+            WHERE id = $5
+        `, [accountHolderName.trim(), cleanBank, cleanAcc, cleanIfsc, id]);
+
+        await pool.query(`
+            UPDATE garage_workers 
+            SET bankaccountname = $1, bankname = $2, bankaccountnumber = $3, bankifsc = $4, bankverified = 1
+            WHERE id = $5
+        `, [accountHolderName.trim(), cleanBank, cleanAcc, cleanIfsc, id]).catch(() => {});
+
+        res.json({
+            success: true,
+            message: 'Bank details saved successfully.',
+            bankDetails: {
+                accountHolderName: accountHolderName.trim(),
+                bankName: cleanBank,
+                accountNumber: cleanAcc,
+                ifscCode: cleanIfsc
+            }
+        });
+    } catch (err) {
+        console.error('Error saving bank details:', err);
+        res.status(500).json({ error: 'Failed to update bank details: ' + err.message });
+    }
+}
+
+apiRouter.put('/workers/:id/bank-details', handleBankDetailsUpdate);
+apiRouter.put('/users/:id/bank-details', handleBankDetailsUpdate);
+
+// ── Pincode Metadata & Locality Mapping ─────────────────────────────────────
+const PINCODE_METADATA_MAP = {
+    // West Bengal (Kolkata & Suburbs)
+    '700091': { areaName: 'Sector V / Salt Lake', city: 'Kolkata', lat: 22.5800, lng: 88.4350 },
+    '700156': { areaName: 'Newtown Action Area I & II', city: 'Kolkata', lat: 22.5850, lng: 88.4600 },
+    '700056': { areaName: 'Belgharia / Dunlop', city: 'Kolkata', lat: 22.6560, lng: 88.3840 },
+    '700001': { areaName: 'BBD Bagh / Central Business District', city: 'Kolkata', lat: 22.5726, lng: 88.3512 },
+    '700002': { areaName: 'Cossipore / North Kolkata', city: 'Kolkata', lat: 22.6150, lng: 88.3750 },
+    '700003': { areaName: 'Shyambazar / Hatibagan', city: 'Kolkata', lat: 22.5990, lng: 88.3710 },
+    '700009': { areaName: 'College Street / Sealdah', city: 'Kolkata', lat: 22.5690, lng: 88.3680 },
+    '700019': { areaName: 'Ballygunge / Gariahat', city: 'Kolkata', lat: 22.5280, lng: 88.3650 },
+    '700029': { areaName: 'Kalighat / Rashbehari', city: 'Kolkata', lat: 22.5180, lng: 88.3490 },
+    '700053': { areaName: 'New Alipore / Behala', city: 'Kolkata', lat: 22.5050, lng: 88.3290 },
+    '711101': { areaName: 'Howrah Station / Golabari', city: 'Howrah', lat: 22.5892, lng: 88.3415 },
+
+    // Maharashtra (Mumbai & Pune)
+    '400050': { areaName: 'Bandra West', city: 'Mumbai', lat: 19.0596, lng: 72.8295 },
+    '400051': { areaName: 'Bandra Kurla Complex (BKC)', city: 'Mumbai', lat: 19.0664, lng: 72.8680 },
+    '400097': { areaName: 'Malad East', city: 'Mumbai', lat: 19.1860, lng: 72.8580 },
+    '400099': { areaName: 'Andheri East / Airport', city: 'Mumbai', lat: 19.1136, lng: 72.8697 },
+    '400001': { areaName: 'Fort / South Mumbai', city: 'Mumbai', lat: 18.9322, lng: 72.8347 },
+    '411001': { areaName: 'Pune Camp / Station', city: 'Pune', lat: 18.5284, lng: 73.8743 },
+    '411014': { areaName: 'Viman Nagar / Kharadi', city: 'Pune', lat: 18.5679, lng: 73.9143 },
+    '411057': { areaName: 'Hinjawadi IT Park', city: 'Pune', lat: 18.5913, lng: 73.7389 },
+
+    // Karnataka (Bengaluru)
+    '560001': { areaName: 'MG Road / Brigade Road', city: 'Bengaluru', lat: 12.9756, lng: 77.6066 },
+    '560034': { areaName: 'Koramangala 3rd/4th Block', city: 'Bengaluru', lat: 12.9352, lng: 77.6245 },
+    '560038': { areaName: 'Indiranagar 100ft Road', city: 'Bengaluru', lat: 12.9719, lng: 77.6412 },
+    '560066': { areaName: 'Whitefield IT Corridor', city: 'Bengaluru', lat: 12.9698, lng: 77.7500 },
+    '560100': { areaName: 'Electronic City Phase 1', city: 'Bengaluru', lat: 12.8452, lng: 77.6602 },
+
+    // Delhi NCR
+    '110001': { areaName: 'Connaught Place', city: 'New Delhi', lat: 28.6304, lng: 77.2177 },
+    '110020': { areaName: 'Okhla Industrial Area', city: 'New Delhi', lat: 28.5355, lng: 77.2745 },
+    '122002': { areaName: 'Cyber Hub / DLF Phase 2', city: 'Gurugram', lat: 28.4900, lng: 77.0900 },
+    '122018': { areaName: 'Udyog Vihar Phase 4/5', city: 'Gurugram', lat: 28.5020, lng: 77.0780 },
+    '201301': { areaName: 'Noida Sector 18 / Atta Market', city: 'Noida', lat: 28.5700, lng: 77.3200 }
+};
+
+function getDirection(lat1, lng1, lat2, lng2) {
+    if (lat1 === null || lng1 === null || lat2 === null || lng2 === null) return '';
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+    const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    return directions[Math.round(brng / 45) % 8];
+}
+
+async function logPickupSearch({ pincode, address, city, lat, lng, customerId, searchType }) {
+    try {
+        let extractedPin = pincode;
+        if (!extractedPin && address) {
+            const m = address.match(/\b\d{6}\b/);
+            if (m) extractedPin = m[0];
+        }
+        if (!extractedPin) return;
+
+        let areaName = null;
+        let detectedCity = city || 'Kolkata';
+        let parsedLat = parseFloat(lat) || null;
+        let parsedLng = parseFloat(lng) || null;
+
+        if (PINCODE_METADATA_MAP[extractedPin]) {
+            areaName = PINCODE_METADATA_MAP[extractedPin].areaName;
+            detectedCity = PINCODE_METADATA_MAP[extractedPin].city;
+            if (!parsedLat) parsedLat = PINCODE_METADATA_MAP[extractedPin].lat;
+            if (!parsedLng) parsedLng = PINCODE_METADATA_MAP[extractedPin].lng;
+        } else if (address) {
+            const parts = address.split(',');
+            areaName = parts.slice(0, 2).join(', ').trim();
+        }
+
+        await pool.query(`
+            INSERT INTO pickup_searches (pincode, area_name, city, lat, lng, customer_id, search_type, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        `, [extractedPin, areaName, detectedCity, parsedLat, parsedLng, customerId || null, searchType || 'pickup_quote']);
+    } catch (err) {
+        console.error('[Demand Logging Error]:', err.message);
+    }
+}
+
+// ── Search & Demand Endpoints ───────────────────────────────────────────────
+apiRouter.post('/demand/log-search', async (req, res) => {
+    try {
+        const { pincode, address, city, lat, lng, customerId, searchType } = req.body;
+        await logPickupSearch({ pincode, address, city, lat, lng, customerId, searchType });
+        res.json({ success: true, message: 'Search event logged.' });
+    } catch (err) {
+        console.error('Error in log-search:', err);
+        res.status(500).json({ error: 'Failed to log search event: ' + err.message });
+    }
+});
+
+apiRouter.get('/marshals/:id/active-trip', async (req, res) => {
+    try {
+        const marshalId = req.params.id;
+        const activeTripStatuses = [
+            'pending_payment', 'assigned', 'pending_otp_1', 'in_transit',
+            'at_garage', 'in_service', 'out_for_delivery', 'pending_delivery'
+        ];
+        
+        const tripRes = await pool.query(`
+            SELECT t.id, t.status, t.servicerequestid
+            FROM trips t
+            LEFT JOIN service_requests sr ON sr.id = t.servicerequestid
+            WHERE (t.marshalid = $1 OR t.deliverymarshalid = $1)
+              AND t.status = ANY($2::text[])
+              AND (sr.status IS NULL OR sr.status NOT IN ('cancelled', 'completed', 'returned', 'drop_completed'))
+            ORDER BY t.createdat DESC
+            LIMIT 1
+        `, [marshalId, activeTripStatuses]);
+
+        if (tripRes.rows && tripRes.rows.length > 0) {
+            const trip = tripRes.rows[0];
+            return res.json({
+                isBusy: true,
+                status: trip.status,
+                tripId: trip.id
+            });
+        }
+
+        res.json({ isBusy: false });
+    } catch (err) {
+        console.error('Error in /marshals/:id/active-trip:', err.message);
+        res.json({ isBusy: false });
+    }
+});
+
+const CITY_CENTERS = {
+    'kolkata': { lat: 22.5726, lng: 88.3639 },
+    'mumbai': { lat: 19.0760, lng: 72.8777 },
+    'pune': { lat: 18.5204, lng: 73.8567 },
+    'bengaluru': { lat: 12.9716, lng: 77.5946 },
+    'bangalore': { lat: 12.9716, lng: 77.5946 },
+    'delhi': { lat: 28.6139, lng: 77.2090 },
+    'new delhi': { lat: 28.6139, lng: 77.2090 },
+    'gurugram': { lat: 28.4595, lng: 77.0266 },
+    'noida': { lat: 28.5355, lng: 77.3910 }
+};
+
+apiRouter.get('/demand/recommended-pincodes', async (req, res) => {
+    try {
+        const city = req.query.city || 'Kolkata';
+        let driverLat = req.query.lat ? parseFloat(req.query.lat) : null;
+        let driverLng = req.query.lng ? parseFloat(req.query.lng) : null;
+        const limit = parseInt(req.query.limit) || 5;
+
+        // Verify driver coordinates against target city center
+        const cleanCity = city.toLowerCase().trim();
+        const cityRef = CITY_CENTERS[cleanCity] || CITY_CENTERS['kolkata'];
+        if (driverLat !== null && driverLng !== null && cityRef) {
+            const distFromCityCenter = calcDistanceKm(driverLat, driverLng, cityRef.lat, cityRef.lng);
+            // If passed GPS is cross-country (> 150 km from target city), use city center reference
+            if (distFromCityCenter > 150) {
+                console.log(`[Demand Reference] Driver GPS (${driverLat}, ${driverLng}) is ${distFromCityCenter.toFixed(1)} km from ${city}. Using city center (${cityRef.lat}, ${cityRef.lng})`);
+                driverLat = cityRef.lat;
+                driverLng = cityRef.lng;
+            }
+        } else if ((driverLat === null || driverLng === null) && cityRef) {
+            driverLat = cityRef.lat;
+            driverLng = cityRef.lng;
+        }
+
+        // 1. Get configurable weights from payout_model_rates
+        const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
+        const rates = ratesRes.rows[0] || {};
+        const searchWeight = parseFloat(rates.demand_search_weight !== undefined ? rates.demand_search_weight : 1.0);
+        const bookingWeight = parseFloat(rates.demand_booking_weight !== undefined ? rates.demand_booking_weight : 3.0);
+
+        // 2. Aggregate searches in rolling 2 hours
+        const searchesRes = await pool.query(`
+            SELECT pincode, MAX(area_name) as area_name, MAX(city) as city,
+                   AVG(lat) as avg_lat, AVG(lng) as avg_lng,
+                   COUNT(*)::int as search_count
+            FROM pickup_searches
+            WHERE created_at >= NOW() - INTERVAL '2 hours'
+              AND (city ILIKE $1 OR $1 = '' OR $1 IS NULL)
+            GROUP BY pincode
+        `, [city ? `%${city}%` : '%']);
+
+        // 3. Aggregate service requests (bookings) created in rolling 2 hours
+        const twoHoursAgoEpochMs = Date.now() - (2 * 60 * 60 * 1000);
+        const bookingsRes = await pool.query(`
+            SELECT pincode, MAX(pickup_address) as pickup_address,
+                   AVG(lat) as avg_lat, AVG(lng) as avg_lng,
+                   COUNT(*)::int as booking_count
+            FROM service_requests
+            WHERE created_at >= $1
+              AND pincode IS NOT NULL AND pincode != ''
+            GROUP BY pincode
+        `, [twoHoursAgoEpochMs]);
+
+
+        // 4. Combine into unified demand map
+        const demandMap = {};
+
+        searchesRes.rows.forEach(r => {
+            const pin = r.pincode;
+            if (!demandMap[pin]) {
+                demandMap[pin] = {
+                    pincode: pin,
+                    areaName: r.area_name || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].areaName : `Area (${pin})`),
+                    city: r.city || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].city : city),
+                    lat: r.avg_lat || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].lat : null),
+                    lng: r.avg_lng || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].lng : null),
+                    searchCount: 0,
+                    bookingCount: 0
+                };
+            }
+            demandMap[pin].searchCount += r.search_count;
+        });
+
+        bookingsRes.rows.forEach(r => {
+            const pin = r.pincode;
+            if (!demandMap[pin]) {
+                demandMap[pin] = {
+                    pincode: pin,
+                    areaName: PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].areaName : `Area (${pin})`,
+                    city: PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].city : city,
+                    lat: r.avg_lat || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].lat : null),
+                    lng: r.avg_lng || (PINCODE_METADATA_MAP[pin] ? PINCODE_METADATA_MAP[pin].lng : null),
+                    searchCount: 0,
+                    bookingCount: 0
+                };
+            }
+            demandMap[pin].bookingCount += r.booking_count;
+        });
+
+        // 5. Compute scores, levels, distance and directions
+        const results = Object.values(demandMap).map(item => {
+            const meta = PINCODE_METADATA_MAP[item.pincode] || {};
+            const lat = item.lat || meta.lat || null;
+            const lng = item.lng || meta.lng || null;
+            const areaName = meta.areaName || item.areaName || `Area (${item.pincode})`;
+
+            const score = (item.searchCount * searchWeight) + (item.bookingCount * bookingWeight);
+            
+            let demandLevel = 'Moderate';
+            if (score >= 15 || item.bookingCount >= 3) demandLevel = 'Surge';
+            else if (score >= 6 || item.bookingCount >= 1) demandLevel = 'High';
+
+            let distanceKm = null;
+            let direction = '';
+            if (driverLat !== null && driverLng !== null && lat !== null && lng !== null) {
+                distanceKm = parseFloat(calcDistanceKm(driverLat, driverLng, lat, lng).toFixed(1));
+                direction = getDirection(driverLat, driverLng, lat, lng);
+            }
+
+
+            return {
+                pincode: item.pincode,
+                areaName,
+                city: item.city || meta.city || city,
+                demandScore: Math.round(score * 10) / 10,
+                searchCount: item.searchCount,
+                bookingCount: item.bookingCount,
+                demandLevel,
+                lat,
+                lng,
+                distanceKm,
+                direction
+            };
+        });
+
+        // Rank descending by demandScore
+        results.sort((a, b) => b.demandScore - a.demandScore);
+
+        res.json({
+            success: true,
+            windowHours: 2,
+            city,
+            weights: { searchWeight, bookingWeight },
+            recommendedPincodes: results.slice(0, limit)
+        });
+    } catch (err) {
+        console.error('Error getting recommended pincodes:', err);
+        res.status(500).json({ error: 'Failed to compute recommended pincodes: ' + err.message });
+    }
+});
+
+// ── Dual Payout Model (Commission % vs Subscription) ────────────────────────
+apiRouter.get('/payout-rates', async (req, res) => {
+    try {
+        const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
+        const rates = ratesRes.rows[0] || {
+            commission_rate_percent: 20.0,
+            subscription_daily_price: 99.00,
+            subscription_weekly_price: 499.00,
+            subscription_monthly_price: 1499.00,
+            subscription_annual_price: 14999.00,
+            demand_search_weight: 1.0,
+            demand_booking_weight: 3.0
+        };
+        res.json({
+            success: true,
+            rates: {
+                commissionRatePercent: parseFloat(rates.commission_rate_percent !== undefined ? rates.commission_rate_percent : 20.0),
+                subscriptionDailyPrice: parseFloat(rates.subscription_daily_price !== undefined ? rates.subscription_daily_price : 99.00),
+                subscriptionWeeklyPrice: parseFloat(rates.subscription_weekly_price !== undefined ? rates.subscription_weekly_price : 499.00),
+                subscriptionMonthlyPrice: parseFloat(rates.subscription_monthly_price !== undefined ? rates.subscription_monthly_price : 1499.00),
+                subscriptionAnnualPrice: parseFloat(rates.subscription_annual_price !== undefined ? rates.subscription_annual_price : 14999.00),
+                demandSearchWeight: parseFloat(rates.demand_search_weight !== undefined ? rates.demand_search_weight : 1.0),
+                demandBookingWeight: parseFloat(rates.demand_booking_weight !== undefined ? rates.demand_booking_weight : 3.0),
+                updatedAt: rates.updated_at
+            }
+        });
+    } catch (err) {
+        console.error('Error fetching payout rates:', err);
+        res.status(500).json({ error: 'Failed to fetch payout rates: ' + err.message });
+    }
+});
+
+apiRouter.put('/admin/payout-rates', async (req, res) => {
+    try {
+        const {
+            commissionRatePercent,
+            subscriptionDailyPrice,
+            subscriptionWeeklyPrice,
+            subscriptionMonthlyPrice,
+            subscriptionAnnualPrice,
+            demandSearchWeight,
+            demandBookingWeight
+        } = req.body;
+
+        const comm = parseFloat(commissionRatePercent);
+        if (isNaN(comm) || comm < 0 || comm > 100) {
+            return res.status(400).json({ error: 'Commission rate must be between 0% and 100%.' });
+        }
+
+        const daily = parseFloat(subscriptionDailyPrice);
+        const weekly = parseFloat(subscriptionWeeklyPrice);
+        const monthly = parseFloat(subscriptionMonthlyPrice);
+        const annual = parseFloat(subscriptionAnnualPrice);
+
+        if ([daily, weekly, monthly, annual].some(p => isNaN(p) || p < 0)) {
+            return res.status(400).json({ error: 'Subscription prices must be non-negative numbers.' });
+        }
+
+        const searchW = demandSearchWeight !== undefined ? parseFloat(demandSearchWeight) : 1.0;
+        const bookingW = demandBookingWeight !== undefined ? parseFloat(demandBookingWeight) : 3.0;
+
+        if (isNaN(searchW) || searchW < 0 || isNaN(bookingW) || bookingW < 0) {
+            return res.status(400).json({ error: 'Demand weights must be non-negative numbers.' });
+        }
+
+        await pool.query(`
+            UPDATE payout_model_rates 
+            SET commission_rate_percent = $1,
+                subscription_daily_price = $2,
+                subscription_weekly_price = $3,
+                subscription_monthly_price = $4,
+                subscription_annual_price = $5,
+                demand_search_weight = $6,
+                demand_booking_weight = $7,
+                updated_at = NOW()
+            WHERE id = 'current_rates'
+        `, [comm, daily, weekly, monthly, annual, searchW, bookingW]);
+
+        res.json({
+            success: true,
+            message: 'Payout model rates & demand weights updated successfully.',
+            rates: {
+                commissionRatePercent: comm,
+                subscriptionDailyPrice: daily,
+                subscriptionWeeklyPrice: weekly,
+                subscriptionMonthlyPrice: monthly,
+                subscriptionAnnualPrice: annual,
+                demandSearchWeight: searchW,
+                demandBookingWeight: bookingW
+            }
+        });
+    } catch (err) {
+        console.error('Error updating payout rates:', err);
+        res.status(500).json({ error: 'Failed to update rates: ' + err.message });
+    }
+});
+
+
+function canSwitchPayoutModel(lastSwitchedAt) {
+    if (!lastSwitchedAt) return true;
+    const last = new Date(lastSwitchedAt);
+    const now = new Date();
+    return (last.getFullYear() !== now.getFullYear()) || (last.getMonth() !== now.getMonth());
+}
+
+apiRouter.put('/workers/:id/payout-plan', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { requestedModel, requestedCycle } = req.body;
+
+        if (!['commission', 'subscription'].includes(requestedModel)) {
+            return res.status(400).json({ error: 'Invalid payout model requested.' });
+        }
+        if (requestedModel === 'subscription' && !['daily', 'weekly', 'monthly', 'annually'].includes(requestedCycle)) {
+            return res.status(400).json({ error: 'Invalid subscription cycle requested.' });
+        }
+
+        // Fetch driver current plan & last switched date
+        const userRes = await pool.query(
+            "SELECT payout_model, subscription_cycle, subscription_valid_until, payout_model_last_switched_at FROM users WHERE id = $1",
+            [id]
+        );
+        if (userRes.rows.length === 0) return res.status(404).json({ error: 'Driver not found.' });
+
+        const user = userRes.rows[0];
+
+        // 1. Enforce once-per-calendar-month rule
+        if (!canSwitchPayoutModel(user.payout_model_last_switched_at)) {
+            return res.status(400).json({
+                error: 'You can only switch your payout plan once per calendar month. Your next switch will be available on the 1st of next month.'
+            });
+        }
+
+        // 2. Compute effective date
+        let effectiveDate;
+        const now = new Date();
+        if (user.payout_model === 'subscription' && user.subscription_valid_until && new Date(user.subscription_valid_until) > now) {
+            // Subscription -> Commission or Cycle change takes effect when current pre-paid subscription ends
+            effectiveDate = new Date(user.subscription_valid_until);
+        } else {
+            // Commission -> Subscription takes effect on 1st of next calendar month at 00:00:00
+            effectiveDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
+
+        const effectiveDateStr = effectiveDate.toISOString().split('T')[0];
+
+        // Update pending plan and mark last_switched_at timestamp
+        await pool.query(`
+            UPDATE users 
+            SET pending_payout_model = $1,
+                pending_subscription_cycle = $2,
+                pending_effective_date = $3,
+                payout_model_last_switched_at = NOW()
+            WHERE id = $4
+        `, [requestedModel, requestedModel === 'subscription' ? requestedCycle : null, effectiveDateStr, id]);
+
+        await pool.query(`
+            UPDATE garage_workers 
+            SET pending_payout_model = $1,
+                pending_subscription_cycle = $2,
+                pending_effective_date = $3,
+                payout_model_last_switched_at = NOW()
+            WHERE id = $4
+        `, [requestedModel, requestedModel === 'subscription' ? requestedCycle : null, effectiveDateStr, id]).catch(() => {});
+
+        res.json({
+            success: true,
+            message: `Plan switch request saved. Your ${requestedModel} plan will take effect on ${effectiveDateStr}.`,
+            pendingPlan: {
+                model: requestedModel,
+                cycle: requestedModel === 'subscription' ? requestedCycle : null,
+                effectiveDate: effectiveDateStr
+            }
+        });
+    } catch (err) {
+        console.error('Error switching payout plan:', err);
+        res.status(500).json({ error: 'Failed to request plan switch: ' + err.message });
+    }
+});
+
+// ============================================================
+// RAZORPAY DRIVER SUBSCRIPTION PAYMENT ENDPOINTS (LIVE SANDBOX)
+// ============================================================
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
+
+function getRazorpayClient() {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+        throw new Error('Razorpay credentials missing from environment.');
+    }
+    return new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+}
+
+function getCycleDurationDays(cycle) {
+    switch (cycle) {
+        case 'daily': return 1;
+        case 'weekly': return 7;
+        case 'monthly': return 30;
+        case 'annually': return 365;
+        default: return 30;
+    }
+}
+
+// 1. Create Razorpay Order (Strict Real Outbound API Call to api.razorpay.com)
+apiRouter.post('/driver/subscription/create-order', async (req, res) => {
+    try {
+        const { driverId, cycle } = req.body;
+        if (!driverId) return res.status(400).json({ error: 'Driver ID is required.' });
+        if (!['daily', 'weekly', 'monthly', 'annually'].includes(cycle)) {
+            return res.status(400).json({ error: 'Invalid subscription cycle.' });
+        }
+
+        // Verify driver exists
+        const driverRes = await pool.query("SELECT id, name, phone FROM users WHERE id = $1", [driverId]);
+        if (driverRes.rows.length === 0) return res.status(404).json({ error: 'Driver not found.' });
+        const driver = driverRes.rows[0];
+
+        // Fetch official rates from single source of truth
+        const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
+        const rates = ratesRes.rows[0] || {};
+        let rateInRupees = 1499.00;
+        if (cycle === 'daily') rateInRupees = parseFloat(rates.subscription_daily_price || 99.00);
+        else if (cycle === 'weekly') rateInRupees = parseFloat(rates.subscription_weekly_price || 499.00);
+        else if (cycle === 'monthly') rateInRupees = parseFloat(rates.subscription_monthly_price || 1499.00);
+        else if (cycle === 'annually') rateInRupees = parseFloat(rates.subscription_annual_price || 14999.00);
+
+        const amountPaise = Math.round(rateInRupees * 100);
+        const receiptId = `rcpt_${Date.now().toString().slice(-8)}_${driverId.slice(-4)}`;
+
+        // STRICT REAL OUTBOUND API CALL TO RAZORPAY
+        const rzp = getRazorpayClient();
+        const rzpOrder = await rzp.orders.create({
+            amount: amountPaise,
+            currency: 'INR',
+            receipt: receiptId,
+            notes: { driverId, cycle }
+        });
+
+        const paymentId = 'subpay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        await pool.query(`
+            INSERT INTO subscription_payments (
+                id, driver_id, amount, currency, subscription_cycle, gateway_order_id, status, metadata, created_at, updated_at
+            ) VALUES ($1, $2, $3, 'INR', $4, $5, 'created', $6, NOW(), NOW())
+        `, [paymentId, driverId, rateInRupees, cycle, rzpOrder.id, JSON.stringify({ receipt: receiptId, razorpay_order: rzpOrder, driverName: driver.name, driverPhone: driver.phone })]);
+
+        res.json({
+            success: true,
+            orderId: rzpOrder.id,
+            amount: rzpOrder.amount,
+            amountInRupees: rateInRupees,
+            currency: rzpOrder.currency,
+            keyId: process.env.RAZORPAY_KEY_ID,
+            cycle,
+            driver: {
+                id: driver.id,
+                name: driver.name,
+                phone: driver.phone
+            },
+            rawRazorpayOrder: rzpOrder
+        });
+    } catch (err) {
+        console.error('[RAZORPAY_CREATE_ORDER_ERROR]', err);
+        res.status(500).json({ error: 'Razorpay order creation failed: ' + (err.error?.description || err.message) });
+    }
+});
+
+// Helper for atomic payment activation and driver extension
+async function activateDriverSubscriptionAtomic(gatewayOrderId, gatewayPaymentId, gatewaySignature, metadataUpdate = {}) {
+    const claimRes = await pool.query(`
+        UPDATE subscription_payments 
+        SET status = 'captured',
+            gateway_payment_id = $2,
+            gateway_signature = $3,
+            activated_from = NOW(),
+            updated_at = NOW()
+        WHERE gateway_order_id = $1 
+          AND status != 'captured'
+        RETURNING *;
+    `, [gatewayOrderId, gatewayPaymentId, gatewaySignature]);
+
+    if (claimRes.rows.length === 0) {
+        // Race condition loss or already processed -> retrieve existing
+        const existing = await pool.query("SELECT * FROM subscription_payments WHERE gateway_order_id = $1", [gatewayOrderId]);
+        return { claimed: false, payment: existing.rows[0] };
+    }
+
+    const payment = claimRes.rows[0];
+    const days = getCycleDurationDays(payment.subscription_cycle);
+
+    // Atomic driver subscription validity extension using GREATEST(NOW(), valid_until)
+    const updateDriverRes = await pool.query(`
+        UPDATE users 
+        SET payout_model = 'subscription',
+            subscription_cycle = $1,
+            subscription_valid_until = GREATEST(NOW(), COALESCE(subscription_valid_until, NOW())) + ($2 || ' days')::INTERVAL,
+            pending_payout_model = NULL,
+            pending_subscription_cycle = NULL,
+            pending_effective_date = NULL,
+            payout_model_last_switched_at = NOW()
+        WHERE id = $3
+        RETURNING id, name, phone, payout_model, subscription_cycle, subscription_valid_until;
+    `, [payment.subscription_cycle, days, payment.driver_id]);
+
+    const updatedDriver = updateDriverRes.rows[0];
+
+    // Update payment record activated_until
+    if (updatedDriver && updatedDriver.subscription_valid_until) {
+        await pool.query(
+            "UPDATE subscription_payments SET activated_until = $1 WHERE id = $2",
+            [updatedDriver.subscription_valid_until, payment.id]
+        );
+    }
+
+    // Sync SQLite users & garage_workers
+    if (updatedDriver) {
+        const subUntilStr = updatedDriver.subscription_valid_until ? new Date(updatedDriver.subscription_valid_until).toISOString() : null;
+        db.run(`
+            UPDATE users 
+            SET payout_model = 'subscription',
+                subscription_cycle = ?,
+                subscription_valid_until = ?,
+                pending_payout_model = NULL,
+                pending_subscription_cycle = NULL,
+                pending_effective_date = NULL
+            WHERE id = ?
+        `, [payment.subscription_cycle, subUntilStr, payment.driver_id], () => {});
+        db.run(`
+            UPDATE garage_workers 
+            SET payout_model = 'subscription',
+                subscription_cycle = ?,
+                subscription_valid_until = ?,
+                pending_payout_model = NULL,
+                pending_subscription_cycle = NULL,
+                pending_effective_date = NULL
+            WHERE id = ?
+        `, [payment.subscription_cycle, subUntilStr, payment.driver_id], () => {});
+    }
+
+    return { claimed: true, payment, driver: updatedDriver };
+}
+
+// 2. Client-Side Signature Verification & Activation (Strict HMAC Verification)
+apiRouter.post('/driver/subscription/verify', async (req, res) => {
+    try {
+        const { orderId, paymentId, signature, driverId } = req.body;
+        if (!orderId || !paymentId || !signature) {
+            return res.status(400).json({ error: 'orderId, paymentId, and signature are required.' });
+        }
+
+        // STRICT HMAC-SHA256 SIGNATURE VERIFICATION
+        const secret = process.env.RAZORPAY_KEY_SECRET;
+        const expectedSignature = crypto
+            .createHmac('sha256', secret)
+            .update(`${orderId}|${paymentId}`)
+            .digest('hex');
+
+        if (signature !== expectedSignature) {
+            return res.status(400).json({ 
+                error: 'Invalid payment signature. Authentication failed.',
+                expected: expectedSignature,
+                received: signature
+            });
+        }
+
+        const result = await activateDriverSubscriptionAtomic(
+            orderId, 
+            paymentId, 
+            signature, 
+            { channel: 'client_verify' }
+        );
+
+        if (!result.driver) {
+            const drvRes = await pool.query("SELECT id, name, phone, payout_model, subscription_cycle, subscription_valid_until FROM users WHERE id = $1", [result.payment?.driver_id || driverId]);
+            return res.json({
+                success: true,
+                message: 'Payment verified (already activated).',
+                user: drvRes.rows[0],
+                payment: result.payment
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Subscription payment verified and activated successfully.',
+            user: result.driver,
+            payment: result.payment,
+            verifiedSignature: signature
+        });
+    } catch (err) {
+        console.error('[RAZORPAY_VERIFY_ERROR]', err);
+        res.status(500).json({ error: 'Payment verification failed: ' + err.message });
+    }
+});
+
+// 3. Razorpay Webhook Handler (Strict Header & Payload HMAC Verification)
+apiRouter.post('/webhooks/razorpay', async (req, res) => {
+    try {
+        const signature = req.headers['x-razorpay-signature'];
+        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+        if (!signature) {
+            return res.status(400).json({ error: 'Missing x-razorpay-signature header' });
+        }
+
+        const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body));
+        const expectedSig = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(rawBody)
+            .digest('hex');
+
+        if (signature !== expectedSig) {
+            console.warn('[WEBHOOK_REJECTED] Invalid signature received.');
+            return res.status(400).json({ error: 'Invalid webhook signature.' });
+        }
+
+        const event = req.body.event;
+        const payload = req.body.payload || {};
+
+        if (event === 'payment.captured' || event === 'order.paid') {
+            const paymentEntity = payload.payment?.entity || {};
+            const orderId = paymentEntity.order_id || payload.order?.entity?.id;
+            const paymentId = paymentEntity.id;
+
+            if (orderId) {
+                // 1. Try driver subscription activation
+                const subResult = await activateDriverSubscriptionAtomic(
+                    orderId,
+                    paymentId,
+                    'webhook_captured',
+                    { webhookEvent: event }
+                );
+                if (subResult.claimed) {
+                    console.log(`[WEBHOOK] ${event} driver subscription processed for ${orderId}`);
+                } else {
+                    // 2. Try customer ride advance payment activation
+                    const rideResult = await activateRideAdvancePaymentAtomic(
+                        orderId,
+                        paymentId,
+                        'webhook_captured',
+                        { webhookEvent: event }
+                    );
+                    console.log(`[WEBHOOK] ${event} ride payment processed for ${orderId}, claimed: ${rideResult.claimed}`);
+                }
+            }
+            return res.json({ status: 'ok', event });
+        }
+
+        if (event === 'payment.failed') {
+            const paymentEntity = payload.payment?.entity || {};
+            const orderId = paymentEntity.order_id;
+            const errorDesc = paymentEntity.error_description || 'Payment failed at gateway';
+
+            if (orderId) {
+                await pool.query(`
+                    UPDATE subscription_payments 
+                    SET status = 'failed',
+                        failure_reason = $2,
+                        updated_at = NOW()
+                    WHERE gateway_order_id = $1 AND status = 'created'
+                `, [orderId, errorDesc]);
+                await pool.query(`
+                    UPDATE ride_payments 
+                    SET status = 'failed',
+                        failure_reason = $2,
+                        updated_at = NOW()
+                    WHERE gateway_order_id = $1 AND status = 'created'
+                `, [orderId, errorDesc]);
+                console.log(`[WEBHOOK] payment.failed marked for order ${orderId}`);
+            }
+            return res.json({ status: 'ok', event });
+        }
+
+        res.json({ status: 'ignored', event });
+    } catch (err) {
+        console.error('[WEBHOOK_ERROR]', err);
+        res.status(500).json({ error: 'Webhook processing error: ' + err.message });
+    }
+});
+
+// 4. CRM Subscription Ledger
+apiRouter.get('/crm/driver-subscriptions', async (req, res) => {
+    try {
+        const { status, cycle, driverId } = req.query;
+        let query = `
+            SELECT sp.*, u.name as driver_name, u.phone as driver_phone, u.payout_model as current_payout_model
+            FROM subscription_payments sp
+            LEFT JOIN users u ON sp.driver_id = u.id
+            WHERE 1=1
+        `;
+        const params = [];
+        let idx = 1;
+
+        if (status) {
+            query += ` AND sp.status = $${idx++}`;
+            params.push(status);
+        }
+        if (cycle) {
+            query += ` AND sp.subscription_cycle = $${idx++}`;
+            params.push(cycle);
+        }
+        if (driverId) {
+            query += ` AND sp.driver_id = $${idx++}`;
+            params.push(driverId);
+        }
+
+        query += ` ORDER BY sp.created_at DESC LIMIT 100`;
+        const result = await pool.query(query, params);
+        res.json({ success: true, payments: result.rows });
+    } catch (err) {
+        console.error('Error fetching subscription ledger:', err);
+        res.status(500).json({ error: 'Failed to fetch subscriptions: ' + err.message });
+    }
+});
+
+// 5. CRM Admin Refund Action
+apiRouter.post('/crm/driver-subscriptions/:id/refund', async (req, res) => {
+    try {
+        const paymentId = req.params.id;
+        const { adminId, reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'A valid reason is required for refunds.' });
+
+        const payRes = await pool.query("SELECT * FROM subscription_payments WHERE id = $1", [paymentId]);
+        if (payRes.rows.length === 0) return res.status(404).json({ error: 'Subscription payment not found.' });
+
+        const payment = payRes.rows[0];
+        if (payment.status === 'refunded') return res.status(400).json({ error: 'Payment is already refunded.' });
+
+        const days = getCycleDurationDays(payment.subscription_cycle);
+        const refundDetails = {
+            refundedAt: new Date().toISOString(),
+            adminId: adminId || 'admin_ops',
+            reason
+        };
+
+        // Mark payment record refunded
+        await pool.query(`
+            UPDATE subscription_payments 
+            SET status = 'refunded',
+                metadata = jsonb_set(metadata, '{refund_details}', $2::jsonb),
+                updated_at = NOW()
+            WHERE id = $1
+        `, [paymentId, JSON.stringify(refundDetails)]);
+
+        // Adjust/revoke subscription validity
+        const driverRes = await pool.query("SELECT id, subscription_valid_until, payout_model FROM users WHERE id = $1", [payment.driver_id]);
+        if (driverRes.rows.length > 0) {
+            const driver = driverRes.rows[0];
+            let newValidUntil = null;
+            let newModel = driver.payout_model;
+
+            if (driver.subscription_valid_until) {
+                const currentExpiry = new Date(driver.subscription_valid_until);
+                const reducedExpiry = new Date(currentExpiry.getTime() - (days * 24 * 60 * 60 * 1000));
+                if (reducedExpiry > new Date()) {
+                    newValidUntil = reducedExpiry.toISOString();
+                } else {
+                    newValidUntil = null;
+                    newModel = 'commission';
+                }
+            } else {
+                newModel = 'commission';
+            }
+
+            await pool.query(`
+                UPDATE users 
+                SET subscription_valid_until = $1,
+                    payout_model = $2
+                WHERE id = $3
+            `, [newValidUntil, newModel, payment.driver_id]);
+
+            db.run(`UPDATE users SET subscription_valid_until = ?, payout_model = ? WHERE id = ?`, [newValidUntil, newModel, payment.driver_id], () => {});
+            db.run(`UPDATE garage_workers SET subscription_valid_until = ?, payout_model = ? WHERE id = ?`, [newValidUntil, newModel, payment.driver_id], () => {});
+        }
+
+        res.json({
+            success: true,
+            message: `Payment ${paymentId} successfully refunded and subscription duration revoked.`
+        });
+    } catch (err) {
+        console.error('Error processing refund:', err);
+        res.status(500).json({ error: 'Refund processing failed: ' + err.message });
+    }
+});
+
+// ==========================================
+// CUSTOMER ADVANCE PAYMENTS (RIDE BOOKING)
+// ==========================================
+
+async function calculateServerSideFare(params) {
+    const {
+        distanceKm = 0,
+        pricingMode = 'distance',
+        estimatedHours = 4,
+        vehicleType = 'car',
+        vehicleCondition = 'Working',
+        routeStops = []
+    } = params;
+
+    // 1. Fetch system settings
+    const settingsRes = await pool.query("SELECT key, value FROM system_settings");
+    const settings = {};
+    settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+
+    // 2. Fetch incentive slabs
+    const slabsRes = await pool.query("SELECT maxdistance, rateperkm FROM incentive_slabs ORDER BY maxdistance ASC");
+    const slabs = slabsRes.rows.map(s => ({
+        maxDistance: parseFloat(s.maxdistance),
+        ratePerKm: parseFloat(s.rateperkm)
+    }));
+
+    const dist = parseFloat(distanceKm) || 0;
+    const baseFare = parseFloat(settings['base_fare'] || '50.0');
+    const minFare = parseFloat(settings['min_fare'] || '99.0');
+    const haltRate = parseFloat(settings['halt_rate_per_min'] || '2.0');
+
+    // Towing fee if vehicle is not working
+    let towingFee = 0;
+    if (vehicleCondition === 'Not Working') {
+        const towingBase = parseFloat(settings['towing_base_fee'] || '500.0');
+        const towingRatePerKm = parseFloat(settings['towing_rate_per_km'] || '30.0');
+        towingFee = towingBase + (dist * towingRatePerKm);
+    }
+
+    if (pricingMode === 'hourly') {
+        const typeKey = (vehicleType || 'car').toLowerCase();
+        const hourlyRate = parseFloat(settings[`${typeKey}_hourly_rate`] || (typeKey === 'car' ? '150.0' : '80.0'));
+        const hours = parseFloat(estimatedHours) || 4;
+        const total = (hours * hourlyRate) + towingFee;
+        return Math.max(minFare, Math.round(total * 100) / 100);
+    }
+
+    // Distance pricing mode
+    let slabRate = 15.0;
+    if (slabs.length > 0) {
+        const match = slabs.find(s => dist <= s.maxDistance);
+        slabRate = match ? match.ratePerKm : slabs[slabs.length - 1].ratePerKm;
+    }
+
+    const distanceCharge = Math.max(minFare, dist * slabRate);
+
+    let totalHaltMinutes = 0;
+    if (Array.isArray(routeStops)) {
+        routeStops.forEach(st => {
+            totalHaltMinutes += parseInt(st.haltTime || st.halt_time) || 0;
+        });
+    }
+    const haltCharge = totalHaltMinutes * haltRate;
+    const totalFare = distanceCharge + haltCharge + towingFee;
+    return Math.max(minFare, Math.round(totalFare * 100) / 100);
+}
+
+// Atomic helper for activating customer ride advance payment
+async function activateRideAdvancePaymentAtomic(orderId, paymentId, signature, meta = {}) {
+    const updateRes = await pool.query(`
+        UPDATE ride_payments
+        SET status = 'captured',
+            gateway_payment_id = $2,
+            gateway_signature = $3,
+            metadata = jsonb_set(metadata, '{claim_source}', $4::jsonb),
+            updated_at = NOW()
+        WHERE gateway_order_id = $1 AND status != 'captured'
+        RETURNING *;
+    `, [orderId, paymentId, signature, JSON.stringify(meta)]);
+
+    if (updateRes.rows.length === 0) {
+        const existing = await pool.query("SELECT * FROM ride_payments WHERE gateway_order_id = $1", [orderId]);
+        return { claimed: false, payment: existing.rows[0] };
+    }
+
+    const payment = updateRes.rows[0];
+    const payMeta = payment.metadata || {};
+
+    // 1. Clear customer outstanding balance if settled in this payment
+    if (payMeta.outstandingBalance > 0) {
+        await pool.query("UPDATE customers SET outstanding_balance = 0 WHERE id = $1", [payment.customer_id]);
+    }
+
+    // 2. PUBLISH TO DRIVERS: Now insert service_requests with status 'pending' and is_advance_paid = true
+    const draftId = payment.service_request_id;
+    const reqMeta = payMeta.requestParams || {};
+
+    // SQLite dual-write for legacy polling feeds
+    db.run(
+        `INSERT INTO service_requests
+         (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice,
+          lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET status = 'pending'`,
+        [
+            draftId, payment.customer_id, reqMeta.vehicleId || null, reqMeta.garageId || null,
+            new Date().toISOString().split('T')[0], payment.estimated_fare,
+            reqMeta.lat || null, reqMeta.lng || null,
+            reqMeta.pickup_address || null, reqMeta.drop_address || null,
+            reqMeta.issue || 'Pending Driver Inspection', reqMeta.serviceCategory || 'Standard Service',
+            reqMeta.bookingFlow || 'p2p', reqMeta.pickupDropType || 'Pickup',
+            JSON.stringify(reqMeta.routeStops || []), Date.now()
+        ]
+    );
+
+    // PostgreSQL write
+    await pool.query(`
+        INSERT INTO service_requests (
+            id, customerid, vehicleid, garageid, date, status, totalcustomerprice,
+            lat, lng, pickup_address, drop_address, is_advance_paid, created_at
+        ) VALUES ($1, $2, $3, $4, CURRENT_DATE, 'pending', $5, $6, $7, $8, $9, true, EXTRACT(EPOCH FROM NOW())*1000)
+        ON CONFLICT (id) DO UPDATE SET status = 'pending', is_advance_paid = true;
+    `, [
+        draftId, payment.customer_id, reqMeta.vehicleId || null, reqMeta.garageId || null,
+        payment.estimated_fare, reqMeta.lat || null, reqMeta.lng || null,
+        reqMeta.pickup_address || null, reqMeta.drop_address || null
+    ]).catch(e => console.error("PG service_requests insert error:", e));
+
+    return { claimed: true, payment };
+}
+
+// 1. Create Customer Advance Payment Order
+apiRouter.post('/customer/booking/create-order', async (req, res) => {
+    try {
+        const {
+            customerId, vehicleId, garageId,
+            lat, lng, pickup_address, drop_address,
+            distanceKm, pricingMode, estimatedHours,
+            vehicleType, vehicleCondition, routeStops,
+            issue, serviceType, bookingFlow, pickupDropType
+        } = req.body;
+
+        if (!customerId) return res.status(400).json({ error: 'Customer ID is required.' });
+
+        // Safety Kill Switch: Check if customer advance payments feature is enabled
+        const featRes = await pool.query("SELECT value FROM system_settings WHERE key = 'enable_customer_advance_payment'");
+        const isEnabled = featRes.rows[0]?.value === 'true' || process.env.ENABLE_CUSTOMER_ADVANCE_PAYMENT === 'true';
+        if (!isEnabled) {
+            return res.status(403).json({
+                error: 'Customer advance payments are currently disabled in production.',
+                disabled: true
+            });
+        }
+
+        // Ensure customer exists in PostgreSQL customers table
+        await pool.query(`
+            INSERT INTO customers (id, name, phone, email)
+            VALUES ($1, 'Customer', '+919999999999', 'customer@redrivo.com')
+            ON CONFLICT (id) DO NOTHING;
+        `, [customerId]);
+
+        // Check outstanding balance on debt ledger
+        const custRes = await pool.query("SELECT outstanding_balance FROM customers WHERE id = $1", [customerId]);
+        const outstandingBalance = parseFloat(custRes.rows[0]?.outstanding_balance || 0);
+
+        // Authoritative server-side fare calculation
+        const calculatedFare = await calculateServerSideFare({
+            distanceKm, pricingMode, estimatedHours,
+            vehicleType: vehicleType || 'car',
+            vehicleCondition: vehicleCondition || 'Working',
+            routeStops: routeStops || []
+        });
+
+        const totalPayableRupees = Math.max(1.00, calculatedFare + outstandingBalance);
+        const amountPaise = Math.round(totalPayableRupees * 100);
+
+        const draftRequestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const receiptId = `rcpt_ride_${Date.now().toString().slice(-8)}`;
+
+        // STRICT REAL OUTBOUND CALL TO RAZORPAY
+        const rzp = getRazorpayClient();
+        const rzpOrder = await rzp.orders.create({
+            amount: amountPaise,
+            currency: 'INR',
+            receipt: receiptId,
+            notes: { customerId, draftRequestId, outstandingBalance }
+        });
+
+        const paymentId = `ridepay_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const requestParams = {
+            vehicleId, garageId, lat, lng, pickup_address, drop_address,
+            distanceKm, pricingMode, estimatedHours, vehicleType, vehicleCondition,
+            routeStops, issue, serviceCategory: serviceType || issue || 'Standard Service',
+            bookingFlow, pickupDropType
+        };
+
+        await pool.query(`
+            INSERT INTO ride_payments (
+                id, service_request_id, customer_id, estimated_fare, amount_paid,
+                gateway_order_id, status, metadata, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'created', $7, NOW(), NOW())
+        `, [
+            paymentId, draftRequestId, customerId, calculatedFare, totalPayableRupees,
+            rzpOrder.id, JSON.stringify({ rzpOrder, requestParams, outstandingBalance })
+        ]);
+
+        // NOTICE: service_requests is NOT inserted yet — unpublished until payment verification
+        res.json({
+            success: true,
+            orderId: rzpOrder.id,
+            amount: rzpOrder.amount,
+            amountInRupees: totalPayableRupees,
+            currency: rzpOrder.currency,
+            keyId: process.env.RAZORPAY_KEY_ID,
+            draftRequestId,
+            outstandingBalanceIncluded: outstandingBalance,
+            calculatedFare
+        });
+    } catch (err) {
+        console.error('[CUSTOMER_CREATE_ORDER_ERROR]', err);
+        res.status(500).json({ error: 'Failed to create payment order: ' + (err.error?.description || err.message) });
+    }
+});
+
+// 2. Cryptographic Verification & Dispatch Gate
+apiRouter.post('/customer/booking/verify-advance', async (req, res) => {
+    try {
+        const { orderId, paymentId, signature, draftRequestId } = req.body;
+        if (!orderId || !paymentId || !signature) {
+            return res.status(400).json({ error: 'Missing payment verification parameters.' });
+        }
+
+        // Strict HMAC-SHA256 Authentication
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(`${orderId}|${paymentId}`)
+            .digest('hex');
+
+        if (expectedSignature !== signature) {
+            return res.status(400).json({
+                error: 'Invalid payment signature. Authentication failed.',
+                expected: expectedSignature,
+                received: signature
+            });
+        }
+
+        // Atomic conditional update gate
+        const activation = await activateRideAdvancePaymentAtomic(
+            orderId,
+            paymentId,
+            signature,
+            { clientVerifiedAt: new Date().toISOString() }
+        );
+
+        res.json({
+            success: true,
+            message: 'Advance payment verified and booking published to drivers.',
+            requestId: draftRequestId || activation.payment.service_request_id,
+            payment: activation.payment,
+            verifiedSignature: signature
+        });
+    } catch (err) {
+        console.error('[CUSTOMER_VERIFY_PAYMENT_ERROR]', err);
+        res.status(500).json({ error: 'Verification failed: ' + err.message });
+    }
+});
+
+// 3. Customer Cancellation & Tiered Auto-Refund
+apiRouter.post('/customer/booking/cancel', async (req, res) => {
+    try {
+        const { requestId, customerId, reason } = req.body;
+        if (!requestId) return res.status(400).json({ error: 'Request ID is required.' });
+
+        const payRes = await pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1", [requestId]);
+        if (payRes.rows.length === 0) return res.status(404).json({ error: 'Ride payment record not found.' });
+        const payment = payRes.rows[0];
+
+        if (payment.status === 'refunded') {
+            return res.status(400).json({ error: 'Payment is already fully refunded.' });
+        }
+
+        // Fetch dynamic system settings for cancellation
+        const settingsRes = await pool.query("SELECT key, value FROM system_settings WHERE key IN ('customer_cancellation_fee', 'customer_cancellation_grace_seconds')");
+        const settings = {};
+        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+
+        const cancellationFee = parseFloat(settings['customer_cancellation_fee'] || '50.0');
+        const graceSeconds = parseInt(settings['customer_cancellation_grace_seconds'] || '180');
+
+        // Check service request status
+        const srRes = await pool.query("SELECT status, workerid, created_at FROM service_requests WHERE id = $1", [requestId]);
+        const sr = srRes.rows[0] || {};
+
+        let refundAmount = parseFloat(payment.amount_paid);
+        let feeDeducted = 0;
+
+        // Tiered cancellation policy
+        if (sr.status === 'marshal_assigned' && sr.workerid) {
+            // Check time elapsed since creation / assignment
+            const elapsed = Math.floor((Date.now() - (parseFloat(sr.created_at) || Date.now())) / 1000);
+            if (elapsed > graceSeconds) {
+                feeDeducted = Math.min(cancellationFee, refundAmount);
+                refundAmount = Math.max(0, refundAmount - feeDeducted);
+            }
+        }
+
+        let rzpRefund = null;
+        if (refundAmount > 0 && payment.gateway_payment_id) {
+            const rzp = getRazorpayClient();
+            rzpRefund = await rzp.payments.refund(payment.gateway_payment_id, {
+                amount: Math.round(refundAmount * 100),
+                notes: { reason: reason || 'customer_cancellation', requestId, feeDeducted }
+            });
+        }
+
+        const newStatus = refundAmount === parseFloat(payment.amount_paid) ? 'refunded' : 'partially_refunded';
+        await pool.query(`
+            UPDATE ride_payments
+            SET status = $1,
+                refund_id = $2,
+                refund_amount = $3,
+                fare_difference = $4,
+                updated_at = NOW()
+            WHERE id = $5
+        `, [newStatus, rzpRefund?.id || 'manual_refund', refundAmount, feeDeducted, payment.id]);
+
+        // Update service_requests status
+        await pool.query("UPDATE service_requests SET status = 'cancelled' WHERE id = $1", [requestId]);
+        db.run("UPDATE service_requests SET status = 'cancelled' WHERE id = ?", [requestId], () => {});
+
+        res.json({
+            success: true,
+            message: `Booking cancelled. ₹${refundAmount.toFixed(2)} refunded. Fee deducted: ₹${feeDeducted.toFixed(2)}.`,
+            refundAmount,
+            feeDeducted,
+            refundId: rzpRefund?.id || null
+        });
+    } catch (err) {
+        console.error('[CUSTOMER_CANCEL_ERROR]', err);
+        res.status(500).json({ error: 'Cancellation failed: ' + (err.error?.description || err.message) });
+    }
+});
+
+// 4. 60-Second No Driver Found Auto-Refund
+apiRouter.post('/customer/booking/timeout-refund', async (req, res) => {
+    try {
+        const { requestId } = req.body;
+        if (!requestId) return res.status(400).json({ error: 'Request ID is required.' });
+
+        const payRes = await pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1", [requestId]);
+        if (payRes.rows.length === 0) return res.status(404).json({ error: 'Ride payment record not found.' });
+        const payment = payRes.rows[0];
+
+        if (payment.status === 'refunded') {
+            return res.json({ success: true, message: 'Already refunded.', refundAmount: payment.refund_amount });
+        }
+
+        const refundAmount = parseFloat(payment.amount_paid);
+        let rzpRefund = null;
+
+        if (payment.gateway_payment_id) {
+            const rzp = getRazorpayClient();
+            rzpRefund = await rzp.payments.refund(payment.gateway_payment_id, {
+                amount: Math.round(refundAmount * 100),
+                notes: { reason: 'driver_search_timeout_60s', requestId }
+            });
+        }
+
+        await pool.query(`
+            UPDATE ride_payments
+            SET status = 'refunded',
+                refund_id = $1,
+                refund_amount = $2,
+                updated_at = NOW()
+            WHERE id = $3
+        `, [rzpRefund?.id || 'timeout_refund', refundAmount, payment.id]);
+
+        await pool.query("UPDATE service_requests SET status = 'returned' WHERE id = $1", [requestId]);
+        db.run("UPDATE service_requests SET status = 'returned' WHERE id = ?", [requestId], () => {});
+
+        res.json({
+            success: true,
+            message: 'Search timed out. 100% advance payment refunded automatically.',
+            refundAmount,
+            refundId: rzpRefund?.id || null
+        });
+    } catch (err) {
+        console.error('[TIMEOUT_REFUND_ERROR]', err);
+        res.status(500).json({ error: 'Timeout refund failed: ' + (err.error?.description || err.message) });
+    }
+});
+
+// 5. Driver Fallback: Record Shortfall & Complete Delivery
+apiRouter.post('/trips/:id/record-shortfall', async (req, res) => {
+    try {
+        const tripId = req.params.id;
+        const { shortfallAmount, customerId } = req.body;
+        const amount = parseFloat(shortfallAmount) || 0;
+
+        if (amount > 0 && customerId) {
+            await pool.query(`
+                UPDATE customers 
+                SET outstanding_balance = COALESCE(outstanding_balance, 0) + $1 
+                WHERE id = $2
+            `, [amount, customerId]);
+        }
+
+        res.json({
+            success: true,
+            message: `Shortfall of ₹${amount.toFixed(2)} recorded to customer debt ledger. Delivery can proceed.`,
+            outstandingAdded: amount
+        });
+    } catch (err) {
+        console.error('[RECORD_SHORTFALL_ERROR]', err);
+        res.status(500).json({ error: 'Failed to record shortfall: ' + err.message });
+    }
+});
+
+// 6. CRM Ride Payments Ledger & Admin Refunds
+apiRouter.get('/crm/ride-payments', async (req, res) => {
+    try {
+        const { status, customerId } = req.query;
+        let query = `
+            SELECT rp.*, c.name as customer_name, c.phone as customer_phone
+            FROM ride_payments rp
+            LEFT JOIN customers c ON rp.customer_id = c.id
+            WHERE 1=1
+        `;
+        const params = [];
+        let idx = 1;
+        if (status) { query += ` AND rp.status = $${idx++}`; params.push(status); }
+        if (customerId) { query += ` AND rp.customer_id = $${idx++}`; params.push(customerId); }
+        query += ` ORDER BY rp.created_at DESC LIMIT 100`;
+
+        const result = await pool.query(query, params);
+        res.json({ success: true, payments: result.rows });
+    } catch (err) {
+        console.error('Error fetching ride payments:', err);
+        res.status(500).json({ error: 'Failed to fetch ride payments: ' + err.message });
+    }
+});
+
 apiRouter.post('/upload-kyc', upload.single('file'), (req, res) => {
     const { entityId, docType } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -3431,53 +4857,139 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
                             baseAmount = baseFare;
                             extraAmount = 0;
                         }
-                        
-                        let inserts = [];
-                        if (tripMarshalId === tripDeliveryMarshalId) {
-                            inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, baseAmount, 'trip_bonus_base', 'pending']);
-                            if (extraAmount > 0) {
-                                inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, extraAmount, 'trip_bonus_extra', 'pending']);
-                            }
-                        } else {
-                            inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, baseAmount / 2, 'trip_bonus_base', 'pending']);
-                            if (extraAmount > 0) {
-                                inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, extraAmount / 2, 'trip_bonus_extra', 'pending']);
-                            }
-                            
-                            inserts.push([`inc_${Date.now()}_2_base`, tripDeliveryMarshalId, req.params.id, baseAmount / 2, 'trip_bonus_base', 'pending']);
-                            if (extraAmount > 0) {
-                                inserts.push([`inc_${Date.now()}_2_extra`, tripDeliveryMarshalId, req.params.id, extraAmount / 2, 'trip_bonus_extra', 'pending']);
-                            }
-                        }
-                        
-                        let completed = 0;
-                        if (inserts.length === 0) {
-                            return res.json({ success: true, message: 'Delivery completed' });
-                        }
-                        inserts.forEach(insert => {
-                            db.run(
-                                "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
-                                insert,
-                                () => {
-                                    // Also sync to PostgreSQL database
-                                    pool.query(
-                                        "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, $5, $6)",
-                                        [insert[0], insert[1], insert[2], insert[3], insert[4], insert[5]]
-                                    ).catch(e => console.error("PG Sync Error:", e));
 
-                                    completed++;
-                                    if (completed === inserts.length) {
-                                        res.json({ 
-                                            success: true, 
-                                            message: 'Delivery completed and commission credited', 
-                                            commissionCredited: baseAmount + extraAmount, 
-                                            distanceUsed: distance, 
-                                            rateUsed: rate, 
-                                            baseFareUsed: baseRatePerKm 
-                                        });
+                        // Sourced from payout_model_rates (Single Source of Truth)
+                        pool.query("SELECT commission_rate_percent FROM payout_model_rates WHERE id = 'current_rates'").then(ratesRes => {
+                            const commissionRatePercent = ratesRes.rows[0] ? parseFloat(ratesRes.rows[0].commission_rate_percent) : 20.0;
+                            
+                            // Fetch driver plan
+                            pool.query("SELECT payout_model, subscription_valid_until FROM users WHERE id = $1", [tripMarshalId]).then(driverRes => {
+                                const driver = driverRes.rows[0] || { payout_model: 'commission' };
+                                const isSubscribed = driver.payout_model === 'subscription' && 
+                                                     driver.subscription_valid_until && 
+                                                     new Date(driver.subscription_valid_until) >= new Date();
+                                
+                                const payoutMultiplier = isSubscribed ? 1.0 : Math.max(0, (1 - (commissionRatePercent / 100)));
+                                const finalBase = baseAmount * payoutMultiplier;
+                                const finalExtra = extraAmount * payoutMultiplier;
+                                const totalCredited = finalBase + finalExtra;
+
+                                let inserts = [];
+                                if (tripMarshalId === tripDeliveryMarshalId) {
+                                    inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, finalBase, 'trip_bonus_base', 'pending']);
+                                    if (finalExtra > 0) {
+                                        inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, finalExtra, 'trip_bonus_extra', 'pending']);
+                                    }
+                                } else {
+                                    inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
+                                    if (finalExtra > 0) {
+                                        inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
+                                    }
+                                    
+                                    inserts.push([`inc_${Date.now()}_2_base`, tripDeliveryMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
+                                    if (finalExtra > 0) {
+                                        inserts.push([`inc_${Date.now()}_2_extra`, tripDeliveryMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
                                     }
                                 }
-                            );
+                                
+                                let completed = 0;
+                                if (inserts.length === 0) {
+                                    return res.json({ success: true, message: 'Delivery completed' });
+                                }
+                                inserts.forEach(insert => {
+                                    db.run(
+                                        "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
+                                        insert,
+                                        () => {
+                                            // Also sync to PostgreSQL database
+                                            pool.query(
+                                                "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, $5, $6)",
+                                                [insert[0], insert[1], insert[2], insert[3], insert[4], insert[5]]
+                                            ).catch(e => console.error("PG Sync Error:", e));
+
+                                            completed++;
+                                             if (completed === inserts.length) {
+                                                 // POST-TRIP FARE RECONCILIATION
+                                                 pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1", [tripServiceRequestId]).then(async (rpRes) => {
+                                                     let reconciliationInfo = { status: 'none' };
+                                                     if (rpRes.rows.length > 0) {
+                                                         const payment = rpRes.rows[0];
+                                                         const advancePaid = parseFloat(payment.amount_paid);
+                                                         const actualCustomerFare = Math.max(baseFare, baseAmount + extraAmount);
+                                                         const diff = actualCustomerFare - advancePaid;
+
+                                                         const graceRes = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_shortfall_grace_buffer'");
+                                                         const graceBuffer = parseFloat(graceRes.rows[0]?.value || '50.0');
+
+                                                         if (diff < 0) {
+                                                             // OVERPAYMENT -> Auto-refund difference to customer
+                                                             const refundAmt = Math.round(Math.abs(diff) * 100) / 100;
+                                                             let rzpRef = null;
+                                                             if (payment.gateway_payment_id) {
+                                                                 try {
+                                                                     const rzp = getRazorpayClient();
+                                                                     rzpRef = await rzp.payments.refund(payment.gateway_payment_id, {
+                                                                         amount: Math.round(refundAmt * 100),
+                                                                         notes: { reason: 'post_trip_overpayment_refund', tripId: req.params.id }
+                                                                     });
+                                                                 } catch (eRef) {
+                                                                     console.error('[AUTO_REFUND_ERROR]', eRef.message);
+                                                                 }
+                                                             }
+                                                             await pool.query(`
+                                                                 UPDATE ride_payments 
+                                                                 SET status = 'partially_refunded', actual_fare = $1, refund_amount = $2,
+                                                                     refund_id = $3, fare_difference = $4, updated_at = NOW()
+                                                                 WHERE id = $5
+                                                             `, [actualCustomerFare, refundAmt, rzpRef?.id || 'auto_refund', diff, payment.id]);
+                                                             reconciliationInfo = { status: 'overpayment_refunded', refundAmount: refundAmt, refundId: rzpRef?.id };
+                                                         } else if (diff > 0) {
+                                                             // UNDERPAYMENT (Shortfall)
+                                                             if (diff <= graceBuffer) {
+                                                                 await pool.query(`
+                                                                     UPDATE ride_payments 
+                                                                     SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
+                                                                     WHERE id = $3
+                                                                 `, [actualCustomerFare, diff, payment.id]);
+                                                                 reconciliationInfo = { status: 'grace_absorbed', shortfall: diff };
+                                                             } else {
+                                                                 // Exceeds grace buffer -> Record onto customer outstanding balance
+                                                                 await pool.query("UPDATE customers SET outstanding_balance = COALESCE(outstanding_balance, 0) + $1 WHERE id = $2", [diff, payment.customer_id]);
+                                                                 await pool.query(`
+                                                                     UPDATE ride_payments 
+                                                                     SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
+                                                                     WHERE id = $3
+                                                                 `, [actualCustomerFare, diff, payment.id]);
+                                                                 reconciliationInfo = { status: 'shortfall_recorded_to_ledger', shortfall: diff };
+                                                             }
+                                                         } else {
+                                                             await pool.query("UPDATE ride_payments SET status = 'settled', actual_fare = $1, updated_at = NOW() WHERE id = $2", [actualCustomerFare, payment.id]);
+                                                             reconciliationInfo = { status: 'exact_match' };
+                                                         }
+                                                     }
+
+                                                     res.json({ 
+                                                         success: true, 
+                                                         message: 'Delivery completed and commission credited', 
+                                                         commissionCredited: totalCredited, 
+                                                         distanceUsed: distance, 
+                                                         rateUsed: rate, 
+                                                         baseFareUsed: baseRatePerKm,
+                                                         payoutModelApplied: isSubscribed ? 'subscription (100% payout)' : `commission (${commissionRatePercent}% deducted)`,
+                                                         reconciliation: reconciliationInfo
+                                                     });
+                                                 }).catch(eRp => {
+                                                     console.error('Reconciliation error:', eRp);
+                                                     res.json({ success: true, message: 'Delivery completed (reconciliation error: ' + eRp.message + ')' });
+                                                 });
+                                             }
+                                        }
+                                    );
+                                });
+                            });
+                        }).catch(e => {
+                            console.error('Settlement calculation error:', e);
+                            res.status(500).json({ error: 'Failed to settle trip payout: ' + e.message });
                         });
                     });
                 });
@@ -3764,20 +5276,21 @@ app.use('/api', apiRouter);
 app.use('/uploads', express.static('uploads'));
 
 // Garage Portal
-app.use('/garage', express.static(path.join(__dirname, '../vroomly-garage-portal')));
-app.use('/vroomly-garage-portal', express.static(path.join(__dirname, '../vroomly-garage-portal')));
+app.use('/garage', express.static(path.join(__dirname, 'public/garage')));
+app.use('/redrivo-garage-portal', express.static(path.join(__dirname, 'public/garage')));
+app.use('/vroomly-garage-portal', express.static(path.join(__dirname, 'public/garage')));
 
 // Customer App
-app.use('/customer', express.static(path.join(__dirname, '../vroomly-customer-app')));
-app.use('/vroomly-customer-app', express.static(path.join(__dirname, '../vroomly-customer-app')));
+app.use('/customer', express.static(path.join(__dirname, 'public/customer')));
+app.use('/vroomly-customer-app', express.static(path.join(__dirname, 'public/customer')));
 
 // Marshal App
-app.use('/marshal', express.static(path.join(__dirname, '../vroomly-marshal-app')));
-app.use('/vroomly-marshal-app', express.static(path.join(__dirname, '../vroomly-marshal-app')));
+app.use('/marshal', express.static(path.join(__dirname, 'public/marshal')));
+app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/marshal')));
 
 // CRM (Admin)
-app.use('/crm', express.static(path.join(__dirname, '../Anti_Gravity')));
-app.use('/admin', express.static(path.join(__dirname, '../Anti_Gravity')));
+app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
+app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
