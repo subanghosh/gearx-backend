@@ -4730,70 +4730,11 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             total = redrivoServiceCharge + inspectionFee + pdCharge + haltCharge;
         }
 
-        // Safety Kill Switch: If advance payments are disabled, proceed with direct booking
-        if (!window.ENABLE_CUSTOMER_ADVANCE_PAYMENT) {
-            const reqRes = await apiPost('/service-requests', {
-                id: reqId,
-                customerId: currentUser.id,
-                vehicleId,
-                garageId: window.selectedGarageId,
-                date: new Date().toISOString().split('T')[0],
-                issue: 'Pending Driver Inspection',
-                serviceType: 'HealthCheck',
-                bookingFlow: window.bookingFlow || 'p2p',
-                pickupDropType: window.pickupDropType || 'Pickup',
-                pickupDropCost: pdCharge,
-                garageServiceCharge: 0,
-                gstAmount: 0,
-                totalCustomerPrice: total,
-                lat,
-                lng,
-                pickup_address: pickupAddress,
-                drop_address: dropAddress,
-                route_stops: window.routeStops || [],
-                vehicle_condition: window.selectedVehicleCondition || 'Working',
-                status: 'pending',
-                distanceKm: distance,
-                pricingMode,
-                estimatedHours
-            });
-            proceedWithSearch(reqId, total);
-            return;
-        }
-
-        // Step 1: Create Razorpay Advance Order on backend (Server-side authoritative pricing)
-        const orderPayload = {
-            customerId: currentUser.id,
-            vehicleId,
-            garageId: window.selectedGarageId,
-            lat,
-            lng,
-            pickup_address: pickupAddress,
-            drop_address: dropAddress,
-            distanceKm: distance,
-            pricingMode,
-            estimatedHours,
-            vehicleType,
-            vehicleCondition: window.selectedVehicleCondition || 'Working',
-            routeStops: window.routeStops || [],
-            issue: 'Pending Driver Inspection',
-            serviceType: 'HealthCheck',
-            bookingFlow: window.bookingFlow || 'p2p',
-            pickupDropType: window.pickupDropType || 'Pickup'
-        };
-
-        const orderRes = await apiPost('/customer/booking/create-order', orderPayload);
-        if (!orderRes || !orderRes.orderId) {
-            throw new Error(orderRes?.error || 'Failed to initialize payment order');
-        }
-
-        console.log('Customer Advance Razorpay Order created:', orderRes);
-
-        // Function to start the 60s search countdown and polling after payment verification
+        // Definition of 60s driver search countdown & bid polling
         const proceedWithSearch = (verifiedRequestId, paidAmount) => {
             window.currentPendingRequestId = verifiedRequestId;
 
-            // Show finding marshal screen with transparent escrow badge
+            // Show finding marshal screen
             const fmScreen = document.getElementById('finding-marshal-screen');
             if (fmScreen) fmScreen.style.display = 'block';
 
@@ -4809,6 +4750,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             if (bar && text) {
                 bar.style.width = '0%';
                 text.textContent = '60s';
+                if (window.fmInterval) clearInterval(window.fmInterval);
                 window.fmInterval = setInterval(() => {
                     remainingSeconds -= 1;
                     if (remainingSeconds < 0) remainingSeconds = 0;
@@ -4821,7 +4763,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             let elapsedSeconds = 0;
             let searchStage = 1;
 
-            // Poll bids
+            if (window.bookingPollInterval) clearInterval(window.bookingPollInterval);
             window.bookingPollInterval = setInterval(async () => {
                 elapsedSeconds += 2;
 
@@ -4832,7 +4774,6 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                     searchStage = 3;
                     if (statusText) statusText.innerHTML = `Expanding search radius to 15 KM...<br><span style="font-size:0.75rem; color:#22c55e; font-weight:700;">✓ ₹${paidAmount} Advance in Escrow</span>`;
                 } else if (searchStage === 3 && elapsedSeconds >= 60) {
-                    // 60-Second Search Timeout -> Automatic 100% Refund
                     searchStage = 4;
                     clearInterval(window.bookingPollInterval);
                     if (window.fmInterval) clearInterval(window.fmInterval);
@@ -4847,7 +4788,6 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                     const backBtn = document.getElementById('btn-back-marshal-search');
                     if (backBtn) backBtn.style.display = 'block';
 
-                    // Trigger server-side auto-refund
                     try {
                         const refundRes = await apiPost('/customer/booking/timeout-refund', { requestId: verifiedRequestId });
                         if (statusText) {
@@ -4864,36 +4804,40 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                 try {
                     const bids = await apiGet(`/service-requests/${verifiedRequestId}/bids`);
                     const bidsContainer = document.getElementById('fm-bids-container');
+                    const bidsList = document.getElementById('fm-bids-list');
                     if (bids && bids.length > 0) {
                         if (bidsContainer) bidsContainer.style.display = 'flex';
                         bids.sort((a, b) => a.distance - b.distance);
-                    if (bidsList) {
-                        bidsList.innerHTML = bids.map(bid => {
-                            const photoUrl = bid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
-                            return `
-                                <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
-                                    <div style="display:flex; align-items:center; gap: 10px;">
-                                        <img src="${photoUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
-                                        <div>
+                        if (bidsList) {
+                            bidsList.innerHTML = bids.map(bid => {
+                                const photoUrl = bid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
+                                return `
+                                    <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                                        <div style="display:flex; align-items:center; gap: 10px;">
+                                            <img src="${photoUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
+                                            <div>
+                                                <div style="font-weight:700; font-size:0.85rem; color:#fff;">${bid.marshalName || 'Verified Driver'}</div>
+                                                <div style="font-size:0.7rem; color:var(--text-muted);">${bid.distance ? bid.distance.toFixed(1) + ' km away' : 'Nearby'} • ⭐ ${bid.rating || '5.0'}</div>
+                                            </div>
+                                        </div>
+                                        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">
+                                                ${bid.distance ? bid.distance.toFixed(1) + ' km' : 'Nearby'} (${bid.eta || 5} mins)
+                                            </div>
+                                            <button onclick="selectMarshalForRequest('${verifiedRequestId}', '${bid.marshalId}', ${paidAmount})" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 6px 14px; border-radius: 30px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);">
+                                                ACCEPT
+                                            </button>
                                         </div>
                                     </div>
-                                    <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">
-                                            ${bid.distance.toFixed(1)} km (${bid.eta} mins)
-                                        </div>
-                                        <button onclick="selectMarshalForRequest('${reqId}', '${bid.marshalId}', ${finalCalculatedPrice})" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 6px 14px; border-radius: 30px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);">
-                                            ACCEPT
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('');
+                                `;
+                            }).join('');
+                        }
                     }
+                } catch (errPoll) {
+                    console.warn('Error polling for marshal bids:', errPoll);
                 }
-            } catch (errPoll) {
-                console.warn('Error polling for marshal bids:', errPoll);
-            }
-            
+            }, 2000);
+
             // Global select function definition
             window.selectMarshalForRequest = async function(reqId, marshalId, totalVal) {
                 const buttons = document.querySelectorAll('#fm-bids-list button');
@@ -4940,8 +4884,116 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                     buttons.forEach(btnEl => { btnEl.disabled = false; btnEl.textContent = 'ACCEPT'; });
                 }
             };
-        }, 2000);
+        };
 
+        // Safety Kill Switch: If advance payments are disabled, proceed with direct booking
+        if (!window.ENABLE_CUSTOMER_ADVANCE_PAYMENT) {
+            const reqRes = await apiPost('/service-requests', {
+                id: reqId,
+                customerId: currentUser.id,
+                vehicleId,
+                garageId: window.selectedGarageId,
+                date: new Date().toISOString().split('T')[0],
+                issue: 'Pending Driver Inspection',
+                serviceType: 'HealthCheck',
+                bookingFlow: window.bookingFlow || 'p2p',
+                pickupDropType: window.pickupDropType || 'Pickup',
+                pickupDropCost: pdCharge,
+                garageServiceCharge: 0,
+                gstAmount: 0,
+                totalCustomerPrice: total,
+                lat,
+                lng,
+                pickup_address: pickupAddress,
+                drop_address: dropAddress,
+                route_stops: window.routeStops || [],
+                vehicle_condition: window.selectedVehicleCondition || 'Working',
+                status: 'pending',
+                distanceKm: distance,
+                pricingMode,
+                estimatedHours
+            });
+            proceedWithSearch(reqId, total);
+            return;
+        }
+
+        // Advance Payment Enabled (Gated / Verified mode)
+        const orderPayload = {
+            customerId: currentUser.id,
+            vehicleId,
+            garageId: window.selectedGarageId,
+            lat,
+            lng,
+            pickup_address: pickupAddress,
+            drop_address: dropAddress,
+            distanceKm: distance,
+            pricingMode,
+            estimatedHours,
+            vehicleType,
+            vehicleCondition: window.selectedVehicleCondition || 'Working',
+            routeStops: window.routeStops || [],
+            issue: 'Pending Driver Inspection',
+            serviceType: 'HealthCheck',
+            bookingFlow: window.bookingFlow || 'p2p',
+            pickupDropType: window.pickupDropType || 'Pickup'
+        };
+
+        const orderRes = await apiPost('/customer/booking/create-order', orderPayload);
+        if (!orderRes || !orderRes.orderId) {
+            throw new Error(orderRes?.error || 'Failed to initialize payment order');
+        }
+
+        if (window.Razorpay) {
+            const options = {
+                key: orderRes.keyId,
+                amount: orderRes.amount,
+                currency: orderRes.currency || 'INR',
+                name: 'ReDrivo — Ride Advance Payment',
+                description: 'Advance Fare Deposit (100% Escrow Guarantee)',
+                order_id: orderRes.orderId,
+                prefill: {
+                    name: currentUser.name || 'Valued Customer',
+                    contact: currentUser.phone || '9999999999',
+                    email: currentUser.email || 'customer@redrivo.com'
+                },
+                theme: { color: '#FACC15' },
+                handler: async function (response) {
+                    try {
+                        showToast('Verifying advance payment...', 'info');
+                        const verifyRes = await apiPost('/customer/booking/verify-advance', {
+                            orderId: response.razorpay_order_id || orderRes.orderId,
+                            paymentId: response.razorpay_payment_id,
+                            signature: response.razorpay_signature,
+                            draftRequestId: orderRes.draftRequestId
+                        });
+                        if (!verifyRes.success) throw new Error(verifyRes.error || 'Signature verification failed');
+                        showToast('Advance payment secured! Searching drivers...', 'success');
+                        proceedWithSearch(orderRes.draftRequestId, orderRes.amountInRupees);
+                    } catch (eVer) {
+                        console.error('Advance verification failed:', eVer);
+                        showToast('Payment verification failed: ' + eVer.message, 'error');
+                        const btn = document.getElementById('btn-request-service');
+                        if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
+                    }
+                },
+                modal: {
+                    ondismiss: function() {
+                        showToast('Advance payment cancelled. Booking not placed.', 'info');
+                        const btn = document.getElementById('btn-request-service');
+                        if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
+                    }
+                }
+            };
+            const rzp = new Razorpay(options);
+            rzp.on('payment.failed', function (resp) {
+                showToast('Payment Failed: ' + (resp.error?.description || 'Gateway error'), 'error');
+                const btn = document.getElementById('btn-request-service');
+                if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
+            });
+            rzp.open();
+        } else {
+            proceedWithSearch(orderRes.draftRequestId, orderRes.amountInRupees);
+        }
     } catch (errCreate) {
         // Network error (server may be starting) — retry with friendlier message
         const statusText = document.getElementById('fm-status-text');
