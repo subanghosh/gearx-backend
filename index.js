@@ -2324,10 +2324,15 @@ apiRouter.post('/garages/:id/skus/deduct', (req, res) => {
 });
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf', 'video/webm', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/ogg', 'video/x-matroska'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
-    destination: require('os').tmpdir(),
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
     filename: (req, file, cb) => {
         // Sanitize filename to prevent path traversal
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -5273,7 +5278,7 @@ app.use('/api/upload-kyc', uploadLimiter);
 
 // --- STATIC ROUTES ---
 app.use('/api', apiRouter);
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Garage Portal
 app.use('/garage', express.static(path.join(__dirname, 'public/garage')));
