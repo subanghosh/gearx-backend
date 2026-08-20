@@ -5258,7 +5258,26 @@ apiRouter.post('/disputes/:id/resolve', async (req, res) => {
 app.get('/api/health', async (req, res) => {
     try {
         await pool.query('SELECT 1');
-        res.json({ status: 'ok', db: 'connected', env: process.env.NODE_ENV, uptime: Math.floor(process.uptime()) });
+        const uploadsPath = path.join(__dirname, 'uploads');
+        let uploadsExists = false;
+        let uploadsWritable = false;
+        try {
+            uploadsExists = fs.existsSync(uploadsPath);
+            fs.accessSync(uploadsPath, fs.constants.W_OK);
+            uploadsWritable = true;
+        } catch (errAccess) {}
+
+        res.json({
+            status: 'ok',
+            db: 'connected',
+            env: process.env.NODE_ENV || 'development',
+            uptime: Math.floor(process.uptime()),
+            dirname: __dirname,
+            cwd: process.cwd(),
+            uploadsDir: uploadsPath,
+            uploadsExists,
+            uploadsWritable
+        });
     } catch (e) {
         res.status(500).json({ status: 'error', db: 'disconnected', message: e.message });
     }
