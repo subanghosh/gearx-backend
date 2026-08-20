@@ -14,7 +14,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
 
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT, 10) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gearx-secure-jwt-secret-2026-change-in-production-use-random-256bit';
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
     console.warn('WARNING: JWT_SECRET environment variable is using fallback.');
@@ -5328,4 +5328,9 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => console.log(`GearX server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`));
+app.get('/', (req, res) => res.redirect('/customer/'));
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()) }));
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`GearX server running on 0.0.0.0:${PORT} [${process.env.NODE_ENV || 'development'}]`);
+});
