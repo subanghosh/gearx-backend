@@ -2325,6 +2325,7 @@ apiRouter.post('/garages/:id/skus/deduct', (req, res) => {
 });
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf', 'video/webm', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/ogg', 'video/x-matroska'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 console.log('[STARTUP-2] Probing persistent volume uploads directory permissions...');
 let activeUploadsDir = path.join(__dirname, 'uploads');
