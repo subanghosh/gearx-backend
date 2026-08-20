@@ -14,6 +14,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
 
+console.log('[STARTUP-1] Starting GearX backend initialization...');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gearx-secure-jwt-secret-2026-change-in-production-use-random-256bit';
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
@@ -2324,18 +2325,25 @@ apiRouter.post('/garages/:id/skus/deduct', (req, res) => {
 });
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf', 'video/webm', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/ogg', 'video/x-matroska'];
-const uploadsDir = path.join(__dirname, 'uploads');
+
+console.log('[STARTUP-2] Probing persistent volume uploads directory permissions...');
+let activeUploadsDir = path.join(__dirname, 'uploads');
 try {
-    if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+    if (!fs.existsSync(activeUploadsDir)) {
+        fs.mkdirSync(activeUploadsDir, { recursive: true });
     }
+    const testProbe = path.join(activeUploadsDir, '.volume_probe_' + Date.now());
+    fs.writeFileSync(testProbe, 'test');
+    fs.unlinkSync(testProbe);
+    console.log('[STARTUP-2] ✓ Persistent volume directory verified writable at:', activeUploadsDir);
 } catch (err) {
-    console.warn('Notice: uploads directory check/creation:', err.message);
+    console.warn('[STARTUP-2] ⚠️ Primary uploads path ' + activeUploadsDir + ' not writable (' + err.message + '). Using os.tmpdir() fallback.');
+    activeUploadsDir = require('os').tmpdir();
 }
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, uploadsDir);
+        cb(null, activeUploadsDir);
     },
     filename: (req, file, cb) => {
         // Sanitize filename to prevent path traversal
@@ -5301,7 +5309,7 @@ app.use('/api/upload-kyc', uploadLimiter);
 
 // --- STATIC ROUTES ---
 app.use('/api', apiRouter);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(activeUploadsDir));
 
 // Garage Portal
 app.use('/garage', express.static(path.join(__dirname, 'public/garage')));
@@ -5331,6 +5339,7 @@ app.use((err, req, res, next) => {
 app.get('/', (req, res) => res.redirect('/customer/'));
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()) }));
 
+console.log('[STARTUP-3] Starting Express HTTP server on 0.0.0.0:' + PORT + '...');
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`GearX server running on 0.0.0.0:${PORT} [${process.env.NODE_ENV || 'development'}]`);
+    console.log(`[STARTUP-4] ✓ GearX server running on 0.0.0.0:${PORT} [${process.env.NODE_ENV || 'development'}]`);
 });
