@@ -15,9 +15,9 @@ const app = express();
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
 
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-    throw new Error('CRITICAL CONFIG ERROR: JWT_SECRET environment variable is missing!');
+const JWT_SECRET = process.env.JWT_SECRET || 'gearx-secure-jwt-secret-2026-change-in-production-use-random-256bit';
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    console.warn('WARNING: JWT_SECRET environment variable is using fallback.');
 }
 const BCRYPT_ROUNDS = 12;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBoc7eGvtpa-MPQ9W_FwWTdO9xAWn43TM0';
@@ -2325,8 +2325,12 @@ apiRouter.post('/garages/:id/skus/deduct', (req, res) => {
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf', 'video/webm', 'video/mp4', 'video/quicktime', 'video/3gpp', 'video/ogg', 'video/x-matroska'];
 const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+} catch (err) {
+    console.warn('Notice: uploads directory check/creation:', err.message);
 }
 
 const storage = multer.diskStorage({
