@@ -4509,7 +4509,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                 const allTrips = await apiGet('/trips');
                 const activeTrip = allTrips.find(t =>
                     (t.serviceRequestId || t.servicerequestid) === existingActive.id &&
-                    !['completed'].includes(t.status)
+                    !['completed', 'cancelled', 'pending_payment'].includes(t.status)
                 );
                 if (activeTrip) {
                     sessionStorage.removeItem('minimizeEnRoute');

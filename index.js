@@ -3883,14 +3883,19 @@ apiRouter.post('/customer/booking/verify-advance', async (req, res) => {
         `, [paymentId, signature, orderId]);
 
         const targetTripId = tripId;
+        const targetReqId = draftRequestId || requestId;
         if (targetTripId) {
             await pool.query("UPDATE trips SET status = 'pending_otp_1' WHERE id = $1", [targetTripId]);
+        }
+        if (targetReqId) {
+            await pool.query("UPDATE service_requests SET status = 'marshal_assigned' WHERE id = $1", [targetReqId]);
+            await pool.query("UPDATE service_request_bids SET status = 'accepted' WHERE service_request_id = $1", [targetReqId]);
         }
 
         res.json({
             success: true,
             message: 'Advance payment verified and driver dispatched.',
-            requestId: draftRequestId || requestId,
+            requestId: targetReqId,
             tripId: targetTripId,
             paymentId,
             verifiedSignature: signature
@@ -4507,6 +4512,35 @@ apiRouter.get('/marshals/available-pickups', (req, res) => {
     });
 });
 
+// Driver Bidding: Submit active bid (Driver taps Accept on their phone modal)
+apiRouter.post('/service-requests/:id/bid', async (req, res) => {
+    const requestId = req.params.id;
+    const { marshalId } = req.body;
+    if (!marshalId) return res.status(400).json({ error: 'marshalId is required' });
+
+    try {
+        const mRes = await pool.query("SELECT * FROM users WHERE id = $1 AND role = 'marshal'", [marshalId]);
+        if (mRes.rows.length === 0) return res.status(404).json({ error: 'Marshal not found' });
+        const marshal = mRes.rows[0];
+        if (marshal.kycstatus !== 'approved' && marshal.kycstatus !== 'verified' && marshal.kycstatus !== 'Approved') {
+            return res.status(400).json({ error: 'KYC not approved' });
+        }
+
+        const bidId = `bid_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        await pool.query(`
+            INSERT INTO service_request_bids (id, service_request_id, marshal_id, status, created_at)
+            VALUES ($1, $2, $3, 'pending', NOW())
+            ON CONFLICT (service_request_id, marshal_id) DO UPDATE SET status = 'pending', created_at = NOW()
+        `, [bidId, requestId, marshalId]);
+
+        res.json({ success: true, message: 'Bid submitted successfully', bidId });
+    } catch (err) {
+        console.error('Error submitting driver bid:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Driver Bidding: Fetch bids actively submitted by drivers for this request
 apiRouter.get('/service-requests/:id/bids', async (req, res) => {
     const requestId = req.params.id;
     try {
@@ -4516,18 +4550,20 @@ apiRouter.get('/service-requests/:id/bids', async (req, res) => {
         const reqLat = parseFloat(sr.lat) || 22.5525;
         const reqLng = parseFloat(sr.lng) || 88.3524;
 
-        // Query active, approved, online marshals
-        const mRes = await pool.query(`
-            SELECT id, name, rating, lat, lng, profilepictureurl, facephotourl, is_online, kycstatus
-            FROM users
-            WHERE role = 'marshal'
-              AND status = 'active'
-              AND kycstatus IN ('approved', 'verified', 'Approved')
-              AND COALESCE(is_online, 0) = 1
-        `);
+        // Query marshals who have ACTUALLY submitted a bid for this service request
+        const bRes = await pool.query(`
+            SELECT b.id as bid_id, b.created_at,
+                   u.id as marshal_id, u.name, u.rating, u.lat, u.lng,
+                   u.profilepictureurl, u.facephotourl
+            FROM service_request_bids b
+            JOIN users u ON b.marshal_id = u.id
+            WHERE b.service_request_id = $1
+              AND b.status = 'pending'
+            ORDER BY b.created_at ASC
+        `, [requestId]);
 
         const bids = [];
-        (mRes.rows || []).forEach(m => {
+        (bRes.rows || []).forEach(m => {
             const mLat = parseFloat(m.lat);
             const mLng = parseFloat(m.lng);
             let dist = 1.2;
@@ -4535,16 +4571,14 @@ apiRouter.get('/service-requests/:id/bids', async (req, res) => {
                 const calculated = calcDistanceKm(mLat, mLng, reqLat, reqLng);
                 if (calculated !== null) dist = calculated;
             }
-            if (dist <= 30.0) {
-                bids.push({
-                    marshalId: m.id,
-                    marshalName: m.name || 'Verified Driver',
-                    rating: parseFloat(m.rating || 5.0).toFixed(1),
-                    distance: parseFloat(dist.toFixed(1)),
-                    eta: Math.max(3, Math.round(dist * 2.5)),
-                    photo: m.profilepictureurl || m.facephotourl || null
-                });
-            }
+            bids.push({
+                marshalId: m.marshal_id,
+                marshalName: m.name || 'Verified Driver',
+                rating: parseFloat(m.rating || 5.0).toFixed(1),
+                distance: parseFloat(dist.toFixed(1)),
+                eta: Math.max(3, Math.round(dist * 2.5)),
+                photo: m.profilepictureurl || m.facephotourl || null
+            });
         });
 
         res.json(bids);
@@ -4575,10 +4609,10 @@ const acceptPickupHandler = async (req, res) => {
                 if (err) return res.status(500).json({ error: err.message });
                 if (!serviceReq) return res.status(404).json({ error: 'Service request not found' });
                 
-                if (serviceReq.workerId || serviceReq.status === 'marshal_assigned') {
-                    return res.status(400).json({ error: 'This pickup request has already been accepted by another marshal.' });
+                if (serviceReq.workerId && serviceReq.status === 'marshal_assigned') {
+                    return res.status(400).json({ error: 'This pickup request has already been confirmed by another marshal.' });
                 }
-                if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled') {
+                if (serviceReq.status !== 'pending' && serviceReq.status !== 'scheduled' && serviceReq.status !== 'pending_payment') {
                     if (serviceReq.status === 'cancelled') {
                         return res.status(400).json({ error: 'This pickup request has been cancelled by the customer.' });
                     }
@@ -4587,7 +4621,6 @@ const acceptPickupHandler = async (req, res) => {
                 
                 const lat = serviceReq.lat || 19.0760;
                 const lng = serviceReq.lng || 72.8777;
-                const isReturnOnly = serviceReq.pickup_drop_type === 'Drop';
 
                 // Geofence check on acceptance
                 if (marshal.lat && marshal.lng && serviceReq.lat && serviceReq.lng) {
@@ -4597,7 +4630,8 @@ const acceptPickupHandler = async (req, res) => {
                     }
                 }
             
-            db.run("UPDATE service_requests SET workerId = ?, status = 'marshal_assigned' WHERE id = ?", [marshalId, requestId], (errU) => {
+            // Lock driver in pending_payment state until advance payment is verified
+            db.run("UPDATE service_requests SET workerId = ?, status = 'pending_payment' WHERE id = ?", [marshalId, requestId], (errU) => {
                 if (errU) return res.status(500).json({ error: errU.message });
                 
                 const tripId = `trip_${Date.now()}`;
@@ -4606,7 +4640,7 @@ const acceptPickupHandler = async (req, res) => {
                 const garagePickupOtp = String(Math.floor(1000 + Math.random() * 9000));
                 const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
                 
-                const initialStatus = isReturnOnly ? 'ready_for_delivery' : 'pending_otp_1';
+                const initialStatus = 'pending_payment';
                 
                 db.run(
                     `INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pickupLat, pickupLng) 
@@ -4633,6 +4667,7 @@ apiRouter.post('/trips/:id/confirm-payment', async (req, res) => {
     const tripId = req.params.id;
     try {
         await pool.query("UPDATE trips SET status = 'pending_otp_1' WHERE id = $1", [tripId]);
+        await pool.query("UPDATE service_requests SET status = 'marshal_assigned' WHERE id = (SELECT servicerequestid FROM trips WHERE id = $1)", [tripId]);
         res.json({ success: true, message: 'Trip payment confirmed and driver dispatched' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -4647,6 +4682,7 @@ apiRouter.post('/trips/:id/cancel-timeout', async (req, res) => {
         await pool.query("UPDATE trips SET status = 'cancelled' WHERE id = $1", [tripId]);
         if (sId) {
             await pool.query("UPDATE service_requests SET workerId = NULL, status = 'pending' WHERE id = $1", [sId]);
+            await pool.query("UPDATE service_request_bids SET status = 'expired' WHERE service_request_id = $1", [sId]);
         }
         res.json({ success: true, message: 'Trip cancelled due to payment timeout; driver released back to pool' });
     } catch (err) {
