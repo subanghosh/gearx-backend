@@ -4812,7 +4812,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                             bidsList.innerHTML = bids.map(bid => {
                                 const photoUrl = bid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
                                 return `
-                                    <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                                    <div data-marshal-id="${bid.marshalId}" style="display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
                                         <div style="display:flex; align-items:center; gap: 10px;">
                                             <img src="${photoUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                                             <div>
@@ -4820,7 +4820,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                                                 <div style="font-size:0.7rem; color:var(--text-muted);">${bid.distance ? bid.distance.toFixed(1) + ' km away' : 'Nearby'} • ⭐ ${bid.rating || '5.0'}</div>
                                             </div>
                                         </div>
-                                        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                        <div class="fm-bid-btn-container" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
                                             <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">
                                                 ${bid.distance ? bid.distance.toFixed(1) + ' km' : 'Nearby'} (${bid.eta || 5} mins)
                                             </div>
@@ -4840,10 +4840,29 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
 
             // Global select function definition
             window.selectMarshalForRequest = async function(reqId, marshalId, totalVal) {
+                // Immediately clear polling to prevent race-condition re-renders
+                if (window.bookingPollInterval) clearInterval(window.bookingPollInterval);
+                if (window.fmInterval) clearInterval(window.fmInterval);
+
+                // Update UI in place immediately
+                const bidsList = document.getElementById('fm-bids-list');
+                if (bidsList) {
+                    const cards = bidsList.querySelectorAll('div[data-marshal-id]');
+                    cards.forEach(c => {
+                        if (c.getAttribute('data-marshal-id') === marshalId) {
+                            const btnContainer = c.querySelector('.fm-bid-btn-container');
+                            if (btnContainer) {
+                                btnContainer.innerHTML = `<div style="background:#10B981; color:#000; font-weight:800; padding:6px 14px; border-radius:30px; font-size:0.75rem; display:flex; align-items:center; gap:4px; box-shadow:0 4px 10px rgba(16,185,129,0.3);">Selected ✓ (Securing...)</div>`;
+                            }
+                        } else {
+                            c.style.display = 'none'; // hide competing options
+                        }
+                    });
+                }
                 const buttons = document.querySelectorAll('#fm-bids-list button');
                 buttons.forEach(btnEl => {
                     btnEl.disabled = true;
-                    btnEl.textContent = '...';
+                    btnEl.textContent = 'Selected ✓';
                 });
                 
                 try {

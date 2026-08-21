@@ -29,6 +29,21 @@ function markPickupAsDeclined(pickupId) {
     localStorage.setItem('redrivo_declined_pickup_ids', JSON.stringify(Array.from(declinedSet)));
 }
 
+function getBidPickupIds() {
+    try {
+        const raw = sessionStorage.getItem('redrivo_bid_pickup_ids') || localStorage.getItem('redrivo_bid_pickup_ids');
+        return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch(e) { return new Set(); }
+}
+
+function markPickupAsBid(pickupId) {
+    if (!pickupId) return;
+    const bidSet = getBidPickupIds();
+    bidSet.add(pickupId);
+    sessionStorage.setItem('redrivo_bid_pickup_ids', JSON.stringify(Array.from(bidSet)));
+    localStorage.setItem('redrivo_bid_pickup_ids', JSON.stringify(Array.from(bidSet)));
+}
+
 // Initialize Socket.io connection
 window.socket = null;
 if (!window.googleMapsReady) {
@@ -2478,7 +2493,8 @@ async function loadAvailablePickups() {
             if (instantPickups.length > 0) {
                 const latest = instantPickups[0];
                 const declinedSet = getDeclinedPickupIds();
-                if (!declinedSet.has(latest.id)) {
+                const bidSet = getBidPickupIds();
+                if (!declinedSet.has(latest.id) && !bidSet.has(latest.id)) {
                     showIncomingPickupModal(latest);
                 }
             }
@@ -2699,12 +2715,19 @@ async function loadAvailablePickups() {
                     </div>
 
                     <!-- Action Button -->
+                    ${getBidPickupIds().has(p.id) ? `
+                    <div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.3); color:#D4AF37; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:0.8rem; padding:8px 16px; border-radius:9999px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">hourglass_top</span>
+                        Bid Submitted — Waiting for Customer
+                    </div>
+                    ` : `
                     <button onclick="acceptPickup('${p.id}')"
                         style="width:fit-content; margin-top:8px; background:#D4AF37; color:#0A0A0A; font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:0.85rem; letter-spacing:0.05em; border:none; padding:10px 20px; border-radius:9999px; cursor:pointer; transition:all 0.2s; box-shadow:0 4px 15px rgba(212,175,55,0.2);"
                         onmouseover="this.style.opacity='0.9'; this.style.transform='translateY(-1px)'"
                         onmouseout="this.style.opacity='1'; this.style.transform='translateY(0)'">
                         ACCEPT PICKUP
                     </button>
+                    `}
                 </div>
 
                 <!-- Right Vehicle Image Column (Properly Proportioned, No Absolute Positioning Overlap) -->
@@ -2811,7 +2834,8 @@ window.currentIncomingPickup = null;
 function showIncomingPickupModal(pickup) {
     if (!pickup || !pickup.id) return;
     const declinedSet = getDeclinedPickupIds();
-    if (declinedSet.has(pickup.id)) return;
+    const bidSet = getBidPickupIds();
+    if (declinedSet.has(pickup.id) || bidSet.has(pickup.id)) return;
 
     window.currentIncomingPickup = pickup;
     window.lastSeenPickupId = pickup.id;
@@ -3055,6 +3079,7 @@ async function acceptPickup(id) {
     });
     if (!confirmed) return;
     stopRideRequestRingtone();
+    markPickupAsBid(id);
 
     try {
         const pickup = (window.loadedAvailablePickups || []).find(p => p.id === id) || 
@@ -3448,7 +3473,7 @@ window.openMapView = async function(tripId = null) {
                 const otpInput = document.getElementById('map-stop-otp-input');
                 const otp = otpInput ? otpInput.value.trim() : '';
                 if (otp.length !== 4) {
-                    alert("Please enter a valid 4-digit OTP.");
+                    showToast("Please enter a valid 4-digit OTP.", "warning");
                     return;
                 }
                 
@@ -3469,11 +3494,11 @@ window.openMapView = async function(tripId = null) {
                         if (stopOtpContainer) stopOtpContainer.style.display = 'none';
                         window.openMapView(trip.id);
                     } else {
-                        alert(data.error || "Verification failed.");
+                        showToast(data.error || "Verification failed.", "error");
                     }
                 } catch (e) {
                     console.error("Failed to verify stop OTP:", e);
-                    alert("Verification error.");
+                    showToast("Verification error: " + e.message, "error");
                 }
             };
         }
@@ -5390,7 +5415,7 @@ window.submitDeliveryMedia = async function() {
         const data = await resSubmit.json();
         if (!resSubmit.ok) throw new Error(data.error || "Failed to submit delivery details");
 
-        alert("Media uploaded successfully! Waiting for customer to complete payment.");
+        showToast("Media uploaded successfully! Waiting for customer to complete payment.", "success");
         
         // Show Step 2 (OTP Entry)
         document.getElementById('delivery-step-media').classList.add('hidden');
@@ -5400,7 +5425,7 @@ window.submitDeliveryMedia = async function() {
 
         if (window.loadMyTrips) loadMyTrips();
     } catch(err) {
-        alert("Submission failed: " + err.message);
+        showToast("Submission failed: " + err.message, "error");
     } finally {
         btn.disabled = false;
         btn.textContent = originalText;
@@ -5410,7 +5435,7 @@ window.submitDeliveryMedia = async function() {
 window.verifyDeliveryOtp = async function() {
     const otp = document.getElementById('delivery-otp').value.trim();
 
-    if (!otp) return alert("Enter Handover OTP");
+    if (!otp) return showToast("Please enter Handover OTP", "warning");
 
     const btn = document.getElementById('btn-confirm-delivery');
     const originalText = btn.textContent;
@@ -5427,7 +5452,7 @@ window.verifyDeliveryOtp = async function() {
         const data = await resComplete.json();
         if (!resComplete.ok) throw new Error(data.error || "Handover OTP Verification Failed");
 
-        alert("Delivery and Handover completed successfully!");
+        showToast("Delivery and Handover completed successfully!", "success");
         window.closeDeliveryOtpModal();
         localStorage.removeItem('trip_state_' + currentTripId); // Reset navigation flow state
         if (window.stopLocationTracking) window.stopLocationTracking(); // Stop GPS polling when trip is completed
@@ -5438,7 +5463,7 @@ window.verifyDeliveryOtp = async function() {
         
         if (window.loadMyTrips) loadMyTrips();
     } catch(err) {
-        alert("Handover failed: " + err.message);
+        showToast("Handover failed: " + err.message, "error");
     } finally {
         btn.disabled = false;
         btn.textContent = originalText;
@@ -5529,7 +5554,7 @@ function checkEvidenceComplete() {
 async function submitHandoverEvidence() {
     const odoValue = document.getElementById('odo-reading').value;
     if (!odoBlob || !videoBlob || !odoValue) {
-        return alert("Please make sure odometer photo, Walkaround video, and odometer reading are completed.");
+        return showToast("Please make sure odometer photo, Walkaround video, and odometer reading are completed.", "warning");
     }
     
     // Determine types and target status based on currentHandoverType
@@ -5577,20 +5602,20 @@ async function submitHandoverEvidence() {
             throw new Error(errData.error || "Failed to update trip status on server");
         }
 
-        alert("Evidence uploaded! Handover Complete. Drive safe.");
+        showToast("Evidence uploaded! Handover Complete. Drive safe.", "success");
         
         closeHandoverModal();
         localStorage.removeItem('trip_state_' + currentTripId); // Reset navigation flow state
         loadMyTrips();
         window.openMapView(currentTripId); // Refresh map to transition to next leg
     } catch(err) {
-        alert("Upload failed: " + err.message);
+        showToast("Upload failed: " + err.message, "error");
     }
 }
 
 async function verifyHandoverOTP() {
     const otp = document.getElementById('handover-otp').value;
-    if (!otp) return alert("Enter OTP");
+    if (!otp) return showToast("Please enter OTP", "warning");
 
     let endpoint = '/verify-otp-1';
     if (window.currentHandoverType === 'dropoff_garage') {
@@ -5609,13 +5634,13 @@ async function verifyHandoverOTP() {
         
         if (!res.ok) throw new Error(data.error || "OTP Verification Failed");
 
-        alert("OTP Verified! Please proceed with vehicle handover checks.");
+        showToast("OTP Verified! Please proceed with vehicle handover checks.", "success");
         
         document.getElementById('handover-step-4').style.display = 'none';
         document.getElementById('handover-step-1').style.display = 'block';
         document.getElementById('handover-step-2').style.display = 'block';
     } catch(err) {
-        alert("Verification failed: " + err.message);
+        showToast("Verification failed: " + err.message, "error");
     }
 }
 
