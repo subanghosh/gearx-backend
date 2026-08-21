@@ -451,13 +451,9 @@ function selectPD(type) {
 }
 
 function updatePricingSummary() {
-    // ReDrivo Pricing Model:
-    // Track A (500-pt Check): ReDrivo Service Charge 299, Labor 0 (for now), Inspection 0, QA 0.
-    // Track B (Targeted Repair): ReDrivo Service Charge 99, Labor 0, Inspection 250 (waived if quote approved), QA 0
-    // Parts are 0 until quote is approved.
-    
-    let redrivoServiceCharge = currentServiceType === 'TrackA' ? 299 : 99;
-    let inspectionFee = currentServiceType === 'TrackB' ? 250 : 0;
+    const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
+    let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+    let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
     
     const activeVehicle = userVehicles[activeVehicleIndex];
     const isBike = activeVehicle && (String(activeVehicle.type).toLowerCase() === 'bike' || String(activeVehicle.category).toLowerCase() === 'bike');
@@ -475,7 +471,7 @@ function updatePricingSummary() {
 
     // Add logistics charge (calculated dynamically using coordinate distance)
     let pdCharge = 0;
-    if (currentPDType !== 'None') {
+    if (isP2P || currentPDType !== 'None') {
         const pickupInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
         let distance = window.calculatedRouteDistance || 0;
@@ -4690,8 +4686,9 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         const baseFare = window.redrivoSystemSettings?.[baseFareKey] !== undefined ? parseFloat(window.redrivoSystemSettings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
         const haltRate = window.redrivoSystemSettings?.[haltRateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[haltRateKey]) : (vehicleType === 'car' ? 5 : 3);
 
-        let redrivoServiceCharge = currentServiceType === 'TrackA' ? 299 : 99;
-        let inspectionFee = currentServiceType === 'TrackB' ? 250 : 0;
+        const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
+        let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
         let distance = 0;
         const pickupInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
@@ -4705,7 +4702,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             }
         }
         let pdCharge = 0;
-        if (currentPDType !== 'None') {
+        if (isP2P || currentPDType !== 'None') {
             const baseCharge = Math.max(baseFare, Math.round(distance * ratePerKm));
             pdCharge = currentPDType === 'Both' ? baseCharge * 2 : baseCharge;
         }
@@ -7632,8 +7629,9 @@ window.confirmScheduleBooking = async function() {
     const reqId = 'req_' + generateId();
     
     try {
-        let redrivoServiceCharge = currentServiceType === 'TrackA' ? 299 : 99;
-        let inspectionFee = currentServiceType === 'TrackB' ? 250 : 0;
+        const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
+        let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
         let distance = 0;
         const pickupInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
@@ -7643,12 +7641,12 @@ window.confirmScheduleBooking = async function() {
             const dLat = parseFloat(dropInput.getAttribute('data-lat'));
             const dLng = parseFloat(dropInput.getAttribute('data-lng'));
             if (!isNaN(pLat) && !isNaN(pLng) && !isNaN(dLat) && !isNaN(dLng)) {
-                distance = calcDistanceKm(pLat, pLng, dLat, dLng);
+                distance = window.calculatedRouteDistance || calcDistanceKm(pLat, pLng, dLat, dLng);
             }
         }
         let pdCharge = 0;
-        if (currentPDType !== 'None') {
-            const baseCharge = Math.max(150, Math.round(distance * window.customerRatePerKm));
+        if (isP2P || currentPDType !== 'None') {
+            const baseCharge = Math.max(150, Math.round(distance * (window.customerRatePerKm || 30)));
             pdCharge = currentPDType === 'Both' ? baseCharge * 2 : baseCharge;
         }
         let total = redrivoServiceCharge + inspectionFee + pdCharge;
