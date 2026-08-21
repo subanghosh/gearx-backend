@@ -2202,6 +2202,9 @@ function switchTab(tab) {
     }
 
     // Location tracking persists during active trip across tab switches; stopLocationTracking() is called on trip completion/handover.
+    if (tab !== 'trips') {
+        if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+    }
     if (tab === 'trips' || tab === 'tasks') {
         startPickupPolling();
         loadMyTrips();
@@ -2444,6 +2447,7 @@ async function loadAvailablePickups() {
 
     if (window.marshalIsOffline) {
         stopPickupPolling();
+        stopRideRequestRingtone();
         list.innerHTML = `<div class="p-10 text-center bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm">
             <span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2">cloud_off</span>
             <p class="text-sm font-bold text-on-surface">You are Offline</p>
@@ -2521,6 +2525,7 @@ async function loadAvailablePickups() {
                 <button onclick="window.openMapView('${myActiveTrip.id}')" style="width:100%; padding:12px; background:#F59E0B; color:#0b0e14; border:none; border-radius:12px; font-weight:800; font-size:0.9rem; cursor:pointer;">Go to Active Trip →</button>
             </div>`;
             window.loadedAvailablePickups = [];
+            stopRideRequestRingtone();
             return;
         }
         // ────────────────────────────────────────────────────────────────────
@@ -2531,6 +2536,7 @@ async function loadAvailablePickups() {
             if (countEl) countEl.textContent = 'No active requests in your zone';
             // Clear local cache if empty
             window.loadedAvailablePickups = [];
+            stopRideRequestRingtone();
             return;
         }
 
@@ -2611,6 +2617,7 @@ async function loadAvailablePickups() {
         }
 
         if (filteredData.length === 0) {
+            if (!window.currentIncomingPickup) stopRideRequestRingtone();
             list.innerHTML = `<div class="empty-state p-10 text-center text-on-surface-variant border border-outline-variant rounded-xl border-dashed"><p class="text-sm">No ${window.activeHomeBookingType === 'scheduled' ? 'scheduled' : 'instant'} pickups available right now.</p><p class="text-xs mt-1 opacity-60">Checking every 5 seconds...</p></div>`;
             return;
         }
@@ -2716,6 +2723,85 @@ async function loadAvailablePickups() {
     }
 }
 
+// ── RINGTONE & SOUND ALERT CONTROLLER ─────────────────────────────────────────
+let rideRequestAudio = null;
+let isRingtonePlaying = false;
+let audioWarmUpAttempted = false;
+
+function initRideRequestAudio() {
+    if (!rideRequestAudio) {
+        rideRequestAudio = new Audio('audio/ReDrivo_Request.mp3');
+        rideRequestAudio.loop = true;
+        rideRequestAudio.preload = 'auto';
+        rideRequestAudio.volume = 1.0;
+    }
+}
+
+function warmUpAudioOnUserGesture() {
+    initRideRequestAudio();
+    if (!audioWarmUpAttempted && rideRequestAudio) {
+        audioWarmUpAttempted = true;
+        const prevMuted = rideRequestAudio.muted;
+        rideRequestAudio.muted = true;
+        rideRequestAudio.play().then(() => {
+            rideRequestAudio.pause();
+            rideRequestAudio.currentTime = 0;
+            rideRequestAudio.muted = prevMuted;
+            console.log('[AUDIO] Audio subsystem unlocked successfully for session.');
+        }).catch(e => {
+            rideRequestAudio.muted = prevMuted;
+            audioWarmUpAttempted = false;
+            console.warn('[AUDIO] Audio warm-up deferred:', e.message);
+        });
+    }
+}
+
+['pointerdown', 'touchstart', 'click', 'keydown'].forEach(evtType => {
+    document.addEventListener(evtType, warmUpAudioOnUserGesture, { passive: true });
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        console.log('[AUDIO] App resumed / tab visible. Re-checking audio readiness.');
+        initRideRequestAudio();
+    }
+});
+
+function startRideRequestRingtone() {
+    if (localStorage.getItem('redrivo_driver_sound_enabled') === 'false') {
+        console.log('[AUDIO] Ringtone skipped (muted in driver settings).');
+        return;
+    }
+
+    initRideRequestAudio();
+    if (rideRequestAudio && !isRingtonePlaying) {
+        rideRequestAudio.currentTime = 0;
+        rideRequestAudio.play().then(() => {
+            isRingtonePlaying = true;
+            console.log('[AUDIO] ✓ ReDrivo_Request.mp3 ringtone playing in loop.');
+        }).catch(err => {
+            console.warn('[AUDIO] Autoplay rejected by browser policy:', err.message);
+        });
+    }
+}
+
+function stopRideRequestRingtone() {
+    if (rideRequestAudio && isRingtonePlaying) {
+        try {
+            rideRequestAudio.pause();
+            rideRequestAudio.currentTime = 0;
+        } catch (e) {
+            console.warn('[AUDIO] Error pausing audio:', e);
+        }
+        isRingtonePlaying = false;
+        console.log('[AUDIO] ✓ Ride request ringtone stopped.');
+    }
+    stopNativeRingtone();
+}
+
+window.startRideRequestRingtone = startRideRequestRingtone;
+window.stopRideRequestRingtone = stopRideRequestRingtone;
+
 window.lastSeenPickupId = null;
 window.declinedPickupIds = new Set();
 window.incomingPickupTimer = null;
@@ -2796,6 +2882,9 @@ function showIncomingPickupModal(pickup) {
         modal.classList.remove('hidden');
     }
 
+    // Trigger ringtone alert on incoming modal appearance
+    startRideRequestRingtone();
+
     if (window.incomingPickupTimer) clearInterval(window.incomingPickupTimer);
     window.incomingPickupSecondsLeft = INCOMING_PICKUP_TIMEOUT_SECONDS;
     
@@ -2833,7 +2922,7 @@ function stopNativeRingtone() {
 }
 
 window.declineIncomingPickup = function() {
-    stopNativeRingtone();
+    stopRideRequestRingtone();
     if (window.incomingPickupTimer) {
         clearInterval(window.incomingPickupTimer);
         window.incomingPickupTimer = null;
@@ -2852,7 +2941,7 @@ window.declineIncomingPickup = function() {
 };
 
 window.acceptIncomingPickupDirect = async function() {
-    stopNativeRingtone();
+    stopRideRequestRingtone();
     if (window.incomingPickupTimer) {
         clearInterval(window.incomingPickupTimer);
         window.incomingPickupTimer = null;
@@ -2965,6 +3054,7 @@ async function acceptPickup(id) {
         };
     });
     if (!confirmed) return;
+    stopRideRequestRingtone();
 
     try {
         const pickup = (window.loadedAvailablePickups || []).find(p => p.id === id) || 
