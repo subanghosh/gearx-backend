@@ -4507,6 +4507,53 @@ apiRouter.get('/marshals/available-pickups', (req, res) => {
     });
 });
 
+apiRouter.get('/service-requests/:id/bids', async (req, res) => {
+    const requestId = req.params.id;
+    try {
+        const srRes = await pool.query("SELECT lat, lng, status FROM service_requests WHERE id = $1", [requestId]);
+        if (srRes.rows.length === 0) return res.json([]);
+        const sr = srRes.rows[0];
+        const reqLat = parseFloat(sr.lat) || 22.5525;
+        const reqLng = parseFloat(sr.lng) || 88.3524;
+
+        // Query active, approved, online marshals
+        const mRes = await pool.query(`
+            SELECT id, name, rating, lat, lng, profilepictureurl, facephotourl, is_online, kycstatus
+            FROM users
+            WHERE role = 'marshal'
+              AND status = 'active'
+              AND kycstatus IN ('approved', 'verified', 'Approved')
+              AND COALESCE(is_online, 0) = 1
+        `);
+
+        const bids = [];
+        (mRes.rows || []).forEach(m => {
+            const mLat = parseFloat(m.lat);
+            const mLng = parseFloat(m.lng);
+            let dist = 1.2;
+            if (!isNaN(mLat) && !isNaN(mLng) && !isNaN(reqLat) && !isNaN(reqLng)) {
+                const calculated = calcDistanceKm(mLat, mLng, reqLat, reqLng);
+                if (calculated !== null) dist = calculated;
+            }
+            if (dist <= 30.0) {
+                bids.push({
+                    marshalId: m.id,
+                    marshalName: m.name || 'Verified Driver',
+                    rating: parseFloat(m.rating || 5.0).toFixed(1),
+                    distance: parseFloat(dist.toFixed(1)),
+                    eta: Math.max(3, Math.round(dist * 2.5)),
+                    photo: m.profilepictureurl || m.facephotourl || null
+                });
+            }
+        });
+
+        res.json(bids);
+    } catch (err) {
+        console.error('Error fetching driver bids:', err.message);
+        res.json([]);
+    }
+});
+
 const acceptPickupHandler = async (req, res) => {
     const { marshalId } = req.body;
     const requestId = req.params.id;
