@@ -31,7 +31,7 @@ function markPickupAsDeclined(pickupId) {
 
 function getBidPickupIds() {
     try {
-        const raw = sessionStorage.getItem('redrivo_bid_pickup_ids') || localStorage.getItem('redrivo_bid_pickup_ids');
+        const raw = localStorage.getItem('redrivo_bid_pickup_ids');
         return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch(e) { return new Set(); }
 }
@@ -40,7 +40,6 @@ function markPickupAsBid(pickupId) {
     if (!pickupId) return;
     const bidSet = getBidPickupIds();
     bidSet.add(pickupId);
-    sessionStorage.setItem('redrivo_bid_pickup_ids', JSON.stringify(Array.from(bidSet)));
     localStorage.setItem('redrivo_bid_pickup_ids', JSON.stringify(Array.from(bidSet)));
 }
 
@@ -3068,27 +3067,9 @@ window.triggerIncomingPickupFromPush = triggerIncomingPickupFromPush;
 
 async function acceptPickup(id) {
     if (!currentUser || !isKycApproved(currentUser)) {
-        return alert('Action Blocked: Your KYC documents are still undergoing verification by the Admin team. You cannot accept Pickups until approved.');
+        return showToast('Action Blocked: KYC documents are undergoing verification. You cannot accept Pickups until approved.', 'warning');
     }
 
-    const confirmed = await new Promise(resolve => {
-        const modal = document.getElementById('confirm-modal');
-        if (!modal) {
-            resolve(confirm('Are you sure you want to accept this pickup?'));
-            return;
-        }
-        document.getElementById('confirm-modal-title').textContent = 'Accept Pickup';
-        document.getElementById('confirm-modal-message').textContent = 'Are you sure you want to accept this pickup?';
-        modal.style.display = 'flex';
-        modal.classList.remove('hidden');
-        
-        window.closeConfirmModal = function(result) {
-            modal.style.display = 'none';
-            modal.classList.add('hidden');
-            resolve(result);
-        };
-    });
-    if (!confirmed) return;
     stopRideRequestRingtone();
     markPickupAsBid(id);
 
@@ -3105,7 +3086,7 @@ async function acceptPickup(id) {
                 body: JSON.stringify({ marshalId: currentUser.id })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            if (!res.ok) throw new Error(data.error || 'Failed to accept scheduled booking');
 
             showToast('Scheduled booking accepted! Added to your Delivery list.', 'success');
             startPickupPolling();
@@ -3119,7 +3100,7 @@ async function acceptPickup(id) {
                 body: JSON.stringify({ marshalId: currentUser.id })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            if (!res.ok) throw new Error(data.error || 'Failed to submit bid');
 
             showToast('Bid submitted! Waiting for customer confirmation...', 'success');
             startPickupPolling();

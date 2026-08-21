@@ -4435,16 +4435,20 @@ function findClosestActiveGarage(lat, lng, callback) {
     });
 }
 
-apiRouter.get('/marshals/available-pickups', (req, res) => {
+apiRouter.get('/marshals/available-pickups', async (req, res) => {
     const marshalLat = parseFloat(req.query.lat);
     const marshalLng = parseFloat(req.query.lng);
+    const marshalId = req.query.marshalId;
 
-    // Fetch dynamic max pickup distance setting from database
-    db.get("SELECT value FROM system_settings WHERE key = 'max_pickup_distance_km'", [], (err, settingRow) => {
-        const maxDistSetting = settingRow ? parseFloat(settingRow.value) : 10.0;
+    try {
+        let maxDistSetting = 10.0;
+        try {
+            const sRes = await pool.query("SELECT value FROM system_settings WHERE key = 'max_pickup_distance_km'");
+            if (sRes.rows && sRes.rows.length > 0) maxDistSetting = parseFloat(sRes.rows[0].value) || 10.0;
+        } catch(e) {}
 
-        db.all(
-            `SELECT 
+        let query = `
+            SELECT 
                 sr.id,
                 sr.status as "status",
                 COALESCE(sr.lat, 0) as "pickupLat",
@@ -4467,49 +4471,62 @@ apiRouter.get('/marshals/available-pickups', (req, res) => {
                 v.fuel as "vehicleFuel",
                 v.transmission as "vehicleTransmission",
                 sr.created_at as "createdAt"
-             FROM service_requests sr 
-             LEFT JOIN customers c ON sr.customerId = c.id 
-             LEFT JOIN vehicles v ON sr.vehicleId = v.id
-             WHERE (sr.status = 'pending' OR sr.status = 'scheduled') AND (sr.workerId IS NULL OR sr.workerId = '')`,
-            [],
-            (err, rows) => {
-                if (err) return res.status(500).json({ error: err.message });
+            FROM service_requests sr 
+            LEFT JOIN customers c ON sr.customerId = c.id 
+            LEFT JOIN vehicles v ON sr.vehicleId = v.id
+            WHERE (sr.status = 'pending' OR sr.status = 'scheduled') 
+              AND (sr.workerId IS NULL OR sr.workerId = '')
+        `;
+        const params = [];
+        if (marshalId) {
+            params.push(marshalId);
+            query += ` AND sr.id NOT IN (
+                SELECT service_request_id 
+                FROM service_request_bids 
+                WHERE marshal_id = $${params.length} 
+                  AND status IN ('pending', 'declined', 'accepted')
+            )`;
+        }
+
+        const srRes = await pool.query(query, params);
+        let result = srRes.rows || [];
+        const now = Date.now();
+        
+        result = result.filter(row => {
+            const createdAt = parseInt(row.createdAt || now);
+            const ageSeconds = (now - createdAt) / 1000;
+            
+            if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
+                const pLat = parseFloat(row.pickupLat) || 0;
+                const pLng = parseFloat(row.pickupLng) || 0;
+                if (pLat === 0 && pLng === 0) return true;
+                const dist = calcDistanceKm(marshalLat, marshalLng, pLat, pLng);
+                if (dist === null) return true;
                 
-                let result = rows || [];
-                const now = Date.now();
+                // RESTRICTION: Must be within dynamic maximum pickup distance setting
+                if (dist > maxDistSetting) return false;
                 
-                result = result.filter(row => {
-                    const createdAt = parseInt(row.createdAt || now);
-                    const ageSeconds = (now - createdAt) / 1000;
-                    
-                    if (!isNaN(marshalLat) && !isNaN(marshalLng)) {
-                        if (row.pickupLat === 0 && row.pickupLng === 0) return true;
-                        const dist = calcDistanceKm(marshalLat, marshalLng, row.pickupLat, row.pickupLng);
-                        if (dist === null) return true;
-                        
-                        // RESTRICTION: Must be within dynamic maximum pickup distance setting
-                        if (dist > maxDistSetting) return false;
-                        
-                        const status = (row.status || '').trim().toLowerCase();
-                        if (status === 'scheduled') {
-                            if (ageSeconds > 600) return false;
-                            if (ageSeconds <= 200) return dist <= Math.min(5.0, maxDistSetting);
-                            if (ageSeconds <= 400) return dist <= Math.min(10.0, maxDistSetting);
-                            return dist <= maxDistSetting;
-                        } else {
-                            if (ageSeconds > 90) return false;
-                            if (ageSeconds <= 30) return dist <= Math.min(5.0, maxDistSetting);
-                            if (ageSeconds <= 60) return dist <= Math.min(10.0, maxDistSetting);
-                            return dist <= maxDistSetting;
-                        }
-                    }
-                    return true;
-                });
-                
-                res.json(result);
+                const status = (row.status || '').trim().toLowerCase();
+                if (status === 'scheduled') {
+                    if (ageSeconds > 600) return false;
+                    if (ageSeconds <= 200) return dist <= Math.min(5.0, maxDistSetting);
+                    if (ageSeconds <= 400) return dist <= Math.min(10.0, maxDistSetting);
+                    return dist <= maxDistSetting;
+                } else {
+                    if (ageSeconds > 90) return false;
+                    if (ageSeconds <= 30) return dist <= Math.min(5.0, maxDistSetting);
+                    if (ageSeconds <= 60) return dist <= Math.min(10.0, maxDistSetting);
+                    return dist <= maxDistSetting;
+                }
             }
-        );
-    });
+            return true;
+        });
+
+        res.json(result);
+    } catch (err) {
+        console.error('Error fetching available pickups:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Driver Bidding: Submit active bid (Driver taps Accept on their phone modal)
