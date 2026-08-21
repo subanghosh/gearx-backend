@@ -2952,8 +2952,18 @@ window.declineIncomingPickup = function() {
         window.incomingPickupTimer = null;
     }
     
-    if (window.currentIncomingPickup && window.currentIncomingPickup.id) {
-        markPickupAsDeclined(window.currentIncomingPickup.id);
+    const pickup = window.currentIncomingPickup;
+    if (pickup && pickup.id) {
+        markPickupAsDeclined(pickup.id);
+
+        // Notify backend immediately of decline so customer app bids list drops this driver instantly
+        if (currentUser && currentUser.id) {
+            fetch(`${API_URL}/service-requests/${pickup.id}/decline`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ marshalId: currentUser.id })
+            }).catch(e => console.warn('Failed to notify backend of decline:', e));
+        }
     }
 
     const modal = document.getElementById('incoming-pickup-modal');
@@ -2962,6 +2972,7 @@ window.declineIncomingPickup = function() {
         modal.classList.add('hidden');
     }
     window.currentIncomingPickup = null;
+    loadAvailablePickups();
 };
 
 window.acceptIncomingPickupDirect = async function() {

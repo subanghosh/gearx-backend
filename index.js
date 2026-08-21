@@ -4540,6 +4540,27 @@ apiRouter.post('/service-requests/:id/bid', async (req, res) => {
     }
 });
 
+// Driver Decline: Driver explicitly rejects or modal 10s countdown times out
+apiRouter.post('/service-requests/:id/decline', async (req, res) => {
+    const requestId = req.params.id;
+    const { marshalId } = req.body;
+    if (!marshalId) return res.status(400).json({ error: 'marshalId is required' });
+
+    try {
+        const bidId = `bid_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        await pool.query(`
+            INSERT INTO service_request_bids (id, service_request_id, marshal_id, status, created_at)
+            VALUES ($1, $2, $3, 'declined', NOW())
+            ON CONFLICT (service_request_id, marshal_id) DO UPDATE SET status = 'declined', created_at = NOW()
+        `, [bidId, requestId, marshalId]);
+
+        res.json({ success: true, message: 'Pickup declined successfully', bidId });
+    } catch (err) {
+        console.error('Error declining pickup:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Driver Bidding: Fetch bids actively submitted by drivers for this request
 apiRouter.get('/service-requests/:id/bids', async (req, res) => {
     const requestId = req.params.id;

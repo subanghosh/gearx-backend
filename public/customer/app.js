@@ -4833,6 +4833,10 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                                 `;
                             }).join('');
                         }
+                    } else {
+                        window.currentBidsList = [];
+                        if (bidsList) bidsList.innerHTML = '';
+                        if (bidsContainer) bidsContainer.style.display = 'none';
                     }
                 } catch (errPoll) {
                     console.warn('Error polling for marshal bids:', errPoll);
