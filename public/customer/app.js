@@ -4886,8 +4886,12 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             };
         };
 
-        // Safety Kill Switch: If advance payments are disabled, proceed with direct booking
-        if (!window.ENABLE_CUSTOMER_ADVANCE_PAYMENT) {
+        // Safety Kill Switch: Active only if global flag is true, OR strictly for test user (phone 9999999999 / ?test_advance=true)
+        const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
+            (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
+            new URLSearchParams(window.location.search).get('test_advance') === 'true';
+
+        if (!isAdvancePaymentActive) {
             const reqRes = await apiPost('/service-requests', {
                 id: reqId,
                 customerId: currentUser.id,

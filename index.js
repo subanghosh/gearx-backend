@@ -3756,7 +3756,19 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
 
         // Safety Kill Switch: Check if customer advance payments feature is enabled
         const featRes = await pool.query("SELECT value FROM system_settings WHERE key = 'enable_customer_advance_payment'");
-        const isEnabled = featRes.rows[0]?.value === 'true' || process.env.ENABLE_CUSTOMER_ADVANCE_PAYMENT === 'true';
+        const isGlobalEnabled = featRes.rows[0]?.value === 'true' || process.env.ENABLE_CUSTOMER_ADVANCE_PAYMENT === 'true';
+
+        // TEST-ONLY GATE: Scoped strictly to test phone 9999999999
+        let isTestAccount = false;
+        try {
+            const custRes = await pool.query("SELECT phone FROM customers WHERE id = $1 UNION SELECT phone FROM users WHERE id = $1", [customerId]);
+            const p = custRes.rows[0]?.phone ? custRes.rows[0].phone.replace('+91', '').trim() : '';
+            if (p === '9999999999' || customerId === 'cust_test_9999999999' || p.endsWith('9999999999')) {
+                isTestAccount = true;
+            }
+        } catch(e) {}
+
+        const isEnabled = isGlobalEnabled || isTestAccount;
         if (!isEnabled) {
             return res.status(403).json({
                 error: 'Customer advance payments are currently disabled in production.',
