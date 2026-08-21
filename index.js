@@ -3749,7 +3749,8 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             lat, lng, pickup_address, drop_address,
             distanceKm, pricingMode, estimatedHours,
             vehicleType, vehicleCondition, routeStops,
-            issue, serviceType, bookingFlow, pickupDropType
+            issue, serviceType, bookingFlow, pickupDropType,
+            tripId, requestId, amount
         } = req.body;
 
         if (!customerId) return res.status(400).json({ error: 'Customer ID is required.' });
@@ -3787,18 +3788,21 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
         const custRes = await pool.query("SELECT outstanding_balance FROM customers WHERE id = $1", [customerId]);
         const outstandingBalance = parseFloat(custRes.rows[0]?.outstanding_balance || 0);
 
-        // Authoritative server-side fare calculation
-        const calculatedFare = await calculateServerSideFare({
-            distanceKm, pricingMode, estimatedHours,
-            vehicleType: vehicleType || 'car',
-            vehicleCondition: vehicleCondition || 'Working',
-            routeStops: routeStops || []
-        });
+        // Calculate fare: use explicit amount if passed from confirmed bid, or calculate server-side
+        let calculatedFare = parseFloat(amount);
+        if (isNaN(calculatedFare) || calculatedFare <= 0) {
+            calculatedFare = await calculateServerSideFare({
+                distanceKm, pricingMode, estimatedHours,
+                vehicleType: vehicleType || 'car',
+                vehicleCondition: vehicleCondition || 'Working',
+                routeStops: routeStops || []
+            });
+        }
 
         const totalPayableRupees = Math.max(1.00, calculatedFare + outstandingBalance);
         const amountPaise = Math.round(totalPayableRupees * 100);
 
-        const draftRequestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const targetRequestId = requestId || tripId || ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
         const receiptId = `rcpt_ride_${Date.now().toString().slice(-8)}`;
 
         // STRICT REAL OUTBOUND CALL TO RAZORPAY
@@ -3807,7 +3811,7 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             amount: amountPaise,
             currency: 'INR',
             receipt: receiptId,
-            notes: { customerId, draftRequestId, outstandingBalance }
+            notes: { customerId, targetRequestId, tripId: tripId || '', outstandingBalance }
         });
 
         const paymentId = `ridepay_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -3815,7 +3819,7 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             vehicleId, garageId, lat, lng, pickup_address, drop_address,
             distanceKm, pricingMode, estimatedHours, vehicleType, vehicleCondition,
             routeStops, issue, serviceCategory: serviceType || issue || 'Standard Service',
-            bookingFlow, pickupDropType
+            bookingFlow, pickupDropType, tripId
         };
 
         await pool.query(`
@@ -3824,11 +3828,10 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
                 gateway_order_id, status, metadata, created_at, updated_at
             ) VALUES ($1, $2, $3, $4, $5, $6, 'created', $7, NOW(), NOW())
         `, [
-            paymentId, draftRequestId, customerId, calculatedFare, totalPayableRupees,
-            rzpOrder.id, JSON.stringify({ rzpOrder, requestParams, outstandingBalance })
+            paymentId, targetRequestId, customerId, calculatedFare, totalPayableRupees,
+            rzpOrder.id, JSON.stringify({ rzpOrder, requestParams, outstandingBalance, tripId })
         ]);
 
-        // NOTICE: service_requests is NOT inserted yet — unpublished until payment verification
         res.json({
             success: true,
             orderId: rzpOrder.id,
@@ -3836,7 +3839,8 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             amountInRupees: totalPayableRupees,
             currency: rzpOrder.currency,
             keyId: process.env.RAZORPAY_KEY_ID,
-            draftRequestId,
+            draftRequestId: targetRequestId,
+            tripId: tripId || null,
             outstandingBalanceIncluded: outstandingBalance,
             calculatedFare
         });
@@ -3849,7 +3853,7 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
 // 2. Cryptographic Verification & Dispatch Gate
 apiRouter.post('/customer/booking/verify-advance', async (req, res) => {
     try {
-        const { orderId, paymentId, signature, draftRequestId } = req.body;
+        const { orderId, paymentId, signature, draftRequestId, tripId, requestId } = req.body;
         if (!orderId || !paymentId || !signature) {
             return res.status(400).json({ error: 'Missing payment verification parameters.' });
         }
@@ -3868,19 +3872,27 @@ apiRouter.post('/customer/booking/verify-advance', async (req, res) => {
             });
         }
 
-        // Atomic conditional update gate
-        const activation = await activateRideAdvancePaymentAtomic(
-            orderId,
-            paymentId,
-            signature,
-            { clientVerifiedAt: new Date().toISOString() }
-        );
+        // Update ride_payments status to captured
+        await pool.query(`
+            UPDATE ride_payments
+            SET status = 'captured',
+                gateway_payment_id = $1,
+                gateway_signature = $2,
+                updated_at = NOW()
+            WHERE gateway_order_id = $3
+        `, [paymentId, signature, orderId]);
+
+        const targetTripId = tripId;
+        if (targetTripId) {
+            await pool.query("UPDATE trips SET status = 'pending_otp_1' WHERE id = $1", [targetTripId]);
+        }
 
         res.json({
             success: true,
-            message: 'Advance payment verified and booking published to drivers.',
-            requestId: draftRequestId || activation.payment.service_request_id,
-            payment: activation.payment,
+            message: 'Advance payment verified and driver dispatched.',
+            requestId: draftRequestId || requestId,
+            tripId: targetTripId,
+            paymentId,
             verifiedSignature: signature
         });
     } catch (err) {
@@ -4495,7 +4507,7 @@ apiRouter.get('/marshals/available-pickups', (req, res) => {
     });
 });
 
-apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
+const acceptPickupHandler = async (req, res) => {
     const { marshalId } = req.body;
     const requestId = req.params.id;
     
@@ -4564,6 +4576,34 @@ apiRouter.post('/service-requests/:id/accept-pickup', async (req, res) => {
 } catch (errPg) {
         console.error('Postgres error querying marshal:', errPg.message);
         return res.status(500).json({ error: 'Database error querying marshal: ' + errPg.message });
+    }
+};
+
+apiRouter.post('/service-requests/:id/accept-pickup', acceptPickupHandler);
+apiRouter.post('/service-requests/:id/select-marshal', acceptPickupHandler);
+
+apiRouter.post('/trips/:id/confirm-payment', async (req, res) => {
+    const tripId = req.params.id;
+    try {
+        await pool.query("UPDATE trips SET status = 'pending_otp_1' WHERE id = $1", [tripId]);
+        res.json({ success: true, message: 'Trip payment confirmed and driver dispatched' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+apiRouter.post('/trips/:id/cancel-timeout', async (req, res) => {
+    const tripId = req.params.id;
+    try {
+        const tripRes = await pool.query("SELECT servicerequestid FROM trips WHERE id = $1", [tripId]);
+        const sId = tripRes.rows[0]?.servicerequestid;
+        await pool.query("UPDATE trips SET status = 'cancelled' WHERE id = $1", [tripId]);
+        if (sId) {
+            await pool.query("UPDATE service_requests SET workerId = NULL, status = 'pending' WHERE id = $1", [sId]);
+        }
+        res.json({ success: true, message: 'Trip cancelled due to payment timeout; driver released back to pool' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 

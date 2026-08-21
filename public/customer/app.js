@@ -4862,6 +4862,8 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                         }
                         
                         window.currentActiveTripId = res.tripId;
+                        window.currentPendingRequestId = reqId;
+                        window.currentBookingTotalVal = totalVal;
                         
                         const amtDisplay = document.getElementById('payment-amount-display');
                         if (amtDisplay) {
@@ -4872,8 +4874,17 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                             window.startPaymentCountdown(res.tripId);
                         }
                         
-                        const paymentModal = document.getElementById('payment-modal');
-                        if (paymentModal) paymentModal.style.display = 'flex';
+                        // Check if real Razorpay advance payment is active
+                        const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
+                            (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
+                            new URLSearchParams(window.location.search).get('test_advance') === 'true';
+
+                        if (isAdvancePaymentActive) {
+                            window.triggerRazorpayForTrip(res.tripId, totalVal, reqId);
+                        } else {
+                            const paymentModal = document.getElementById('payment-modal');
+                            if (paymentModal) paymentModal.style.display = 'flex';
+                        }
                     } else {
                         showToast('Failed to select driver. Please try again.', 'error');
                         buttons.forEach(btnEl => { btnEl.disabled = false; btnEl.textContent = 'ACCEPT'; });
@@ -4886,118 +4897,33 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             };
         };
 
-        // Safety Kill Switch: Active only if global flag is true, OR strictly for test user (phone 9999999999 / ?test_advance=true)
-        const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
-            (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
-            new URLSearchParams(window.location.search).get('test_advance') === 'true';
-
-        if (!isAdvancePaymentActive) {
-            const reqRes = await apiPost('/service-requests', {
-                id: reqId,
-                customerId: currentUser.id,
-                vehicleId,
-                garageId: window.selectedGarageId,
-                date: new Date().toISOString().split('T')[0],
-                issue: 'Pending Driver Inspection',
-                serviceType: 'HealthCheck',
-                bookingFlow: window.bookingFlow || 'p2p',
-                pickupDropType: window.pickupDropType || 'Pickup',
-                pickupDropCost: pdCharge,
-                garageServiceCharge: 0,
-                gstAmount: 0,
-                totalCustomerPrice: total,
-                lat,
-                lng,
-                pickup_address: pickupAddress,
-                drop_address: dropAddress,
-                route_stops: window.routeStops || [],
-                vehicle_condition: window.selectedVehicleCondition || 'Working',
-                status: 'pending',
-                distanceKm: distance,
-                pricingMode,
-                estimatedHours
-            });
-            proceedWithSearch(reqId, total);
-            return;
-        }
-
-        // Advance Payment Enabled (Gated / Verified mode)
-        const orderPayload = {
+        // Driver Search: 100% Free search creation without upfront payment gating
+        const reqRes = await apiPost('/service-requests', {
+            id: reqId,
             customerId: currentUser.id,
             vehicleId,
             garageId: window.selectedGarageId,
+            date: new Date().toISOString().split('T')[0],
+            issue: 'Pending Driver Inspection',
+            serviceType: 'HealthCheck',
+            bookingFlow: window.bookingFlow || 'p2p',
+            pickupDropType: window.pickupDropType || 'Pickup',
+            pickupDropCost: pdCharge,
+            garageServiceCharge: 0,
+            gstAmount: 0,
+            totalCustomerPrice: total,
             lat,
             lng,
             pickup_address: pickupAddress,
             drop_address: dropAddress,
+            route_stops: window.routeStops || [],
+            vehicle_condition: window.selectedVehicleCondition || 'Working',
+            status: 'pending',
             distanceKm: distance,
             pricingMode,
-            estimatedHours,
-            vehicleType,
-            vehicleCondition: window.selectedVehicleCondition || 'Working',
-            routeStops: window.routeStops || [],
-            issue: 'Pending Driver Inspection',
-            serviceType: 'HealthCheck',
-            bookingFlow: window.bookingFlow || 'p2p',
-            pickupDropType: window.pickupDropType || 'Pickup'
-        };
-
-        const orderRes = await apiPost('/customer/booking/create-order', orderPayload);
-        if (!orderRes || !orderRes.orderId) {
-            throw new Error(orderRes?.error || 'Failed to initialize payment order');
-        }
-
-        if (window.Razorpay) {
-            const options = {
-                key: orderRes.keyId,
-                amount: orderRes.amount,
-                currency: orderRes.currency || 'INR',
-                name: 'ReDrivo — Ride Advance Payment',
-                description: 'Advance Fare Deposit (100% Escrow Guarantee)',
-                order_id: orderRes.orderId,
-                prefill: {
-                    name: currentUser.name || 'Valued Customer',
-                    contact: currentUser.phone || '9999999999',
-                    email: currentUser.email || 'customer@redrivo.com'
-                },
-                theme: { color: '#FACC15' },
-                handler: async function (response) {
-                    try {
-                        showToast('Verifying advance payment...', 'info');
-                        const verifyRes = await apiPost('/customer/booking/verify-advance', {
-                            orderId: response.razorpay_order_id || orderRes.orderId,
-                            paymentId: response.razorpay_payment_id,
-                            signature: response.razorpay_signature,
-                            draftRequestId: orderRes.draftRequestId
-                        });
-                        if (!verifyRes.success) throw new Error(verifyRes.error || 'Signature verification failed');
-                        showToast('Advance payment secured! Searching drivers...', 'success');
-                        proceedWithSearch(orderRes.draftRequestId, orderRes.amountInRupees);
-                    } catch (eVer) {
-                        console.error('Advance verification failed:', eVer);
-                        showToast('Payment verification failed: ' + eVer.message, 'error');
-                        const btn = document.getElementById('btn-request-service');
-                        if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
-                    }
-                },
-                modal: {
-                    ondismiss: function() {
-                        showToast('Advance payment cancelled. Booking not placed.', 'info');
-                        const btn = document.getElementById('btn-request-service');
-                        if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
-                    }
-                }
-            };
-            const rzp = new Razorpay(options);
-            rzp.on('payment.failed', function (resp) {
-                showToast('Payment Failed: ' + (resp.error?.description || 'Gateway error'), 'error');
-                const btn = document.getElementById('btn-request-service');
-                if (btn) { btn.disabled = false; btn.innerHTML = 'Search for Nearby Driver'; }
-            });
-            rzp.open();
-        } else {
-            proceedWithSearch(orderRes.draftRequestId, orderRes.amountInRupees);
-        }
+            estimatedHours
+        });
+        proceedWithSearch(reqId, total);
     } catch (errCreate) {
         // Network error (server may be starting) — retry with friendlier message
         const statusText = document.getElementById('fm-status-text');
@@ -5012,6 +4938,88 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         console.error('Marshal search creation failed:', errCreate.message);
     }
 }
+
+window.triggerRazorpayForTrip = async function(tripId, totalVal, reqId) {
+    try {
+        showToast('Initializing secure Razorpay checkout...', 'info');
+        const orderRes = await apiPost('/customer/booking/create-order', {
+            customerId: currentUser ? currentUser.id : 'cust_test_9999999999',
+            amount: Math.round(totalVal || 150),
+            tripId,
+            requestId: reqId || window.currentPendingRequestId
+        });
+
+        if (!orderRes || !orderRes.orderId) {
+            throw new Error(orderRes?.error || 'Failed to initialize payment order');
+        }
+
+        if (window.Razorpay) {
+            const options = {
+                key: orderRes.keyId,
+                amount: orderRes.amount,
+                currency: orderRes.currency || 'INR',
+                name: 'ReDrivo — Ride Payment',
+                description: `Fare for booking #${(reqId || tripId || '').slice(-6)}`,
+                order_id: orderRes.orderId,
+                prefill: {
+                    name: currentUser?.name || 'Valued Customer',
+                    contact: currentUser?.phone || '9999999999',
+                    email: currentUser?.email || 'customer@redrivo.com'
+                },
+                theme: { color: '#FACC15' },
+                handler: async function (response) {
+                    try {
+                        showToast('Verifying payment...', 'info');
+                        const verifyRes = await apiPost('/customer/booking/verify-advance', {
+                            orderId: response.razorpay_order_id || orderRes.orderId,
+                            paymentId: response.razorpay_payment_id,
+                            signature: response.razorpay_signature,
+                            tripId: tripId,
+                            requestId: reqId || window.currentPendingRequestId
+                        });
+                        if (!verifyRes.success) throw new Error(verifyRes.error || 'Signature verification failed');
+                        
+                        if (window.paymentCountdownInterval) clearInterval(window.paymentCountdownInterval);
+                        await apiPost(`/trips/${tripId}/confirm-payment`);
+                        
+                        const paymentModal = document.getElementById('payment-modal');
+                        if (paymentModal) paymentModal.style.display = 'none';
+                        
+                        await loadDashboard();
+                        showToast('Payment confirmed! Driver is on the way 🏁', 'success');
+                    } catch (eVer) {
+                        console.error('Payment verification failed:', eVer);
+                        showToast('Payment verification failed: ' + eVer.message, 'error');
+                        const paymentModal = document.getElementById('payment-modal');
+                        if (paymentModal) paymentModal.style.display = 'flex';
+                    }
+                },
+                modal: {
+                    ondismiss: function() {
+                        showToast('Payment pending. Complete within 5 minutes to confirm booking.', 'warning');
+                        const paymentModal = document.getElementById('payment-modal');
+                        if (paymentModal) paymentModal.style.display = 'flex';
+                    }
+                }
+            };
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (resp) {
+                showToast('Payment Failed: ' + (resp.error?.description || 'Gateway error'), 'error');
+                const paymentModal = document.getElementById('payment-modal');
+                if (paymentModal) paymentModal.style.display = 'flex';
+            });
+            rzp.open();
+        } else {
+            const paymentModal = document.getElementById('payment-modal');
+            if (paymentModal) paymentModal.style.display = 'flex';
+        }
+    } catch(err) {
+        console.error('Failed to trigger Razorpay checkout:', err);
+        showToast('Payment checkout error: ' + err.message, 'error');
+        const paymentModal = document.getElementById('payment-modal');
+        if (paymentModal) paymentModal.style.display = 'flex';
+    }
+};
 
 async function cancelMarshalSearch() {
     if (window.fmTimeout) clearTimeout(window.fmTimeout);
@@ -5125,6 +5133,16 @@ async function selectRandomMarshal(workerId = null) {
 
 async function simulatePayment() {
     sessionStorage.removeItem('minimizeEnRoute');
+    
+    // Check if real Razorpay advance payment is active for this session
+    const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
+        (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
+        new URLSearchParams(window.location.search).get('test_advance') === 'true';
+
+    if (isAdvancePaymentActive && window.currentActiveTripId) {
+        return window.triggerRazorpayForTrip(window.currentActiveTripId, window.currentBookingTotalVal || 150, window.currentPendingRequestId);
+    }
+
     if (window.paymentCountdownInterval) {
         clearInterval(window.paymentCountdownInterval);
     }
