@@ -4554,6 +4554,9 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         return;
     }
 
+    window.selectedPickupAddress = pickupAddress;
+    window.selectedDropAddress = dropAddress;
+
     // Validation: Pickup and Drop location cannot be the same without stops
     if (locInput && dropInput) {
         const pLat = parseFloat(locInput.getAttribute('data-lat'));
@@ -5092,8 +5095,8 @@ window.showBookingConfirmationModal = function(tripId, reqId, totalVal, bidData)
     // Route details
     const pickupEl = document.getElementById('confirm-pickup-address');
     const dropEl = document.getElementById('confirm-drop-address');
-    const pAddr = window.selectedPickupAddress || document.getElementById('pickup-address-input')?.value || 'J18 SP Sukhobristi Lane, Newtown, Kolkata';
-    const dAddr = window.selectedDropAddress || document.getElementById('drop-address-input')?.value || 'Destination Location';
+    const pAddr = window.selectedPickupAddress || document.getElementById('pickup-location-global')?.value || document.getElementById('pickup-location-global')?.getAttribute('data-address') || 'J18 SP Sukhobristi Lane, Newtown, Kolkata';
+    const dAddr = window.selectedDropAddress || document.getElementById('drop-location-global')?.value || document.getElementById('drop-location-global')?.getAttribute('data-address') || 'Park Street, Mullick Bazar, Kolkata';
     if (pickupEl) pickupEl.textContent = pAddr;
     if (dropEl) dropEl.textContent = dAddr;
 

@@ -924,18 +924,21 @@
             </div>
         </div>
 
-        <!-- Action Button: Pay Now (Opens Razorpay) -->
-        <button id="btn-confirm-pay-now" class="btn btn-success" style="width: 100%; padding: 16px 24px; font-size: 1.05rem; font-weight: 800; border-radius: 50px; background: #10B981; color: #000; border: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35); transition: all 0.2s;" onclick="proceedToPayRazorpay();">
-            <div id="payment-btn-text" style="display: flex; align-items: center; gap: 8px;">
-                PAY NOW (<span id="btn-pay-amount-text">₹299</span>)
-            </div>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
-        </button>
+        <!-- Action Buttons Container -->
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px;">
+            <!-- Primary Action: Pay Now (Opens Razorpay) -->
+            <button id="btn-confirm-pay-now" class="btn btn-success" style="width: 100%; padding: 15px 22px; font-size: 1.02rem; font-weight: 800; border-radius: 50px; background: #10B981; color: #000; border: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35); transition: all 0.2s;" onclick="proceedToPayRazorpay();">
+                <div id="payment-btn-text" style="display: flex; align-items: center; gap: 8px;">
+                    PAY NOW (<span id="btn-pay-amount-text">₹816</span>)
+                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+            </button>
 
-        <!-- Cancel & Release Driver -->
-        <button onclick="cancelPaymentHold()" style="width: 100%; background: none; border: none; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; margin-top: 12px; cursor: pointer; text-decoration: underline; padding: 6px;">
-            Cancel & Release Driver
-        </button>
+            <!-- Secondary Action: Cancel (Releases Driver) -->
+            <button id="btn-confirm-cancel" class="btn btn-outline" style="width: 100%; padding: 13px 20px; font-size: 0.95rem; font-weight: 700; border-radius: 50px; background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onclick="cancelPaymentHold();">
+                Cancel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -2124,7 +2127,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="app.js?v=20260821_151300"></script>
+    <script src="app.js?v=20260821_180600"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->
