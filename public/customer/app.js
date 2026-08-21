@@ -4806,6 +4806,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                     const bidsContainer = document.getElementById('fm-bids-container');
                     const bidsList = document.getElementById('fm-bids-list');
                     if (bids && bids.length > 0) {
+                        window.currentBidsList = bids;
                         if (bidsContainer) bidsContainer.style.display = 'flex';
                         bids.sort((a, b) => a.distance - b.distance);
                         if (bidsList) {
@@ -4843,6 +4844,8 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                 // Immediately clear polling to prevent race-condition re-renders
                 if (window.bookingPollInterval) clearInterval(window.bookingPollInterval);
                 if (window.fmInterval) clearInterval(window.fmInterval);
+
+                const selectedBid = (window.currentBidsList || []).find(b => b.marshalId === marshalId);
 
                 // Update UI in place immediately
                 const bidsList = document.getElementById('fm-bids-list');
@@ -4883,27 +4886,10 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                         window.currentActiveTripId = res.tripId;
                         window.currentPendingRequestId = reqId;
                         window.currentBookingTotalVal = totalVal;
-                        
-                        const amtDisplay = document.getElementById('payment-amount-display');
-                        if (amtDisplay) {
-                            amtDisplay.textContent = `₹${Math.round(totalVal)}`;
-                        }
-                        
-                        if (typeof window.startPaymentCountdown === 'function') {
-                            window.startPaymentCountdown(res.tripId);
-                        }
-                        
-                        // Check if real Razorpay advance payment is active
-                        const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
-                            (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
-                            new URLSearchParams(window.location.search).get('test_advance') === 'true';
+                        window.currentSelectedBidData = selectedBid;
 
-                        if (isAdvancePaymentActive) {
-                            window.triggerRazorpayForTrip(res.tripId, totalVal, reqId);
-                        } else {
-                            const paymentModal = document.getElementById('payment-modal');
-                            if (paymentModal) paymentModal.style.display = 'flex';
-                        }
+                        // Open the Booking Confirmation & Fare Review screen FIRST
+                        window.showBookingConfirmationModal(res.tripId, reqId, totalVal, selectedBid);
                     } else {
                         showToast('Failed to select driver. Please try again.', 'error');
                         buttons.forEach(btnEl => { btnEl.disabled = false; btnEl.textContent = 'ACCEPT'; });
@@ -5079,11 +5065,104 @@ async function cancelMarshalSearch() {
         btn.innerHTML = 'Search for Nearby Driver';
     }
 }
-window.stopMarshalSearch = cancelMarshalSearch;
+window.showBookingConfirmationModal = function(tripId, reqId, totalVal, bidData) {
+    window.currentActiveTripId = tripId;
+    window.currentPendingRequestId = reqId;
+    window.currentBookingTotalVal = totalVal;
+    window.currentSelectedBidData = bidData;
 
-function closePaymentModal() {
-    document.getElementById('payment-modal').style.display = 'none';
-}
+    // Driver details
+    if (bidData) {
+        const photoEl = document.getElementById('confirm-driver-photo');
+        const nameEl = document.getElementById('confirm-driver-name');
+        const ratingEl = document.getElementById('confirm-driver-rating');
+        const distEl = document.getElementById('confirm-driver-distance');
+        
+        if (photoEl) photoEl.src = bidData.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80';
+        if (nameEl) nameEl.textContent = bidData.marshalName || 'Verified Driver';
+        if (ratingEl) ratingEl.textContent = bidData.rating || '5.0';
+        if (distEl) {
+            const distStr = bidData.distance !== undefined ? `${parseFloat(bidData.distance).toFixed(1)} km away` : 'Nearby';
+            const etaStr = bidData.eta ? `Arriving in ~${bidData.eta} mins` : 'Arriving soon';
+            distEl.textContent = `${distStr} • ${etaStr}`;
+        }
+    }
+
+    // Route details
+    const pickupEl = document.getElementById('confirm-pickup-address');
+    const dropEl = document.getElementById('confirm-drop-address');
+    const pAddr = window.selectedPickupAddress || document.getElementById('pickup-address-input')?.value || 'J18 SP Sukhobristi Lane, Newtown, Kolkata';
+    const dAddr = window.selectedDropAddress || document.getElementById('drop-address-input')?.value || 'Destination Location';
+    if (pickupEl) pickupEl.textContent = pAddr;
+    if (dropEl) dropEl.textContent = dAddr;
+
+    // Fare details
+    const fareEl = document.getElementById('payment-amount-display');
+    const btnPayAmtEl = document.getElementById('btn-pay-amount-text');
+    const roundedTotal = Math.round(totalVal || 299);
+    if (fareEl) fareEl.textContent = `₹${roundedTotal}`;
+    if (btnPayAmtEl) btnPayAmtEl.textContent = `₹${roundedTotal}`;
+
+    // Start 5-minute countdown hold timer upon confirmation screen appearance
+    if (typeof window.startPaymentCountdown === 'function') {
+        window.startPaymentCountdown(tripId);
+    }
+
+    // Show modal
+    const paymentModal = document.getElementById('payment-modal');
+    if (paymentModal) paymentModal.style.display = 'flex';
+};
+
+window.proceedToPayRazorpay = function() {
+    const tripId = window.currentActiveTripId;
+    const totalVal = window.currentBookingTotalVal;
+    const reqId = window.currentPendingRequestId;
+    
+    if (!tripId) {
+        return showToast('Booking session expired or not found. Please try again.', 'error');
+    }
+
+    // Check if real Razorpay advance payment is active
+    const isAdvancePaymentActive = window.ENABLE_CUSTOMER_ADVANCE_PAYMENT ||
+        (currentUser && (currentUser.phone === '9999999999' || currentUser.phone === '+919999999999' || String(currentUser.phone).endsWith('9999999999'))) ||
+        new URLSearchParams(window.location.search).get('test_advance') === 'true';
+
+    if (isAdvancePaymentActive) {
+        window.triggerRazorpayForTrip(tripId, totalVal, reqId);
+    } else {
+        showToast('Advance payment simulated successfully.', 'success');
+        if (typeof simulatePayment === 'function') simulatePayment();
+    }
+};
+
+window.cancelPaymentHold = async function() {
+    if (window.paymentCountdownInterval) {
+        clearInterval(window.paymentCountdownInterval);
+    }
+    const paymentModal = document.getElementById('payment-modal');
+    if (paymentModal) paymentModal.style.display = 'none';
+
+    if (window.currentActiveTripId) {
+        try {
+            await apiPost(`/trips/${window.currentActiveTripId}/cancel-timeout`, {
+                reason: 'Customer cancelled at confirmation screen'
+            });
+            showToast('Driver released. You can search again.', 'info');
+        } catch(e) {
+            console.warn('Failed to release driver on cancel:', e);
+        }
+    }
+    
+    window.currentActiveTripId = null;
+    const fmScreen = document.getElementById('finding-marshal-screen');
+    if (fmScreen) fmScreen.style.display = 'none';
+    const btn = document.getElementById('btn-request-service');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'Search for Nearby Driver';
+    }
+};
+window.closePaymentModal = window.cancelPaymentHold;
 
 let selectedBookingMarshal = null;
 
