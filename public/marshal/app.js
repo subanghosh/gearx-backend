@@ -3158,15 +3158,18 @@ async function acceptPickup(id) {
                                 switchTab('trips');
                                 startPickupPolling();
                                 loadMyTrips();
-                            } else if (req.status === 'cancelled' || req.status === 'returned') {
-                                // Cancelled or returned
+                            } else if (req.status === 'cancelled' || req.status === 'returned' || (!req.workerId && req.status !== 'pending_bid')) {
+                                // Cancelled or driver released
                                 clearInterval(window.bidCheckInterval);
                                 window.bidCheckInterval = null;
                                 
                                 const selectionOverlayEl = document.getElementById('map-pending-selection-overlay');
                                 if (selectionOverlayEl) selectionOverlayEl.style.display = 'none';
                                 
-                                showToast('The service request has been cancelled.', 'info');
+                                const paymentOverlayEl = document.getElementById('map-pending-payment-overlay');
+                                if (paymentOverlayEl) paymentOverlayEl.style.display = 'none';
+                                
+                                showToast('Customer cancelled the request. You are now free for new bookings.', 'info');
                                 switchTab('trips');
                                 startPickupPolling();
                                 loadMyTrips();

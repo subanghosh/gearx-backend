@@ -4719,9 +4719,12 @@ apiRouter.post('/trips/:id/cancel-timeout', async (req, res) => {
         const sId = tripRes.rows[0]?.servicerequestid;
         await pool.query("UPDATE trips SET status = 'cancelled' WHERE id = $1", [tripId]);
         if (sId) {
-            await pool.query("UPDATE service_requests SET workerId = NULL, status = 'pending' WHERE id = $1", [sId]);
+            await pool.query("UPDATE service_requests SET workerId = NULL, status = 'cancelled' WHERE id = $1", [sId]);
             await pool.query("UPDATE service_request_bids SET status = 'expired' WHERE service_request_id = $1", [sId]);
+            try { db.run("UPDATE service_requests SET workerId = NULL, status = 'cancelled' WHERE id = ?", [sId]); } catch(e) {}
+            try { db.run("UPDATE service_request_bids SET status = 'expired' WHERE service_request_id = ?", [sId]); } catch(e) {}
         }
+        try { db.run("UPDATE trips SET status = 'cancelled' WHERE id = ?", [tripId]); } catch(e) {}
         res.json({ success: true, message: 'Trip cancelled due to payment timeout; driver released back to pool' });
     } catch (err) {
         res.status(500).json({ error: err.message });

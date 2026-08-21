@@ -5142,29 +5142,58 @@ window.proceedToPayRazorpay = function() {
 window.cancelPaymentHold = async function() {
     if (window.paymentCountdownInterval) {
         clearInterval(window.paymentCountdownInterval);
+        window.paymentCountdownInterval = null;
     }
+    if (window.bookingPollInterval) {
+        clearInterval(window.bookingPollInterval);
+        window.bookingPollInterval = null;
+    }
+    if (window.fmInterval) {
+        clearInterval(window.fmInterval);
+        window.fmInterval = null;
+    }
+    
     const paymentModal = document.getElementById('payment-modal');
     if (paymentModal) paymentModal.style.display = 'none';
 
-    if (window.currentActiveTripId) {
+    const tripId = window.currentActiveTripId;
+    const reqId = window.currentPendingRequestId;
+
+    if (tripId) {
         try {
-            await apiPost(`/trips/${window.currentActiveTripId}/cancel-timeout`, {
+            await apiPost(`/trips/${tripId}/cancel-timeout`, {
                 reason: 'Customer cancelled at confirmation screen'
             });
-            showToast('Driver released. You can search again.', 'info');
         } catch(e) {
             console.warn('Failed to release driver on cancel:', e);
         }
     }
+    if (reqId) {
+        try {
+            await apiPatch(`/service-requests/${reqId}`, { status: 'cancelled' });
+        } catch(e) {}
+    }
     
     window.currentActiveTripId = null;
+    window.currentPendingRequestId = null;
+    
+    // Hide finding marshal search screen
     const fmScreen = document.getElementById('finding-marshal-screen');
     if (fmScreen) fmScreen.style.display = 'none';
+    
+    // Reset Search button on main screen
     const btn = document.getElementById('btn-request-service');
     if (btn) {
         btn.disabled = false;
         btn.innerHTML = 'Search for Nearby Driver';
     }
+    const instantBtn = document.getElementById('btn-request-service-instant') || document.getElementById('flow-btn-confirm-instant');
+    if (instantBtn) {
+        instantBtn.disabled = false;
+        instantBtn.innerHTML = 'Search for Nearby Driver';
+    }
+
+    showToast('Booking cancelled. Driver released back to pool.', 'info');
 };
 window.closePaymentModal = window.cancelPaymentHold;
 
