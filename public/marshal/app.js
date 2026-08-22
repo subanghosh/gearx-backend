@@ -3102,7 +3102,7 @@ async function acceptPickup(id) {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to submit bid');
 
-            showToast('Bid submitted! Waiting for customer confirmation...', 'success');
+            showToast('Bid submitted! Waiting for customer to confirm and pay...', 'success');
             startPickupPolling();
             loadMyTrips();
             
@@ -3158,8 +3158,8 @@ async function acceptPickup(id) {
                                 switchTab('trips');
                                 startPickupPolling();
                                 loadMyTrips();
-                            } else if (req.status === 'cancelled' || req.status === 'returned' || (!req.workerId && req.status !== 'pending_bid')) {
-                                // Cancelled or driver released
+                            } else if (req.status === 'cancelled' || req.status === 'returned') {
+                                // Real cancellation from customer
                                 clearInterval(window.bidCheckInterval);
                                 window.bidCheckInterval = null;
                                 
