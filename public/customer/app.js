@@ -4692,16 +4692,17 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
         let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
         let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
-        let distance = 0;
+        let distance = (window.lockedTripDistanceKm !== null && window.lockedTripDistanceKm !== undefined) ? window.lockedTripDistanceKm : (window.calculatedRouteDistance || 0);
         const pickupInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
-        if (pickupInput && dropInput) {
+        if (distance === 0 && pickupInput && dropInput) {
             const pLat = parseFloat(pickupInput.getAttribute('data-lat'));
             const pLng = parseFloat(pickupInput.getAttribute('data-lng'));
             const dLat = parseFloat(dropInput.getAttribute('data-lat'));
             const dLng = parseFloat(dropInput.getAttribute('data-lng'));
             if (!isNaN(pLat) && !isNaN(pLng) && !isNaN(dLat) && !isNaN(dLng)) {
-                distance = window.calculatedRouteDistance || calcDistanceKm(pLat, pLng, dLat, dLng);
+                distance = calcDistanceKm(pLat, pLng, dLat, dLng);
+                window.lockedTripDistanceKm = distance;
             }
         }
         let pdCharge = 0;
@@ -6758,10 +6759,10 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         const isBike = String(v.type).toLowerCase().includes('bike') || String(v.type).toLowerCase().includes('motorcycle') || String(v.category).toLowerCase().includes('bike');
         const vehicleType = isBike ? 'bike' : 'car';
 
-        // Get distance
+        // Get single source of truth distance
+        let distance = (window.lockedTripDistanceKm !== null && window.lockedTripDistanceKm !== undefined) ? window.lockedTripDistanceKm : (window.calculatedRouteDistance || 0);
         const locInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
-        let distance = window.calculatedRouteDistance || 0;
         if (distance === 0 && locInput && dropInput) {
             const pLat = parseFloat(locInput.getAttribute('data-lat'));
             const pLng = parseFloat(locInput.getAttribute('data-lng'));
@@ -6769,28 +6770,21 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
             const dLng = parseFloat(dropInput.getAttribute('data-lng'));
             if (!isNaN(pLat) && !isNaN(pLng) && !isNaN(dLat) && !isNaN(dLng)) {
                 distance = calcDistanceKm(pLat, pLng, dLat, dLng);
+                window.lockedTripDistanceKm = distance;
             }
         }
 
         const settings = window.redrivoSystemSettings || {};
-        const minFare = parseFloat(settings['base_fare'] || '150.0');
-        const baseRatePerKm = parseFloat(settings['customer_rate_per_km'] || '15.0');
-        const haltRate = parseFloat(settings[`${vehicleType}_halt_rate_per_min`] || (vehicleType === 'car' ? '6.0' : '2.0'));
-
-        let slabRate = baseRatePerKm;
-        try {
-            const slabs = await apiGet(`/settings/incentives?type=${vehicleType}`);
-            if (slabs && slabs.length > 0) {
-                const matchingSlab = slabs.find(s => distance <= (s.maxDistance || s.maxdistance));
-                if (matchingSlab) {
-                    slabRate = matchingSlab.ratePerKm || matchingSlab.rateperkm;
-                } else {
-                    slabRate = slabs[slabs.length - 1].ratePerKm || slabs[slabs.length - 1].rateperkm;
-                }
-            }
-        } catch (eSlab) {
-            console.warn("Failed to fetch slabs for preview:", eSlab.message);
-        }
+        const rateKey = `${vehicleType}_customer_rate_per_km`;
+        const baseFareKey = `${vehicleType}_base_fare`;
+        const haltRateKey = `${vehicleType}_halt_rate_per_min`;
+        
+        const ratePerKm = settings[rateKey] !== undefined ? parseFloat(settings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
+        const minFare = settings[baseFareKey] !== undefined ? parseFloat(settings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
+        const haltRate = parseFloat(settings[haltRateKey] || (vehicleType === 'car' ? 5 : 3));
+        const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
+        const redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        const inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
 
         const pricingMode = window.selectedPricingMode || 'distance';
         const estimatedHours = window.selectedEstimatedHours || 4;
@@ -6804,8 +6798,7 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         }
 
         // 1. Compute Distance total price
-        const distanceCharge = distance * slabRate;
-        const finalDistanceCharge = Math.max(minFare, distanceCharge);
+        const pdCharge = Math.max(minFare, Math.round(distance * ratePerKm));
         let totalHaltMinutes = 0;
         if (window.routeStops && Array.isArray(window.routeStops)) {
             window.routeStops.forEach(stop => {
@@ -6813,17 +6806,17 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
             });
         }
         const haltCharge = totalHaltMinutes * haltRate;
-        const distanceTotal = finalDistanceCharge + haltCharge + towingFee;
+        const distanceTotal = redrivoServiceCharge + inspectionFee + pdCharge + haltCharge + towingFee;
 
         // 2. Compute Hourly total price
-        const hourlyRate = parseFloat(settings[`${vehicleType}_hourly_rate`] || (vehicleType === 'car' ? '150.0' : '80.0'));
+        const hourlyRate = parseFloat(settings[`${vehicleType}_hourly_rate`] || (vehicleType === 'car' ? 150.0 : 80.0));
         const hourlyTotal = (estimatedHours * hourlyRate) + towingFee;
 
         // Update card pricing elements
         const distPriceEl = document.getElementById('inline-distance-fare');
         const hourPriceEl = document.getElementById('inline-hourly-fare');
-        if (distPriceEl) distPriceEl.textContent = `₹${distanceTotal.toFixed(0)}`;
-        if (hourPriceEl) hourPriceEl.textContent = `₹${hourlyTotal.toFixed(0)}`;
+        if (distPriceEl) distPriceEl.textContent = `₹${Math.round(distanceTotal)}`;
+        if (hourPriceEl) hourPriceEl.textContent = `₹${Math.round(hourlyTotal)}`;
 
         let totalFare = pricingMode === 'hourly' ? hourlyTotal : distanceTotal;
         let html = '';
@@ -7664,16 +7657,17 @@ window.confirmScheduleBooking = async function() {
         const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
         let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
         let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
-        let distance = 0;
+        let distance = (window.lockedTripDistanceKm !== null && window.lockedTripDistanceKm !== undefined) ? window.lockedTripDistanceKm : (window.calculatedRouteDistance || 0);
         const pickupInput = document.getElementById('pickup-location-global');
         const dropInput = document.getElementById('drop-location-global');
-        if (pickupInput && dropInput) {
+        if (distance === 0 && pickupInput && dropInput) {
             const pLat = parseFloat(pickupInput.getAttribute('data-lat'));
             const pLng = parseFloat(pickupInput.getAttribute('data-lng'));
             const dLat = parseFloat(dropInput.getAttribute('data-lat'));
             const dLng = parseFloat(dropInput.getAttribute('data-lng'));
             if (!isNaN(pLat) && !isNaN(pLng) && !isNaN(dLat) && !isNaN(dLng)) {
-                distance = window.calculatedRouteDistance || calcDistanceKm(pLat, pLng, dLat, dLng);
+                distance = calcDistanceKm(pLat, pLng, dLat, dLng);
+                window.lockedTripDistanceKm = distance;
             }
         }
         let pdCharge = 0;
@@ -8234,6 +8228,8 @@ function truncateAddress(addr) {
 }
 
 function clearRouteLine() {
+    window.calculatedRouteDistance = 0;
+    window.lockedTripDistanceKm = null;
     if (window.routePolylineControl) {
         if(window.routePolylineControl) window.routePolylineControl.setMap(null);
         window.routePolylineControl = null;
@@ -8386,6 +8382,7 @@ function recalculateAndDrawRoute() {
             const km = (totalMeters / 1000).toFixed(1);
             const mins = Math.round(totalSeconds / 60);
             window.calculatedRouteDistance = parseFloat(km);
+            window.lockedTripDistanceKm = parseFloat(km);
             
             // Calculate ETA-based duration default
             if (!window.userManuallySelectedHours) {
