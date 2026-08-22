@@ -6952,17 +6952,43 @@ async function renderIncentives(container) {
         let withdrawalsList = [];
         let pendingCount = 0;
         try {
-            const wRes = await fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`);
-            if (wRes.ok) {
+            const [wRes, countRes, sysRes, slabsRes, globalRes, ratesRes] = await Promise.all([
+                fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`).catch(() => null),
+                fetch(`${API_URL}/admin/withdrawals?status=requested`).catch(() => null),
+                fetch(`${API_URL}/system-settings`).catch(() => null),
+                fetch(`${API_URL}/settings/incentives`).catch(() => null),
+                fetch(`${API_URL}/settings/global`).catch(() => null),
+                fetch(`${API_URL}/payout-model-rates`).catch(() => null)
+            ]);
+
+            if (wRes && wRes.ok) {
                 withdrawalsList = await wRes.json();
             }
-            const countRes = await fetch(`${API_URL}/admin/withdrawals?status=requested`);
-            if (countRes.ok) {
+            if (countRes && countRes.ok) {
                 const pendingList = await countRes.json();
                 pendingCount = pendingList.length;
             }
+            if (sysRes && sysRes.ok) {
+                window._sysSettings = await sysRes.json();
+            }
+            if (slabsRes && slabsRes.ok) {
+                const slabsData = await slabsRes.json();
+                if (Array.isArray(slabsData) && slabsData.length > 0) {
+                    window._currentSlabs = slabsData.map(s => ({
+                        maxDistance: Number(s.maxDistance !== undefined ? s.maxDistance : s.maxdistance),
+                        ratePerKm: Number(s.ratePerKm !== undefined ? s.ratePerKm : s.rateperkm)
+                    }));
+                }
+            }
+            if (globalRes && globalRes.ok) {
+                window._globalSettings = await globalRes.json();
+            }
+            if (ratesRes && ratesRes.ok) {
+                const ratesData = await ratesRes.json();
+                if (ratesData && ratesData.rates) window._payoutRates = ratesData.rates;
+            }
         } catch (eWdr) {
-            console.error("Failed to load withdrawals:", eWdr);
+            console.error("Failed to load settings/withdrawals in renderIncentives:", eWdr);
         }
 
         if (!window._currentSlabs) {
@@ -7211,13 +7237,13 @@ async function renderIncentives(container) {
                 const haltKey = `${type}_halt_rate_per_min`;
                 const hourlyKey = `${type}_hourly_rate`;
 
-                const bonusVal = window._globalSettings?.[bonusKey] !== undefined ? window._globalSettings[bonusKey] : (type === 'car' ? 50 : 30);
-                const payoutVal = window._globalSettings?.[payoutKey] !== undefined ? window._globalSettings[payoutKey] : 3;
-                const baseFareVal = window._globalSettings?.[baseFareKey] !== undefined ? window._globalSettings[baseFareKey] : (type === 'car' ? 150 : 50);
+                const bonusVal = window._sysSettings?.[bonusKey] !== undefined ? window._sysSettings[bonusKey] : (window._globalSettings?.[bonusKey] !== undefined ? window._globalSettings[bonusKey] : (type === 'car' ? 50 : 30));
+                const payoutVal = window._sysSettings?.[payoutKey] !== undefined ? window._sysSettings[payoutKey] : (window._globalSettings?.[payoutKey] !== undefined ? window._globalSettings[payoutKey] : 3);
+                const baseFareVal = window._sysSettings?.[baseFareKey] !== undefined ? window._sysSettings[baseFareKey] : (window._globalSettings?.[baseFareKey] !== undefined ? window._globalSettings[baseFareKey] : (type === 'car' ? 150 : 50));
                 const maxPickupVal = window._sysSettings?.[maxPickupKey] !== undefined ? window._sysSettings[maxPickupKey] : 10.0;
-                const custRateVal = window._sysSettings?.[custRateKey] !== undefined ? window._sysSettings[custRateKey] : (type === 'car' ? 15.0 : 8.0);
-                const haltVal = window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3);
-                const hourlyVal = window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80);
+                const custRateVal = window._sysSettings?.[custRateKey] !== undefined ? window._sysSettings[custRateKey] : (type === 'car' ? 30.0 : 8.0);
+                const haltVal = window._sysSettings?.[haltKey] !== undefined ? window._sysSettings[haltKey] : (window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3));
+                const hourlyVal = window._sysSettings?.[hourlyKey] !== undefined ? window._sysSettings[hourlyKey] : (window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80));
 
                 html += `
                 <div class="card" style="margin-top:0;">
