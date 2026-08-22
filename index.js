@@ -5193,126 +5193,136 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
     });
 });
 
-// GET earnings and wallet statistics for a marshal/driver
+// Helper function for Driver Wallet & Earnings Summary
+async function getDriverWalletSummary(userId) {
+    const userRes = await pool.query("SELECT is_payment_on_hold, rating, bankaccountname, bankaccountnumber, bankifsc, bankname, upi_id, bankverified FROM users WHERE id = $1", [userId]);
+    const user = userRes.rows[0];
+    const hold = user ? (user.is_payment_on_hold || 0) : 0;
+    const rating = user ? (user.rating || 5.0) : 5.0;
+
+    const incRes = await pool.query("SELECT id, amount, type, status, createdat, tripid FROM incentives WHERE userid = $1 ORDER BY createdat DESC", [userId]);
+    const rows = incRes.rows || [];
+
+    const wdrRes = await pool.query("SELECT id, amount, payout_method, status, utr_number, rejection_reason, created_at, processed_at FROM withdrawal_requests WHERE driver_id = $1 ORDER BY created_at DESC", [userId]);
+    const wdrRows = wdrRes.rows || [];
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    let todayEarnings = 0;
+    let weekEarnings = 0;
+    let monthEarnings = 0;
+    let grossEarnings = 0;
+
+    rows.forEach(r => {
+        const amt = parseFloat(r.amount || 0);
+        const date = new Date(r.createdat).getTime();
+
+        if (amt > 0) {
+            grossEarnings += amt;
+            if (date >= startOfDay) {
+                todayEarnings += amt;
+            }
+            const oneWeekAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+            if (date >= oneWeekAgo) {
+                weekEarnings += amt;
+            }
+            const oneMonthAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+            if (date >= oneMonthAgo) {
+                monthEarnings += amt;
+            }
+        }
+    });
+
+    // Compute total completed withdrawals and pending requested withdrawals
+    let totalWithdrawn = 0;
+    let pendingWithdrawals = 0;
+    wdrRows.forEach(w => {
+        const wAmt = parseFloat(w.amount || 0);
+        if (w.status === 'completed') {
+            totalWithdrawn += wAmt;
+        } else if (w.status === 'requested') {
+            pendingWithdrawals += wAmt;
+        }
+    });
+
+    const withdrawableBalance = Math.max(0, Math.round((grossEarnings - totalWithdrawn - pendingWithdrawals) * 100) / 100);
+
+    const tripCountRes = await pool.query(
+        "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type LIKE 'trip_bonus%' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
+        [userId, startOfDay]
+    );
+    const todayTrips = parseInt(tripCountRes.rows[0]?.count || 0);
+
+    // Build unified recent transactions list
+    const incentiveTx = rows.slice(0, 15).map(r => ({
+        id: r.id,
+        tripId: r.tripid,
+        amount: parseFloat(r.amount || 0),
+        type: r.type,
+        status: r.status,
+        date: r.createdat
+    }));
+
+    const withdrawalTx = wdrRows.slice(0, 10).map(w => ({
+        id: w.id,
+        amount: parseFloat(w.amount || 0),
+        type: 'withdrawal',
+        status: w.status,
+        utrNumber: w.utr_number,
+        rejectionReason: w.rejection_reason,
+        date: w.created_at
+    }));
+
+    const combinedTransactions = [...incentiveTx, ...withdrawalTx]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 20);
+
+    return {
+        todayEarnings: Math.round(todayEarnings),
+        weekEarnings: Math.round(weekEarnings),
+        monthEarnings: Math.round(monthEarnings),
+        overallEarnings: Math.round(grossEarnings),
+        totalGrossEarned: Math.round(grossEarnings),
+        totalWithdrawn: Math.round(totalWithdrawn),
+        pendingWithdrawals: Math.round(pendingWithdrawals),
+        withdrawableBalance: Math.round(withdrawableBalance),
+        minimumWithdrawal: 100,
+        todayTrips: todayTrips,
+        is_payment_on_hold: hold,
+        rating: parseFloat(rating.toFixed(2)),
+        bankDetails: {
+            accountHolderName: user?.bankaccountname || '',
+            accountNumber: user?.bankaccountnumber || '',
+            bankName: user?.bankname || '',
+            ifsc: user?.bankifsc || '',
+            upiId: user?.upi_id || '',
+            isConfigured: !!(user?.bankaccountnumber && user?.bankifsc)
+        },
+        recentTransactions: combinedTransactions
+    };
+}
+
+// GET earnings statistics for a marshal/driver
 apiRouter.get('/users/:id/earnings', async (req, res) => {
-    const userId = req.params.id;
     try {
-        const userRes = await pool.query("SELECT is_payment_on_hold, rating, bankaccountname, bankaccountnumber, bankifsc, bankname, upi_id, bankverified FROM users WHERE id = $1", [userId]);
-        const user = userRes.rows[0];
-        const hold = user ? (user.is_payment_on_hold || 0) : 0;
-        const rating = user ? (user.rating || 5.0) : 5.0;
-
-        const incRes = await pool.query("SELECT id, amount, type, status, createdat, tripid FROM incentives WHERE userid = $1 ORDER BY createdat DESC", [userId]);
-        const rows = incRes.rows || [];
-
-        const wdrRes = await pool.query("SELECT id, amount, payout_method, status, utr_number, rejection_reason, created_at, processed_at FROM withdrawal_requests WHERE driver_id = $1 ORDER BY created_at DESC", [userId]);
-        const wdrRows = wdrRes.rows || [];
-
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        
-        let todayEarnings = 0;
-        let weekEarnings = 0;
-        let monthEarnings = 0;
-        let grossEarnings = 0;
-
-        rows.forEach(r => {
-            const amt = parseFloat(r.amount || 0);
-            const date = new Date(r.createdat).getTime();
-
-            if (amt > 0) {
-                grossEarnings += amt;
-                if (date >= startOfDay) {
-                    todayEarnings += amt;
-                }
-                const oneWeekAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
-                if (date >= oneWeekAgo) {
-                    weekEarnings += amt;
-                }
-                const oneMonthAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
-                if (date >= oneMonthAgo) {
-                    monthEarnings += amt;
-                }
-            }
-        });
-
-        // Compute total completed withdrawals and pending requested withdrawals
-        let totalWithdrawn = 0;
-        let pendingWithdrawals = 0;
-        wdrRows.forEach(w => {
-            const wAmt = parseFloat(w.amount || 0);
-            if (w.status === 'completed') {
-                totalWithdrawn += wAmt;
-            } else if (w.status === 'requested') {
-                pendingWithdrawals += wAmt;
-            }
-        });
-
-        const withdrawableBalance = Math.max(0, Math.round((grossEarnings - totalWithdrawn - pendingWithdrawals) * 100) / 100);
-
-        const tripCountRes = await pool.query(
-            "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type LIKE 'trip_bonus%' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
-            [userId, startOfDay]
-        );
-        const todayTrips = parseInt(tripCountRes.rows[0]?.count || 0);
-
-        // Build unified recent transactions list
-        const incentiveTx = rows.slice(0, 15).map(r => ({
-            id: r.id,
-            tripId: r.tripid,
-            amount: parseFloat(r.amount || 0),
-            type: r.type,
-            status: r.status,
-            date: r.createdat
-        }));
-
-        const withdrawalTx = wdrRows.slice(0, 10).map(w => ({
-            id: w.id,
-            amount: parseFloat(w.amount || 0),
-            type: 'withdrawal',
-            status: w.status,
-            utrNumber: w.utr_number,
-            rejectionReason: w.rejection_reason,
-            date: w.created_at
-        }));
-
-        const combinedTransactions = [...incentiveTx, ...withdrawalTx]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 20);
-
-        res.json({
-            todayEarnings: Math.round(todayEarnings),
-            weekEarnings: Math.round(weekEarnings),
-            monthEarnings: Math.round(monthEarnings),
-            overallEarnings: Math.round(grossEarnings),
-            totalGrossEarned: Math.round(grossEarnings),
-            totalWithdrawn: Math.round(totalWithdrawn),
-            pendingWithdrawals: Math.round(pendingWithdrawals),
-            withdrawableBalance: Math.round(withdrawableBalance),
-            minimumWithdrawal: 100,
-            todayTrips: todayTrips,
-            is_payment_on_hold: hold,
-            rating: parseFloat(rating.toFixed(2)),
-            bankDetails: {
-                accountHolderName: user?.bankaccountname || '',
-                accountNumber: user?.bankaccountnumber || '',
-                bankName: user?.bankname || '',
-                ifsc: user?.bankifsc || '',
-                upiId: user?.upi_id || '',
-                isConfigured: !!(user?.bankaccountnumber && user?.bankifsc)
-            },
-            recentTransactions: combinedTransactions
-        });
+        const data = await getDriverWalletSummary(req.params.id);
+        res.json(data);
     } catch (err) {
         console.error('Earnings fetch error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Alias for /users/:id/wallet
+// GET wallet statistics for a marshal/driver
 apiRouter.get('/users/:id/wallet', async (req, res) => {
-    req.url = `/users/${req.params.id}/earnings`;
-    return apiRouter.handle(req, res);
+    try {
+        const data = await getDriverWalletSummary(req.params.id);
+        res.json(data);
+    } catch (err) {
+        console.error('Wallet fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST request withdrawal (Driver initiates withdrawal request)
