@@ -6826,7 +6826,7 @@ window.selectDispute = async function(id) {
             `}
         </div>
     `;
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
 
     // Fetch media associated with the trip
     try {
@@ -6945,14 +6945,21 @@ async function renderBackendSurveys(container) {
 
 async function renderIncentives(container) {
     try {
+        window._driverOpsTab = window._driverOpsTab || 'withdrawals';
         window._incentiveVehicleType = window._incentiveVehicleType || 'car';
         window._withdrawalTab = window._withdrawalTab || 'requested';
 
         let withdrawalsList = [];
+        let pendingCount = 0;
         try {
             const wRes = await fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`);
             if (wRes.ok) {
                 withdrawalsList = await wRes.json();
+            }
+            const countRes = await fetch(`${API_URL}/admin/withdrawals?status=requested`);
+            if (countRes.ok) {
+                const pendingList = await countRes.json();
+                pendingCount = pendingList.length;
             }
         } catch (eWdr) {
             console.error("Failed to load withdrawals:", eWdr);
@@ -6984,286 +6991,374 @@ async function renderIncentives(container) {
         if (window._payoutRatesEditMode === undefined) window._payoutRatesEditMode = false;
 
         const renderSlabsUI = () => {
-
-            let html = '<div class="header"><h1 class="page-title">Driver Ops & Payouts</h1></div>';
+            let html = '<div class="header"><h1 class="page-title">Driver Operations & Fare Engine</h1></div>';
             
-            // Top Section: Driver Withdrawal Requests Queue (Manual Payout Processing)
+            // Master Navigation Sub-Tabs
             html += `
-            <div class="card" style="margin-top: 15px; margin-bottom: 24px; border: 1px solid rgba(250,204,21,0.25);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
-                    <div>
-                        <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                            <i data-lucide="banknote" style="color:var(--primary); width:20px;"></i> Driver Withdrawal Requests (Manual Payouts)
-                        </h2>
-                        <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
-                            Review driver payout requests. Transfer funds via your banking/UPI portal, then enter the transaction UTR reference number to mark as paid.
-                        </p>
-                    </div>
-                    <button onclick="renderIncentives(document.getElementById('app'))" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
-                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh
-                    </button>
-                </div>
-
-                <!-- Sub-tabs: Requested / Completed / Rejected / All -->
-                <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px; flex-wrap:wrap;">
-                    <button class="btn btn-sm ${window._withdrawalTab === 'requested' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='requested'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
-                        Pending Approval
-                    </button>
-                    <button class="btn btn-sm ${window._withdrawalTab === 'completed' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='completed'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
-                        Completed Payouts
-                    </button>
-                    <button class="btn btn-sm ${window._withdrawalTab === 'rejected' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='rejected'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
-                        Rejected
-                    </button>
-                    <button class="btn btn-sm ${window._withdrawalTab === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='all'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
-                        All Requests
-                    </button>
-                </div>
-
-                <div style="overflow-x:auto;">
-                    <table style="width:100%; border-collapse:collapse;">
-                        <thead>
-                            <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.78rem; color:var(--text-muted); text-transform:uppercase;">
-                                <th style="padding:10px;">Date & ID</th>
-                                <th style="padding:10px;">Driver Details</th>
-                                <th style="padding:10px;">Amount</th>
-                                <th style="padding:10px;">Destination Bank / UPI</th>
-                                <th style="padding:10px;">Status</th>
-                                <th style="padding:10px; text-align:center;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+            <div class="tabs" style="display:flex; gap:10px; margin-top:20px; border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom: 24px; flex-wrap:wrap;">
+                <button class="tab-btn ${window._driverOpsTab === 'withdrawals' ? 'active' : ''}" onclick="window._driverOpsTab='withdrawals'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'withdrawals' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'withdrawals' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="banknote" style="width:16px; height:16px;"></i> Withdrawal Requests
+                    ${pendingCount > 0 ? `<span style="background:#EF4444; color:#fff; font-size:0.75rem; padding:2px 7px; border-radius:10px; font-weight:800;">${pendingCount}</span>` : ''}
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'slabs' ? 'active' : ''}" onclick="window._driverOpsTab='slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="tag" style="width:16px; height:16px;"></i> Distance Rate Slabs
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'fare_rules' ? 'active' : ''}" onclick="window._driverOpsTab='fare_rules'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'fare_rules' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'fare_rules' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Fares & Payout Rules
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'pricing_model' ? 'active' : ''}" onclick="window._driverOpsTab='pricing_model'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'pricing_model' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'pricing_model' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="percent" style="width:16px; height:16px;"></i> Commission & Subscriptions
+                </button>
+            </div>
             `;
 
-            if (withdrawalsList && withdrawalsList.length > 0) {
-                withdrawalsList.forEach(w => {
-                    let statusBadge = '';
-                    if (w.status === 'requested') {
-                        statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-weight:700;">PENDING</span>';
-                    } else if (w.status === 'completed') {
-                        statusBadge = `<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-weight:700;">PAID (UTR: ${w.utr_number || 'N/A'})</span>`;
-                    } else if (w.status === 'rejected') {
-                        statusBadge = `<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:700;">REJECTED</span>`;
-                    }
+            // TAB 1: WITHDRAWALS QUEUE
+            if (window._driverOpsTab === 'withdrawals') {
+                html += `
+                <div class="card" style="margin-top: 0; margin-bottom: 24px; border: 1px solid rgba(250,204,21,0.25);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                                <i data-lucide="banknote" style="color:var(--primary); width:20px;"></i> Driver Withdrawal Requests (Manual Payouts)
+                            </h2>
+                            <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
+                                Review driver payout requests. Transfer funds via your banking/UPI portal, then enter the transaction UTR reference number to mark as paid.
+                            </p>
+                        </div>
+                        <button onclick="renderIncentives(document.getElementById('app'))" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+                            <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh
+                        </button>
+                    </div>
 
-                    const dateStr = new Date(w.created_at).toLocaleDateString() + ' ' + new Date(w.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px; flex-wrap:wrap;">
+                        <button class="btn btn-sm ${window._withdrawalTab === 'requested' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='requested'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                            Pending Approval (${pendingCount})
+                        </button>
+                        <button class="btn btn-sm ${window._withdrawalTab === 'completed' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='completed'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                            Completed Payouts
+                        </button>
+                        <button class="btn btn-sm ${window._withdrawalTab === 'rejected' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='rejected'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                            Rejected
+                        </button>
+                        <button class="btn btn-sm ${window._withdrawalTab === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='all'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                            All Requests
+                        </button>
+                    </div>
 
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.78rem; color:var(--text-muted); text-transform:uppercase;">
+                                    <th style="padding:10px;">Date & ID</th>
+                                    <th style="padding:10px;">Driver Details</th>
+                                    <th style="padding:10px;">Amount</th>
+                                    <th style="padding:10px;">Destination Bank / UPI</th>
+                                    <th style="padding:10px;">Status</th>
+                                    <th style="padding:10px; text-align:center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                if (withdrawalsList && withdrawalsList.length > 0) {
+                    withdrawalsList.forEach(w => {
+                        let statusBadge = '';
+                        if (w.status === 'requested') {
+                            statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-weight:700;">PENDING</span>';
+                        } else if (w.status === 'completed') {
+                            statusBadge = `<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-weight:700;">PAID (UTR: ${w.utr_number || 'N/A'})</span>`;
+                        } else if (w.status === 'rejected') {
+                            statusBadge = `<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:700;">REJECTED</span>`;
+                        }
+
+                        const dateStr = new Date(w.created_at).toLocaleDateString() + ' ' + new Date(w.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+                        html += `
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;">
+                                <td style="padding:10px;">
+                                    <div style="font-weight:700; color:#fff;">${dateStr}</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted); font-family:monospace;">${w.id}</div>
+                                </td>
+                                <td style="padding:10px;">
+                                    <div style="font-weight:700; color:#fff;">${w.driver_name || w.driver_id}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted);">${w.driver_phone || ''}</div>
+                                </td>
+                                <td style="padding:10px;">
+                                    <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">₹${w.amount}</div>
+                                </td>
+                                <td style="padding:10px;">
+                                    ${w.account_number ? `
+                                        <div style="font-weight:600; color:#fff;">${w.bank_name || 'Bank'}</div>
+                                        <div style="font-size:0.78rem; color:#a1a1aa; font-family:monospace;">A/C: ${w.account_number} • IFSC: ${w.ifsc_code}</div>
+                                        <div style="font-size:0.72rem; color:var(--text-muted);">Name: ${w.account_holder_name || 'N/A'}</div>
+                                    ` : `
+                                        <div style="color:#FACC15; font-weight:700;">UPI: ${w.upi_id || 'N/A'}</div>
+                                    `}
+                                </td>
+                                <td style="padding:10px;">
+                                    ${statusBadge}
+                                    ${w.rejection_reason ? `<div style="font-size:0.72rem; color:#ef4444; margin-top:2px;">${w.rejection_reason}</div>` : ''}
+                                    ${w.admin_notes ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Note: ${w.admin_notes}</div>` : ''}
+                                </td>
+                                <td style="padding:10px; text-align:center;">
+                                    ${w.status === 'requested' ? `
+                                        <div style="display:flex; gap:6px; justify-content:center;">
+                                            <button class="btn btn-sm" onclick="openMarkPaidModal('${w.id}', '${w.amount}', '${(w.driver_name || w.account_holder_name || '').replace(/'/g, "\\'")}', '${w.account_number || ''}', '${w.ifsc_code || ''}', '${(w.bank_name || '').replace(/'/g, "\\'")}', '${w.upi_id || ''}')" style="background:var(--success); color:#fff; border:none; padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                                <i data-lucide="check" style="width:14px; height:14px; vertical-align:middle;"></i> Mark Paid
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" onclick="openRejectWithdrawalModal('${w.id}', '${w.amount}', '${(w.driver_name || '').replace(/'/g, "\\'")}')" style="padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                                <i data-lucide="x" style="width:14px; height:14px; vertical-align:middle;"></i> Reject
+                                            </button>
+                                        </div>
+                                    ` : `
+                                        <span style="color:var(--text-muted); font-size:0.78rem;">Settled</span>
+                                    `}
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
                     html += `
-                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;">
-                            <td style="padding:10px;">
-                                <div style="font-weight:700; color:#fff;">${dateStr}</div>
-                                <div style="font-size:0.72rem; color:var(--text-muted); font-family:monospace;">${w.id}</div>
-                            </td>
-                            <td style="padding:10px;">
-                                <div style="font-weight:700; color:#fff;">${w.driver_name || w.driver_id}</div>
-                                <div style="font-size:0.75rem; color:var(--text-muted);">${w.driver_phone || ''}</div>
-                            </td>
-                            <td style="padding:10px;">
-                                <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">₹${w.amount}</div>
-                            </td>
-                            <td style="padding:10px;">
-                                ${w.account_number ? `
-                                    <div style="font-weight:600; color:#fff;">${w.bank_name || 'Bank'}</div>
-                                    <div style="font-size:0.78rem; color:#a1a1aa; font-family:monospace;">A/C: ${w.account_number} • IFSC: ${w.ifsc_code}</div>
-                                    <div style="font-size:0.72rem; color:var(--text-muted);">Name: ${w.account_holder_name || 'N/A'}</div>
-                                ` : `
-                                    <div style="color:#FACC15; font-weight:700;">UPI: ${w.upi_id || 'N/A'}</div>
-                                `}
-                            </td>
-                            <td style="padding:10px;">
-                                ${statusBadge}
-                                ${w.rejection_reason ? `<div style="font-size:0.72rem; color:#ef4444; margin-top:2px;">${w.rejection_reason}</div>` : ''}
-                                ${w.admin_notes ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Note: ${w.admin_notes}</div>` : ''}
-                            </td>
-                            <td style="padding:10px; text-align:center;">
-                                ${w.status === 'requested' ? `
-                                    <div style="display:flex; gap:6px; justify-content:center;">
-                                        <button class="btn btn-sm" onclick="openMarkPaidModal('${w.id}', '${w.amount}', '${(w.driver_name || w.account_holder_name || '').replace(/'/g, "\\'")}', '${w.account_number || ''}', '${w.ifsc_code || ''}', '${(w.bank_name || '').replace(/'/g, "\\'")}', '${w.upi_id || ''}')" style="background:var(--success); color:#fff; border:none; padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
-                                            <i data-lucide="check" style="width:14px; height:14px; vertical-align:middle;"></i> Mark Paid
-                                        </button>
-                                        <button class="btn btn-danger btn-sm" onclick="openRejectWithdrawalModal('${w.id}', '${w.amount}', '${(w.driver_name || '').replace(/'/g, "\\'")}')" style="padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
-                                            <i data-lucide="x" style="width:14px; height:14px; vertical-align:middle;"></i> Reject
-                                        </button>
-                                    </div>
-                                ` : `
-                                    <span style="color:var(--text-muted); font-size:0.78rem;">Settled</span>
-                                `}
+                        <tr>
+                            <td colspan="6" style="padding:30px; text-align:center; color:var(--text-muted); font-size:0.88rem;">
+                                No withdrawal requests found in this view.
                             </td>
                         </tr>
                     `;
-                });
-            } else {
+                }
+
                 html += `
-                    <tr>
-                        <td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
-                            No withdrawal requests found in this view.
-                        </td>
-                    </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 `;
             }
 
-            html += `
+            // TAB 2: DISTANCE RATE SLABS
+            else if (window._driverOpsTab === 'slabs') {
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Distance Rate Slabs</h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Configure the payout rate per KM based on total trip distance. Evaluated in ascending order of Max Distance.</p>
+                        </div>
+
+                        <div style="display:flex; gap:8px;">
+                            <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'};">
+                                🚗 Car Slabs
+                            </button>
+                            <button class="tab-btn ${window._incentiveVehicleType === 'bike' ? 'active' : ''}" onclick="window._incentiveVehicleType='bike'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'bike' ? '#000' : '#fff'};">
+                                🏍️ Bike Slabs
+                            </button>
+                        </div>
+                    </div>
+
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
+                                <th style="padding:10px;">From (KM)</th>
+                                <th style="padding:10px;">To (KM)</th>
+                                <th style="padding:10px;">Driver Payout Rate (₹/KM)</th>
+                                ${window._slabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                window._currentSlabs.forEach((slab, index) => {
+                    let fromVal = 0.0;
+                    if (index > 0) {
+                        fromVal = (Number(window._currentSlabs[index - 1].maxDistance) + 0.1).toFixed(1);
+                    }
+                    const disabledAttr = window._slabsEditMode ? '' : 'disabled';
+                    html += `
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px; color:var(--text-muted); font-weight:600;">${fromVal} KM</td>
+                            <td style="padding:10px;"><input type="number" value="${slab.maxDistance}" onchange="window._currentSlabs[${index}].maxDistance=Number(this.value); window.drawIncentivesUI()" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                            <td style="padding:10px;"><input type="number" value="${slab.ratePerKm}" onchange="window._currentSlabs[${index}].ratePerKm=Number(this.value)" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            ${window._slabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentSlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
+                        </tr>
+                    `;
+                });
+
+                html += `
                         </tbody>
                     </table>
+
+                    <div style="display:flex; gap:10px;">
+                        ${window._slabsEditMode ? `
+                            <button onclick="window._currentSlabs.push({maxDistance: 999, ratePerKm: 30}); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Slab</button>
+                            <button onclick="saveIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Slabs</button>
+                        ` : `
+                            <button onclick="window._slabsEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Slabs</button>
+                        `}
+                    </div>
                 </div>
-            </div>
-            `;
-
-            // Switch Tab for Car and Bike Settings
-            html += `
-            <div class="tabs" style="display:flex; gap:12px; margin-top:20px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 20px;">
-                <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:10px 20px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'}; transition:all 0.2s;">
-                    🚗 Car Settings
-                </button>
-                <button class="tab-btn ${window._incentiveVehicleType === 'bike' ? 'active' : ''}" onclick="window._incentiveVehicleType='bike'; renderIncentives(document.getElementById('app'))" style="padding:10px 20px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'bike' ? '#000' : '#fff'}; transition:all 0.2s;">
-                    🏍️ Bike Settings
-                </button>
-            </div>
-            `;
-            
-            html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; align-items: start;">';
-            
-            // Left Card: Distance Slabs
-            html += '<div class="card" style="margin-top:0; margin-bottom:0;">';
-            html += '<h2 style="margin-top:0; color:var(--text-main); font-size:1.2rem; margin-bottom:10px;">Distance Rate Slabs (' + window._incentiveVehicleType.toUpperCase() + ')</h2>';
-            html += '<p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:20px;">Configure the payout rate per KM based on the total distance of the trip. The system evaluates slabs in ascending order of Max Distance.</p>';
-            
-            html += '<table style="width:100%; border-collapse:collapse; margin-bottom:20px;">';
-            html += '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left; padding:10px;">From (KM)</th><th style="text-align:left; padding:10px;">To (KM)</th><th style="text-align:left; padding:10px;">Rate (₹/KM)</th>' + (window._slabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : '') + '</tr>';
-            
-            window._currentSlabs.forEach((slab, index) => {
-                let fromVal = 0.0;
-                if (index > 0) {
-                    fromVal = (Number(window._currentSlabs[index - 1].maxDistance) + 0.1).toFixed(1);
-                }
-                const disabledAttr = window._slabsEditMode ? '' : 'disabled';
-                html += '<tr style="border-bottom:1px solid var(--border);">';
-                html += '<td style="padding:10px; color:var(--text-muted); font-weight:600;">' + fromVal + ' KM</td>';
-                html += '<td style="padding:10px;"><input type="number" value="' + slab.maxDistance + '" onchange="window._currentSlabs[' + index + '].maxDistance=Number(this.value); window.drawIncentivesUI()" ' + disabledAttr + ' style="width:100px; padding:6px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>';
-                html += '<td style="padding:10px;"><input type="number" value="' + slab.ratePerKm + '" onchange="window._currentSlabs[' + index + '].ratePerKm=Number(this.value)" ' + disabledAttr + ' style="width:100px; padding:6px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>';
-                if (window._slabsEditMode) {
-                    html += '<td style="padding:10px; text-align:center;"><button onclick="window._currentSlabs.splice(' + index + ', 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>';
-                }
-                html += '</tr>';
-            });
-            
-            html += '</table>';
-            html += '<div style="display:flex; gap:10px;">';
-            if (window._slabsEditMode) {
-                html += '<button onclick="window._currentSlabs.push({maxDistance: 999, ratePerKm: 30}); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px;">+ Add Slab</button>';
-                html += '<button onclick="saveIncentives()" class="btn-primary" style="padding:10px; background:var(--success); border:none; color:#fff;">Save Slabs</button>';
-            } else {
-                html += '<button onclick="window._slabsEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px;">Edit Slabs</button>';
+                `;
             }
-            html += '</div>';
-            html += '</div>'; // End Left Card
-            
-            // Right Card: Global Payout Settings
-            html += '<div class="card" style="margin-top:0; margin-bottom:0;">';
-            html += '<h2 style="margin-top:0; color:var(--text-main); font-size:1.2rem; margin-bottom:20px;">Global Payout Settings (' + window._incentiveVehicleType.toUpperCase() + ')</h2>';
-            html += '<div style="display:flex; flex-direction:column; gap:15px;">';
-            
-            const disabledGlobal = window._globalEditMode ? '' : 'disabled';
-            
-            const type = window._incentiveVehicleType;
-            const bonusKey = `${type}_five_star_bonus`;
-            const payoutKey = `${type}_payout_days`;
-            const baseFareKey = `${type}_base_fare`;
-            const maxPickupKey = `${type}_max_pickup_distance_km`;
-            const custRateKey = `${type}_customer_rate_per_km`;
-            const haltKey = `${type}_halt_rate_per_min`;
 
-            const bonusVal = window._globalSettings?.[bonusKey] !== undefined ? window._globalSettings[bonusKey] : (type === 'car' ? 50 : 30);
-            const payoutVal = window._globalSettings?.[payoutKey] !== undefined ? window._globalSettings[payoutKey] : 3;
-            const baseFareVal = window._globalSettings?.[baseFareKey] !== undefined ? window._globalSettings[baseFareKey] : (type === 'car' ? 150 : 50);
-            const maxPickupVal = window._sysSettings?.[maxPickupKey] !== undefined ? window._sysSettings[maxPickupKey] : 10.0;
-            const custRateVal = window._sysSettings?.[custRateKey] !== undefined ? window._sysSettings[custRateKey] : (type === 'car' ? 15.0 : 8.0);
-            const haltVal = window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3);
+            // TAB 3: BASE FARES & PAYOUT RULES
+            else if (window._driverOpsTab === 'fare_rules') {
+                const disabledGlobal = window._globalEditMode ? '' : 'disabled';
+                const type = window._incentiveVehicleType;
+                const bonusKey = `${type}_five_star_bonus`;
+                const payoutKey = `${type}_payout_days`;
+                const baseFareKey = `${type}_base_fare`;
+                const maxPickupKey = `${type}_max_pickup_distance_km`;
+                const custRateKey = `${type}_customer_rate_per_km`;
+                const haltKey = `${type}_halt_rate_per_min`;
+                const hourlyKey = `${type}_hourly_rate`;
 
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">5-Star Rating Bonus (₹)</label>';
-            html += '<input type="number" id="global-bonus" value="' + bonusVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Payout Clearance (Days)</label>';
-            html += '<input type="number" id="global-payout" value="' + payoutVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Minimum Fare (₹)</label>';
-            html += '<input type="number" id="global-base-fare" value="' + baseFareVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Maximum Pickup Distance (KM)</label>';
-            html += '<input type="number" step="0.1" id="global-max-pickup-distance" value="' + maxPickupVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Dynamic Base Fare (₹/KM)</label>';
-            html += '<input type="number" step="0.1" id="global-customer-rate-per-km" value="' + custRateVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
+                const bonusVal = window._globalSettings?.[bonusKey] !== undefined ? window._globalSettings[bonusKey] : (type === 'car' ? 50 : 30);
+                const payoutVal = window._globalSettings?.[payoutKey] !== undefined ? window._globalSettings[payoutKey] : 3;
+                const baseFareVal = window._globalSettings?.[baseFareKey] !== undefined ? window._globalSettings[baseFareKey] : (type === 'car' ? 150 : 50);
+                const maxPickupVal = window._sysSettings?.[maxPickupKey] !== undefined ? window._sysSettings[maxPickupKey] : 10.0;
+                const custRateVal = window._sysSettings?.[custRateKey] !== undefined ? window._sysSettings[custRateKey] : (type === 'car' ? 15.0 : 8.0);
+                const haltVal = window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3);
+                const hourlyVal = window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80);
 
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Halt Rate per Minute (₹/min)</label>';
-            html += '<input type="number" step="1" id="global-halt-rate-per-min" value="' + haltVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            const hourlyKey = `${type}_hourly_rate`;
-            const hourlyVal = window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80);
-            html += '<div><label style="font-size:0.9rem; color:var(--text-muted); display:block; margin-bottom:5px;">Hourly Rate (₹/Hour)</label>';
-            html += '<input type="number" step="1" id="global-hourly-rate" value="' + hourlyVal + '" ' + disabledGlobal + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></div>';
-            
-            html += '<div>';
-            if (window._globalEditMode) {
-                html += '<button onclick="saveGlobalSettings()" class="btn-primary" style="padding:10px; background:var(--success); border:none; color:#fff; margin-top:10px;">Save Global Settings</button>';
-            } else {
-                html += '<button onclick="window._globalEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px; margin-top:10px;">Edit Global Settings</button>';
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Base Fares & Operational Payout Rules</h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Platform-wide minimums, bonus incentives, and logistics dispatch constraints.</p>
+                        </div>
+
+                        <div style="display:flex; gap:8px;">
+                            <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'};">
+                                🚗 Car Rules
+                            </button>
+                            <button class="tab-btn ${window._incentiveVehicleType === 'bike' ? 'active' : ''}" onclick="window._incentiveVehicleType='bike'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'bike' ? '#000' : '#fff'};">
+                                🏍️ Bike Rules
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px; margin-bottom:24px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Minimum Base Fare (₹)</label>
+                            <input type="number" id="global-base-fare" value="${baseFareVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Starting threshold for any booking</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Customer Rate per KM (₹/KM)</label>
+                            <input type="number" step="0.1" id="global-customer-rate-per-km" value="${custRateVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Customer distance rate multiplier</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">5-Star Rating Bonus (₹)</label>
+                            <input type="number" id="global-bonus" value="${bonusVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Direct cash bonus for 5-star customer reviews</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Maximum Pickup Distance (KM)</label>
+                            <input type="number" step="0.1" id="global-max-pickup-distance" value="${maxPickupVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Maximum radius for auto-dispatch</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Halt Rate per Minute (₹/min)</label>
+                            <input type="number" step="1" id="global-halt-rate-per-min" value="${haltVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Waiting charge during en-route stops</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Hourly Rental Rate (₹/Hour)</label>
+                            <input type="number" step="1" id="global-hourly-rate" value="${hourlyVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Hourly booking base rate</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Payout Clearance Window (Days)</label>
+                            <input type="number" id="global-payout" value="${payoutVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Settlement grace period</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        ${window._globalEditMode ? `
+                            <button onclick="saveGlobalSettings()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Global Rules</button>
+                        ` : `
+                            <button onclick="window._globalEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rules</button>
+                        `}
+                    </div>
+                </div>
+                `;
             }
-            html += '</div>';
-            
-            html += '</div>';
-            html += '</div>'; // End Right Card
 
-            // Bottom Full-Width Card: Dual Payout Model & Subscription Pricing
-            html += '<div class="card" style="margin-top:0; margin-bottom:0; grid-column: 1 / -1;">';
-            html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">';
-            html += '<div><h2 style="margin-top:0; color:var(--text-main); font-size:1.2rem; margin-bottom:4px;">Dual Payout Model & Subscription Pricing</h2>';
-            html += '<p style="font-size:0.9rem; color:var(--text-muted); margin:0;">Configure the commission % cut per trip and flat-fee subscription pricing for drivers.</p></div>';
-            html += '<span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Driver Ops</span></div>';
+            // TAB 4: COMMISSION & SUBSCRIPTIONS
+            else if (window._driverOpsTab === 'pricing_model') {
+                const disabledPayout = window._payoutRatesEditMode ? '' : 'disabled';
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Dual Payout Model & Subscription Plans</h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Configure the commission % cut per trip and flat-fee subscription pricing for drivers.</p>
+                        </div>
+                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Driver Monetization</span>
+                    </div>
 
-            const disabledPayout = window._payoutRatesEditMode ? '' : 'disabled';
-            html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:20px;">';
-            
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Platform Commission Cut (%)</label>';
-            html += '<input type="number" step="0.1" id="crm-rate-commission" value="' + window._payoutRates.commissionRatePercent + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Deducted from gross trip fare</span></div>';
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:18px; margin-bottom:24px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Platform Commission Cut (%)</label>
+                            <input type="number" step="0.1" id="crm-rate-commission" value="${window._payoutRates.commissionRatePercent}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Deducted from gross trip fare</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Daily Pass (₹)</label>';
-            html += '<input type="number" step="1" id="crm-rate-daily" value="' + window._payoutRates.subscriptionDailyPrice + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">24-hour unlimited access</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Daily Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-daily" value="${window._payoutRates.subscriptionDailyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">24-hour unlimited pass</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Weekly Pass (₹)</label>';
-            html += '<input type="number" step="1" id="crm-rate-weekly" value="' + window._payoutRates.subscriptionWeeklyPrice + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">7-day unlimited access</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Weekly Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-weekly" value="${window._payoutRates.subscriptionWeeklyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">7-day unlimited pass</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Monthly Pass (₹)</label>';
-            html += '<input type="number" step="1" id="crm-rate-monthly" value="' + window._payoutRates.subscriptionMonthlyPrice + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">30-day calendar cycle</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Monthly Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-monthly" value="${window._payoutRates.subscriptionMonthlyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">30-day calendar cycle</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Annual Pass (₹)</label>';
-            html += '<input type="number" step="1" id="crm-rate-annual" value="' + window._payoutRates.subscriptionAnnualPrice + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">365-day full pass</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Annual Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-annual" value="${window._payoutRates.subscriptionAnnualPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">365-day full pass</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Demand Search Weight (x)</label>';
-            html += '<input type="number" step="0.1" id="crm-rate-search-weight" value="' + (window._payoutRates.demandSearchWeight !== undefined ? window._payoutRates.demandSearchWeight : 1.0) + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Multiplier per customer search</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Demand Search Weight (x)</label>
+                            <input type="number" step="0.1" id="crm-rate-search-weight" value="${window._payoutRates.demandSearchWeight !== undefined ? window._payoutRates.demandSearchWeight : 1.0}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Surge multiplier per search</span>
+                        </div>
 
-            html += '<div><label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Demand Booking Weight (x)</label>';
-            html += '<input type="number" step="0.1" id="crm-rate-booking-weight" value="' + (window._payoutRates.demandBookingWeight !== undefined ? window._payoutRates.demandBookingWeight : 3.0) + '" ' + disabledPayout + ' style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">';
-            html += '<span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Multiplier per booked ride</span></div>';
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Demand Booking Weight (x)</label>
+                            <input type="number" step="0.1" id="crm-rate-booking-weight" value="${window._payoutRates.demandBookingWeight !== undefined ? window._payoutRates.demandBookingWeight : 3.0}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Surge multiplier per booking</span>
+                        </div>
+                    </div>
 
-            html += '</div>';
-
-            html += '<div>';
-            if (window._payoutRatesEditMode) {
-                html += '<button onclick="savePayoutRates()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Payout Rates</button>';
-            } else {
-                html += '<button onclick="window._payoutRatesEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rates</button>';
+                    <div>
+                        ${window._payoutRatesEditMode ? `
+                            <button onclick="savePayoutRates()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Payout Rates</button>
+                        ` : `
+                            <button onclick="window._payoutRatesEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rates</button>
+                        `}
+                    </div>
+                </div>
+                `;
             }
-            html += '</div>';
-            html += '</div>'; // End Bottom Card
-            
-            html += '</div>'; // End Grid Container
             
             container.innerHTML = html;
             if (window.lucide) lucide.createIcons();
@@ -7387,6 +7482,7 @@ async function renderIncentives(container) {
         container.innerHTML = '<div class="card" style="color:var(--danger);">Error loading incentives: ' + err.message + '</div>';
     }
 }
+
 
 
 
