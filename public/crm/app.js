@@ -6946,6 +6946,18 @@ async function renderBackendSurveys(container) {
 async function renderIncentives(container) {
     try {
         window._incentiveVehicleType = window._incentiveVehicleType || 'car';
+        window._withdrawalTab = window._withdrawalTab || 'requested';
+
+        let withdrawalsList = [];
+        try {
+            const wRes = await fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`);
+            if (wRes.ok) {
+                withdrawalsList = await wRes.json();
+            }
+        } catch (eWdr) {
+            console.error("Failed to load withdrawals:", eWdr);
+        }
+
         if (!window._currentSlabs) {
             window._currentSlabs = [
                 { maxDistance: 5, ratePerKm: 40 },
@@ -6973,9 +6985,131 @@ async function renderIncentives(container) {
 
         const renderSlabsUI = () => {
 
-            let html = '<div class="header"><h1 class="page-title">Driver Payout & Incentives</h1></div>';
+            let html = '<div class="header"><h1 class="page-title">Driver Ops & Payouts</h1></div>';
             
-            // Switch Tab for Car and Bike
+            // Top Section: Driver Withdrawal Requests Queue (Manual Payout Processing)
+            html += `
+            <div class="card" style="margin-top: 15px; margin-bottom: 24px; border: 1px solid rgba(250,204,21,0.25);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="banknote" style="color:var(--primary); width:20px;"></i> Driver Withdrawal Requests (Manual Payouts)
+                        </h2>
+                        <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
+                            Review driver payout requests. Transfer funds via your banking/UPI portal, then enter the transaction UTR reference number to mark as paid.
+                        </p>
+                    </div>
+                    <button onclick="renderIncentives(document.getElementById('app'))" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px;">
+                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh
+                    </button>
+                </div>
+
+                <!-- Sub-tabs: Requested / Completed / Rejected / All -->
+                <div style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px; flex-wrap:wrap;">
+                    <button class="btn btn-sm ${window._withdrawalTab === 'requested' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='requested'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                        Pending Approval
+                    </button>
+                    <button class="btn btn-sm ${window._withdrawalTab === 'completed' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='completed'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                        Completed Payouts
+                    </button>
+                    <button class="btn btn-sm ${window._withdrawalTab === 'rejected' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='rejected'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                        Rejected
+                    </button>
+                    <button class="btn btn-sm ${window._withdrawalTab === 'all' ? 'btn-primary' : 'btn-secondary'}" onclick="window._withdrawalTab='all'; renderIncentives(document.getElementById('app'))" style="font-weight:700;">
+                        All Requests
+                    </button>
+                </div>
+
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.78rem; color:var(--text-muted); text-transform:uppercase;">
+                                <th style="padding:10px;">Date & ID</th>
+                                <th style="padding:10px;">Driver Details</th>
+                                <th style="padding:10px;">Amount</th>
+                                <th style="padding:10px;">Destination Bank / UPI</th>
+                                <th style="padding:10px;">Status</th>
+                                <th style="padding:10px; text-align:center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            if (withdrawalsList && withdrawalsList.length > 0) {
+                withdrawalsList.forEach(w => {
+                    let statusBadge = '';
+                    if (w.status === 'requested') {
+                        statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-weight:700;">PENDING</span>';
+                    } else if (w.status === 'completed') {
+                        statusBadge = `<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-weight:700;">PAID (UTR: ${w.utr_number || 'N/A'})</span>`;
+                    } else if (w.status === 'rejected') {
+                        statusBadge = `<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:700;">REJECTED</span>`;
+                    }
+
+                    const dateStr = new Date(w.created_at).toLocaleDateString() + ' ' + new Date(w.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+                    html += `
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;">
+                            <td style="padding:10px;">
+                                <div style="font-weight:700; color:#fff;">${dateStr}</div>
+                                <div style="font-size:0.72rem; color:var(--text-muted); font-family:monospace;">${w.id}</div>
+                            </td>
+                            <td style="padding:10px;">
+                                <div style="font-weight:700; color:#fff;">${w.driver_name || w.driver_id}</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">${w.driver_phone || ''}</div>
+                            </td>
+                            <td style="padding:10px;">
+                                <div style="font-size:1.1rem; font-weight:800; color:var(--primary);">₹${w.amount}</div>
+                            </td>
+                            <td style="padding:10px;">
+                                ${w.account_number ? `
+                                    <div style="font-weight:600; color:#fff;">${w.bank_name || 'Bank'}</div>
+                                    <div style="font-size:0.78rem; color:#a1a1aa; font-family:monospace;">A/C: ${w.account_number} • IFSC: ${w.ifsc_code}</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Name: ${w.account_holder_name || 'N/A'}</div>
+                                ` : `
+                                    <div style="color:#FACC15; font-weight:700;">UPI: ${w.upi_id || 'N/A'}</div>
+                                `}
+                            </td>
+                            <td style="padding:10px;">
+                                ${statusBadge}
+                                ${w.rejection_reason ? `<div style="font-size:0.72rem; color:#ef4444; margin-top:2px;">${w.rejection_reason}</div>` : ''}
+                                ${w.admin_notes ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Note: ${w.admin_notes}</div>` : ''}
+                            </td>
+                            <td style="padding:10px; text-align:center;">
+                                ${w.status === 'requested' ? `
+                                    <div style="display:flex; gap:6px; justify-content:center;">
+                                        <button class="btn btn-sm" onclick="openMarkPaidModal('${w.id}', '${w.amount}', '${(w.driver_name || w.account_holder_name || '').replace(/'/g, "\\'")}', '${w.account_number || ''}', '${w.ifsc_code || ''}', '${(w.bank_name || '').replace(/'/g, "\\'")}', '${w.upi_id || ''}')" style="background:var(--success); color:#fff; border:none; padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                            <i data-lucide="check" style="width:14px; height:14px; vertical-align:middle;"></i> Mark Paid
+                                        </button>
+                                        <button class="btn btn-danger btn-sm" onclick="openRejectWithdrawalModal('${w.id}', '${w.amount}', '${(w.driver_name || '').replace(/'/g, "\\'")}')" style="padding:5px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                            <i data-lucide="x" style="width:14px; height:14px; vertical-align:middle;"></i> Reject
+                                        </button>
+                                    </div>
+                                ` : `
+                                    <span style="color:var(--text-muted); font-size:0.78rem;">Settled</span>
+                                `}
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += `
+                    <tr>
+                        <td colspan="6" style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+                            No withdrawal requests found in this view.
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            `;
+
+            // Switch Tab for Car and Bike Settings
             html += `
             <div class="tabs" style="display:flex; gap:12px; margin-top:20px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 20px;">
                 <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:10px 20px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'}; transition:all 0.2s;">
@@ -7269,5 +7403,171 @@ window.deleteUser = async function(id) {
     } catch(e) {
         console.error('Delete error:', e);
         alert('Network error while deleting user.');
+    }
+};
+
+window.openMarkPaidModal = function(id, amount, driverName, accNum, ifsc, bankName, upiId) {
+    const modalHtml = `
+        <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; display:flex; align-items:center; justify-content:center; padding:15px;">
+            <div class="card" style="max-width:500px; width:100%; background:#18181b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px;">
+                    <h3 style="margin:0; font-size:1.1rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                        <i data-lucide="check-circle" style="color:var(--success);"></i> Confirm Payout Sent
+                    </h3>
+                    <button onclick="closeCrmModal()" style="background:none; border:none; color:#a1a1aa; font-size:1.4rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:8px; padding:12px; margin-bottom:15px; text-align:center;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Payout Amount</div>
+                    <div style="font-size:1.8rem; font-weight:900; color:var(--success); margin-top:2px;">₹${amount}</div>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:15px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; margin-bottom:6px; text-transform:uppercase;">Driver Beneficiary Details:</div>
+                    <div style="font-weight:700; color:#fff; font-size:0.95rem;">${driverName}</div>
+                    <div style="color:#a1a1aa; font-size:0.82rem; margin-top:3px;">Bank: <b style="color:#fff;">${bankName || 'N/A'}</b></div>
+                    <div style="color:#a1a1aa; font-size:0.82rem;">A/C Number: <b style="font-family:monospace; color:#FACC15;">${accNum || 'N/A'}</b></div>
+                    <div style="color:#a1a1aa; font-size:0.82rem;">IFSC Code: <b style="font-family:monospace; color:#fff;">${ifsc || 'N/A'}</b></div>
+                    ${upiId ? `<div style="color:#a1a1aa; font-size:0.82rem; margin-top:2px;">UPI ID: <b style="color:#FACC15;">${upiId}</b></div>` : ''}
+                </div>
+
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.8rem; font-weight:700; color:#fff; margin-bottom:5px;">
+                        Bank Transfer Reference / UTR Number <span style="color:var(--danger);">*</span>
+                    </label>
+                    <input type="text" id="payout-utr-input" placeholder="e.g. UTR98237192837 or IMPS ref" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.9rem;">
+                </div>
+
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:5px;">
+                        Admin Notes (Optional)
+                    </label>
+                    <input type="text" id="payout-notes-input" placeholder="e.g. Sent via HDFC NetBanking" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.85rem;">
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <button onclick="closeCrmModal()" class="btn btn-secondary" style="flex:1;">Cancel</button>
+                    <button onclick="submitMarkPaid('${id}')" class="btn btn-primary" style="flex:1; background:var(--success); border:none; color:#fff; font-weight:700;">Confirm Payout Sent</button>
+                </div>
+            </div>
+        </div>
+    `;
+    let modalEl = document.getElementById('crm-modal-host');
+    if (!modalEl) {
+        modalEl = document.createElement('div');
+        modalEl.id = 'crm-modal-host';
+        document.body.appendChild(modalEl);
+    }
+    modalEl.innerHTML = modalHtml;
+    if (window.lucide) lucide.createIcons();
+};
+
+window.openRejectWithdrawalModal = function(id, amount, driverName) {
+    const modalHtml = `
+        <div class="modal-backdrop" style="position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; display:flex; align-items:center; justify-content:center; padding:15px;">
+            <div class="card" style="max-width:450px; width:100%; background:#18181b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:15px;">
+                    <h3 style="margin:0; font-size:1.1rem; color:var(--danger); display:flex; align-items:center; gap:8px;">
+                        <i data-lucide="x-circle" style="color:var(--danger);"></i> Reject Withdrawal Request
+                    </h3>
+                    <button onclick="closeCrmModal()" style="background:none; border:none; color:#a1a1aa; font-size:1.4rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:15px;">
+                    Rejecting this request will restore <b style="color:var(--primary);">₹${amount}</b> back to <b>${driverName}</b>'s available wallet balance.
+                </p>
+
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.8rem; font-weight:700; color:#fff; margin-bottom:5px;">
+                        Reason for Rejection <span style="color:var(--danger);">*</span>
+                    </label>
+                    <select id="payout-reject-reason-select" onchange="if(this.value==='other'){document.getElementById('payout-reject-custom').style.display='block';}else{document.getElementById('payout-reject-custom').style.display='none';}" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.85rem; margin-bottom:8px;">
+                        <option value="Bank account number invalid / returned beneficiary error">Bank account number invalid / returned error</option>
+                        <option value="IFSC code does not match bank branch">IFSC code does not match bank branch</option>
+                        <option value="Beneficiary account name mismatch with KYC">Beneficiary account name mismatch with KYC</option>
+                        <option value="Driver requested cancellation of payout">Driver requested cancellation</option>
+                        <option value="other">Other reason (Type below)</option>
+                    </select>
+                    <input type="text" id="payout-reject-custom" placeholder="Specify custom reason..." style="display:none; width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.85rem;">
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <button onclick="closeCrmModal()" class="btn btn-secondary" style="flex:1;">Cancel</button>
+                    <button onclick="submitRejectWithdrawal('${id}')" class="btn btn-danger" style="flex:1; font-weight:700;">Confirm Rejection</button>
+                </div>
+            </div>
+        </div>
+    `;
+    let modalEl = document.getElementById('crm-modal-host');
+    if (!modalEl) {
+        modalEl = document.createElement('div');
+        modalEl.id = 'crm-modal-host';
+        document.body.appendChild(modalEl);
+    }
+    modalEl.innerHTML = modalHtml;
+    if (window.lucide) lucide.createIcons();
+};
+
+window.closeCrmModal = function() {
+    const modalEl = document.getElementById('crm-modal-host');
+    if (modalEl) modalEl.innerHTML = '';
+};
+
+window.submitMarkPaid = async function(id) {
+    const utr = document.getElementById('payout-utr-input')?.value;
+    const notes = document.getElementById('payout-notes-input')?.value;
+
+    if (!utr || utr.trim() === '') {
+        alert('Please enter the Bank UTR / Transaction Reference Number.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/admin/withdrawals/${id}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ utrNumber: utr, adminNotes: notes })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            closeCrmModal();
+            alert('Payout marked as completed successfully!');
+            renderIncentives(document.getElementById('app'));
+        } else {
+            alert(data.error || 'Failed to complete payout.');
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+};
+
+window.submitRejectWithdrawal = async function(id) {
+    const select = document.getElementById('payout-reject-reason-select');
+    let reason = select?.value;
+    if (reason === 'other') {
+        reason = document.getElementById('payout-reject-custom')?.value;
+    }
+
+    if (!reason || reason.trim() === '') {
+        alert('Please select or specify a rejection reason.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/admin/withdrawals/${id}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            closeCrmModal();
+            alert('Withdrawal rejected. Balance has been restored to the driver.');
+            renderIncentives(document.getElementById('app'));
+        } else {
+            alert(data.error || 'Failed to reject withdrawal.');
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
     }
 };
