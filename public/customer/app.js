@@ -6798,7 +6798,8 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         }
 
         // 1. Compute Distance total price
-        const pdCharge = Math.max(minFare, Math.round(distance * ratePerKm));
+        const rawDistanceCharge = Math.round(distance * ratePerKm);
+        const pdCharge = Math.max(minFare, rawDistanceCharge);
         let totalHaltMinutes = 0;
         if (window.routeStops && Array.isArray(window.routeStops)) {
             window.routeStops.forEach(stop => {
@@ -6837,18 +6838,24 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
                 </div>
             `;
         } else {
-            if (distanceCharge < minFare) {
+            html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#fff;">
+                    <span style="color:var(--text-muted);">Platform Base Charge</span>
+                    <span style="font-weight:700;">₹${redrivoServiceCharge}</span>
+                </div>
+            `;
+            if (rawDistanceCharge < minFare) {
                 html += `
                     <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#fff;">
                         <span style="color:var(--text-muted);">Min Fare Floor (applied)</span>
-                        <span style="font-weight:700;">₹${minFare.toFixed(0)}</span>
+                        <span style="font-weight:700;">₹${minFare}</span>
                     </div>
                 `;
             } else {
                 html += `
                     <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#fff;">
                         <span style="color:var(--text-muted);">Distance Charge (${distance.toFixed(1)} km)</span>
-                        <span style="font-weight:700;">₹${distanceCharge.toFixed(0)}</span>
+                        <span style="font-weight:700;">₹${rawDistanceCharge}</span>
                     </div>
                 `;
             }
