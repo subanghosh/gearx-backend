@@ -6135,6 +6135,9 @@ async function loadEarnings() {
                 if (data.recentTransactions && data.recentTransactions.length > 0) {
                     txList.innerHTML = data.recentTransactions.map(tx => {
                         let typeBadge = '';
+                        let titleText = `Trip ${tx.tripId || 'N/A'}`;
+                        let isNegative = false;
+
                         if (tx.type === 'trip_bonus_base') {
                             typeBadge = '<span style="color:var(--text-muted); font-size:0.75rem; margin-left:6px; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px; border:1px solid rgba(255,255,255,0.1)">Base Fare</span>';
                         } else if (tx.type === 'trip_bonus_extra') {
@@ -6143,20 +6146,30 @@ async function loadEarnings() {
                             typeBadge = '<span style="color:#22c55e; font-size:0.75rem; margin-left:6px; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(34,197,94,0.2)">5★ Rating Bonus</span>';
                         } else if (tx.type === 'penalty') {
                             typeBadge = '<span style="color:#ef4444; font-size:0.75rem; margin-left:6px; background:rgba(239,68,68,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(239,68,68,0.2)">Deduction</span>';
+                            isNegative = true;
                         } else if (tx.type === 'withdrawal') {
-                            typeBadge = '<span style="color:#a855f7; font-size:0.75rem; margin-left:6px; background:rgba(168,85,247,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(168,85,247,0.2)">Withdrawal</span>';
+                            titleText = 'Payout Request';
+                            isNegative = true;
+                            if (tx.status === 'requested') {
+                                typeBadge = '<span style="color:#facc15; font-size:0.75rem; margin-left:6px; background:rgba(250,204,21,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(250,204,21,0.2)">Pending Admin Payout</span>';
+                            } else if (tx.status === 'completed') {
+                                typeBadge = `<span style="color:#22c55e; font-size:0.75rem; margin-left:6px; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(34,197,94,0.2)">Paid (UTR: ${tx.utrNumber || 'N/A'})</span>`;
+                            } else if (tx.status === 'rejected') {
+                                typeBadge = `<span style="color:#ef4444; font-size:0.75rem; margin-left:6px; background:rgba(239,68,68,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(239,68,68,0.2)">Rejected (${tx.rejectionReason || 'Refunded'})</span>`;
+                                isNegative = false;
+                            }
                         }
 
                         return `
                             <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border);">
                                 <div>
-                                    <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; display:flex; align-items:center;">
-                                        Trip ${tx.tripId || 'N/A'} ${typeBadge}
+                                    <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
+                                        ${titleText} ${typeBadge}
                                     </div>
-                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${new Date(tx.date).toLocaleDateString()}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${new Date(tx.date).toLocaleDateString()} • ${new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                                 </div>
-                                <div style="font-weight: 800; color: ${tx.type === 'penalty' || tx.type === 'withdrawal' ? '#ef4444' : 'var(--primary)'}; font-size: 1.1rem;">
-                                    ${tx.type === 'penalty' || tx.type === 'withdrawal' ? '-' : ''}₹${tx.amount}
+                                <div style="font-weight: 800; color: ${isNegative ? '#ef4444' : 'var(--primary)'}; font-size: 1.1rem;">
+                                    ${isNegative ? '-' : ''}₹${tx.amount}
                                 </div>
                             </div>
                         `;
@@ -6281,24 +6294,118 @@ window.closePrivacyModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-window.withdrawEarnings = async function() {
+window.openDriverWithdrawalModal = function() {
     if (!currentUser) return;
+    if (currentUser.is_payment_on_hold === 1) {
+        showToast("Payouts are frozen due to an active dispute.", "error");
+        return;
+    }
+
+    const available = earningsData ? (earningsData.withdrawableBalance || 0) : 0;
+    if (available < 100) {
+        showToast("Minimum withdrawable balance required is ₹100.", "error");
+        return;
+    }
+
+    const b = earningsData?.bankDetails || {};
+    const destEl = document.getElementById('modal-payout-destination-info');
+    if (destEl) {
+        if (b.accountNumber) {
+            destEl.innerHTML = `
+                <div style="color: #fff; font-weight: 700;">${b.bankName || 'Bank Account'}</div>
+                <div style="color: #a1a1aa; font-size: 0.78rem; font-family: monospace; margin-top: 2px;">
+                    A/C: ••••••••${String(b.accountNumber).slice(-4)} • IFSC: ${b.ifsc || 'N/A'}
+                </div>
+                <div style="color: #71717a; font-size: 0.72rem; margin-top: 2px;">Holder: ${b.accountHolderName || 'N/A'}</div>
+            `;
+        } else if (b.upiId) {
+            destEl.innerHTML = `<div style="color: #fff; font-weight: 700;">UPI ID: ${b.upiId}</div>`;
+        } else {
+            showToast("Please save your bank account details first.", "error");
+            openBankDetailsModal();
+            return;
+        }
+    }
+
+    const balEl = document.getElementById('modal-withdrawable-balance');
+    if (balEl) balEl.textContent = `₹${available}`;
+
+    const amtInput = document.getElementById('driver-withdrawal-amount-input');
+    if (amtInput) amtInput.value = available;
+
+    const modal = document.getElementById('driver-withdrawal-modal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closeDriverWithdrawalModal = function() {
+    const modal = document.getElementById('driver-withdrawal-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.setWithdrawalMaxAmount = function() {
+    const available = earningsData ? (earningsData.withdrawableBalance || 0) : 0;
+    const amtInput = document.getElementById('driver-withdrawal-amount-input');
+    if (amtInput) amtInput.value = available;
+};
+
+window.submitDriverWithdrawalRequest = async function() {
+    if (!currentUser) return;
+    const amtInput = document.getElementById('driver-withdrawal-amount-input');
+    const amount = parseFloat(amtInput ? amtInput.value : 0);
+    const available = earningsData ? (earningsData.withdrawableBalance || 0) : 0;
+
+    if (isNaN(amount) || amount < 100) {
+        showToast("Minimum withdrawal amount is ₹100.", "error");
+        return;
+    }
+    if (amount > available) {
+        showToast(`Cannot withdraw more than available balance (₹${available}).`, "error");
+        return;
+    }
+
+    const btn = document.getElementById('btn-submit-withdrawal-request');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Submitting...";
+    }
+
     try {
-        const res = await fetch(`${API_URL}/users/${currentUser.id}/withdraw`, {
+        const res = await fetch(`${API_URL}/users/${currentUser.id}/withdrawals`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount: earningsData ? (earningsData.withdrawableBalance || 0) : 0 })
+            body: JSON.stringify({ amount })
         });
         const data = await res.json();
         if (res.ok) {
-            showToast("Withdrawal successful!", 'success');
+            closeDriverWithdrawalModal();
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Payout Requested!',
+                    text: `Your request for ₹${amount} has been queued. Admin will process the transfer to your bank account.`,
+                    background: '#18181b',
+                    color: '#fff',
+                    confirmButtonColor: '#FACC15'
+                });
+            } else {
+                showToast("Withdrawal request submitted!", "success");
+            }
             loadEarnings();
         } else {
-            showToast(data.error, 'error');
+            showToast(data.error || "Failed to submit withdrawal request.", "error");
         }
-    } catch(err) {
-        showToast('Connection error: ' + err.message, 'error');
+    } catch (err) {
+        showToast("Network error: " + err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Submit Request";
+        }
     }
+};
+
+window.withdrawEarnings = function() {
+    openDriverWithdrawalModal();
 };
 
 window.submitMarshalFeedback = async function() {

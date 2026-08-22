@@ -5193,17 +5193,20 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
     });
 });
 
-// GET earnings statistics for a marshal
+// GET earnings and wallet statistics for a marshal/driver
 apiRouter.get('/users/:id/earnings', async (req, res) => {
     const userId = req.params.id;
     try {
-        const userRes = await pool.query("SELECT is_payment_on_hold, rating FROM users WHERE id = $1", [userId]);
+        const userRes = await pool.query("SELECT is_payment_on_hold, rating, bankaccountname, bankaccountnumber, bankifsc, bankname, upi_id, bankverified FROM users WHERE id = $1", [userId]);
         const user = userRes.rows[0];
         const hold = user ? (user.is_payment_on_hold || 0) : 0;
         const rating = user ? (user.rating || 5.0) : 5.0;
 
-        const incRes = await pool.query("SELECT amount, type, createdat, tripid FROM incentives WHERE userid = $1 ORDER BY createdat DESC", [userId]);
+        const incRes = await pool.query("SELECT id, amount, type, status, createdat, tripid FROM incentives WHERE userid = $1 ORDER BY createdat DESC", [userId]);
         const rows = incRes.rows || [];
+
+        const wdrRes = await pool.query("SELECT id, amount, payout_method, status, utr_number, rejection_reason, created_at, processed_at FROM withdrawal_requests WHERE driver_id = $1 ORDER BY created_at DESC", [userId]);
+        const wdrRows = wdrRes.rows || [];
 
         const now = new Date();
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -5211,18 +5214,20 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
         let todayEarnings = 0;
         let weekEarnings = 0;
         let monthEarnings = 0;
-        let overallEarnings = 0;
+        let grossEarnings = 0;
 
         rows.forEach(r => {
             const amt = parseFloat(r.amount || 0);
             const date = new Date(r.createdat).getTime();
 
-            weekEarnings += amt;
-
             if (amt > 0) {
-                overallEarnings += amt;
+                grossEarnings += amt;
                 if (date >= startOfDay) {
                     todayEarnings += amt;
+                }
+                const oneWeekAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+                if (date >= oneWeekAgo) {
+                    weekEarnings += amt;
                 }
                 const oneMonthAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
                 if (date >= oneMonthAgo) {
@@ -5231,28 +5236,72 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
             }
         });
 
+        // Compute total completed withdrawals and pending requested withdrawals
+        let totalWithdrawn = 0;
+        let pendingWithdrawals = 0;
+        wdrRows.forEach(w => {
+            const wAmt = parseFloat(w.amount || 0);
+            if (w.status === 'completed') {
+                totalWithdrawn += wAmt;
+            } else if (w.status === 'requested') {
+                pendingWithdrawals += wAmt;
+            }
+        });
+
+        const withdrawableBalance = Math.max(0, Math.round((grossEarnings - totalWithdrawn - pendingWithdrawals) * 100) / 100);
+
         const tripCountRes = await pool.query(
             "SELECT COUNT(DISTINCT tripid) as count FROM incentives WHERE userid = $1 AND type LIKE 'trip_bonus%' AND createdat >= TO_TIMESTAMP($2 / 1000.0)",
             [userId, startOfDay]
         );
         const todayTrips = parseInt(tripCountRes.rows[0]?.count || 0);
 
-        const recentTransactions = rows.slice(0, 10).map(r => ({
+        // Build unified recent transactions list
+        const incentiveTx = rows.slice(0, 15).map(r => ({
+            id: r.id,
             tripId: r.tripid,
             amount: parseFloat(r.amount || 0),
             type: r.type,
+            status: r.status,
             date: r.createdat
         }));
 
+        const withdrawalTx = wdrRows.slice(0, 10).map(w => ({
+            id: w.id,
+            amount: parseFloat(w.amount || 0),
+            type: 'withdrawal',
+            status: w.status,
+            utrNumber: w.utr_number,
+            rejectionReason: w.rejection_reason,
+            date: w.created_at
+        }));
+
+        const combinedTransactions = [...incentiveTx, ...withdrawalTx]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 20);
+
         res.json({
             todayEarnings: Math.round(todayEarnings),
-            weekEarnings: Math.round(Math.max(0, weekEarnings)),
+            weekEarnings: Math.round(weekEarnings),
             monthEarnings: Math.round(monthEarnings),
-            overallEarnings: Math.round(overallEarnings),
+            overallEarnings: Math.round(grossEarnings),
+            totalGrossEarned: Math.round(grossEarnings),
+            totalWithdrawn: Math.round(totalWithdrawn),
+            pendingWithdrawals: Math.round(pendingWithdrawals),
+            withdrawableBalance: Math.round(withdrawableBalance),
+            minimumWithdrawal: 100,
             todayTrips: todayTrips,
             is_payment_on_hold: hold,
             rating: parseFloat(rating.toFixed(2)),
-            recentTransactions: recentTransactions
+            bankDetails: {
+                accountHolderName: user?.bankaccountname || '',
+                accountNumber: user?.bankaccountnumber || '',
+                bankName: user?.bankname || '',
+                ifsc: user?.bankifsc || '',
+                upiId: user?.upi_id || '',
+                isConfigured: !!(user?.bankaccountnumber && user?.bankifsc)
+            },
+            recentTransactions: combinedTransactions
         });
     } catch (err) {
         console.error('Earnings fetch error:', err.message);
@@ -5260,17 +5309,24 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
     }
 });
 
-// POST withdraw funds
-apiRouter.post('/users/:id/withdraw', async (req, res) => {
+// Alias for /users/:id/wallet
+apiRouter.get('/users/:id/wallet', async (req, res) => {
+    req.url = `/users/${req.params.id}/earnings`;
+    return apiRouter.handle(req, res);
+});
+
+// POST request withdrawal (Driver initiates withdrawal request)
+apiRouter.post('/users/:id/withdrawals', async (req, res) => {
     const userId = req.params.id;
-    const { amount } = req.body;
+    const { amount, payoutMethod } = req.body;
+    const withdrawAmount = parseFloat(amount);
     
-    if (amount === undefined || amount <= 0) {
-        return res.status(400).json({ error: 'Valid withdrawal amount is required' });
+    if (isNaN(withdrawAmount) || withdrawAmount < 100) {
+        return res.status(400).json({ error: 'Minimum withdrawal amount is ₹100' });
     }
     
     try {
-        const userRes = await pool.query("SELECT is_payment_on_hold FROM users WHERE id = $1", [userId]);
+        const userRes = await pool.query("SELECT is_payment_on_hold, bankaccountname, bankaccountnumber, bankifsc, bankname, upi_id FROM users WHERE id = $1", [userId]);
         const user = userRes.rows[0];
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -5279,23 +5335,167 @@ apiRouter.post('/users/:id/withdraw', async (req, res) => {
         if (user.is_payment_on_hold === 1) {
             return res.status(400).json({ error: 'Withdrawal failed. Your payouts are currently on hold due to a pending dispute.' });
         }
+
+        if (!user.bankaccountnumber && !user.upi_id) {
+            return res.status(400).json({ error: 'Please save your bank account or UPI details before requesting a withdrawal.' });
+        }
         
-        const incRes = await pool.query("SELECT SUM(amount) as balance FROM incentives WHERE userid = $1", [userId]);
-        const currentBalance = parseFloat(incRes.rows[0]?.balance || 0);
+        // Calculate live available balance
+        const incRes = await pool.query("SELECT SUM(amount) as gross FROM incentives WHERE userid = $1 AND amount > 0", [userId]);
+        const gross = parseFloat(incRes.rows[0]?.gross || 0);
+
+        const wdrRes = await pool.query("SELECT status, SUM(amount) as total FROM withdrawal_requests WHERE driver_id = $1 GROUP BY status", [userId]);
+        let completed = 0;
+        let pending = 0;
+        (wdrRes.rows || []).forEach(r => {
+            if (r.status === 'completed') completed += parseFloat(r.total || 0);
+            if (r.status === 'requested') pending += parseFloat(r.total || 0);
+        });
+
+        const availableBalance = Math.max(0, gross - completed - pending);
         
-        if (currentBalance < amount) {
-            return res.status(400).json({ error: 'Withdrawal failed. Insufficient balance.' });
+        if (availableBalance < withdrawAmount) {
+            return res.status(400).json({ error: `Insufficient available balance. Your withdrawable balance is ₹${Math.floor(availableBalance)}.` });
         }
         
         const withdrawalId = `wdr_${Date.now()}`;
-        await pool.query(
-            "INSERT INTO incentives (id, userid, amount, type, status) VALUES ($1, $2, $3, 'withdrawal', 'completed')",
-            [withdrawalId, userId, -amount]
-        );
+        const method = payoutMethod || (user.bankaccountnumber ? 'bank_transfer' : 'upi');
+
+        // Insert into PostgreSQL
+        await pool.query(`
+            INSERT INTO withdrawal_requests (
+                id, driver_id, amount, payout_method, 
+                account_holder_name, account_number, bank_name, ifsc_code, upi_id, 
+                status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'requested', NOW(), NOW())
+        `, [
+            withdrawalId, userId, withdrawAmount, method,
+            user.bankaccountname || '', user.bankaccountnumber || '', user.bankname || '', user.bankifsc || '', user.upi_id || ''
+        ]);
+
+        // Mirror to SQLite
+        db.run(`
+            INSERT INTO withdrawal_requests (
+                id, driver_id, amount, payout_method, 
+                account_holder_name, account_number, bank_name, ifsc_code, upi_id, 
+                status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'requested', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [
+            withdrawalId, userId, withdrawAmount, method,
+            user.bankaccountname || '', user.bankaccountnumber || '', user.bankname || '', user.bankifsc || '', user.upi_id || ''
+        ], (errDb) => {
+            if (errDb) console.error("SQLite withdrawal_requests insert error:", errDb.message);
+        });
         
-        res.json({ success: true, newBalance: currentBalance - amount });
+        const newAvailableBalance = Math.max(0, availableBalance - withdrawAmount);
+        res.json({ 
+            success: true, 
+            message: 'Withdrawal request submitted successfully! Admin will process your payout.',
+            requestId: withdrawalId,
+            withdrawableBalance: Math.round(newAvailableBalance)
+        });
     } catch (err) {
-        console.error('Withdrawal error:', err.message);
+        console.error('Withdrawal request error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET admin withdrawal requests queue
+apiRouter.get('/admin/withdrawals', async (req, res) => {
+    const statusFilter = req.query.status;
+    try {
+        let query = `
+            SELECT w.*, u.name as driver_name, u.phone as driver_phone, u.role as driver_type, u.rating as driver_rating
+            FROM withdrawal_requests w
+            LEFT JOIN users u ON w.driver_id = u.id
+        `;
+        let params = [];
+        if (statusFilter && statusFilter !== 'all') {
+            query += ` WHERE w.status = $1`;
+            params.push(statusFilter);
+        }
+        query += ` ORDER BY w.created_at DESC`;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows || []);
+    } catch (err) {
+        console.error('Admin withdrawals fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST admin complete withdrawal (Mark Paid with UTR)
+apiRouter.post('/admin/withdrawals/:id/complete', async (req, res) => {
+    const withdrawalId = req.params.id;
+    const { utrNumber, adminNotes, processedBy } = req.body;
+
+    if (!utrNumber || String(utrNumber).trim() === '') {
+        return res.status(400).json({ error: 'Bank Transaction / UTR Number is mandatory to mark payout complete.' });
+    }
+
+    try {
+        const wRes = await pool.query("SELECT * FROM withdrawal_requests WHERE id = $1", [withdrawalId]);
+        const wdr = wRes.rows[0];
+        if (!wdr) {
+            return res.status(404).json({ error: 'Withdrawal request not found' });
+        }
+        if (wdr.status === 'completed') {
+            return res.status(400).json({ error: 'This withdrawal has already been completed.' });
+        }
+
+        await pool.query(`
+            UPDATE withdrawal_requests 
+            SET status = 'completed', utr_number = $1, admin_notes = $2, processed_by = $3, processed_at = NOW(), updated_at = NOW()
+            WHERE id = $4
+        `, [utrNumber.trim(), adminNotes || null, processedBy || 'admin', withdrawalId]);
+
+        db.run(`
+            UPDATE withdrawal_requests 
+            SET status = 'completed', utr_number = ?, admin_notes = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `, [utrNumber.trim(), adminNotes || null, processedBy || 'admin', withdrawalId]);
+
+        res.json({ success: true, message: 'Withdrawal payout marked completed successfully.' });
+    } catch (err) {
+        console.error('Admin complete withdrawal error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST admin reject withdrawal (with reason)
+apiRouter.post('/admin/withdrawals/:id/reject', async (req, res) => {
+    const withdrawalId = req.params.id;
+    const { reason, adminNotes, processedBy } = req.body;
+
+    if (!reason || String(reason).trim() === '') {
+        return res.status(400).json({ error: 'Rejection reason is required.' });
+    }
+
+    try {
+        const wRes = await pool.query("SELECT * FROM withdrawal_requests WHERE id = $1", [withdrawalId]);
+        const wdr = wRes.rows[0];
+        if (!wdr) {
+            return res.status(404).json({ error: 'Withdrawal request not found' });
+        }
+        if (wdr.status === 'completed') {
+            return res.status(400).json({ error: 'Cannot reject a withdrawal that has already been completed.' });
+        }
+
+        await pool.query(`
+            UPDATE withdrawal_requests 
+            SET status = 'rejected', rejection_reason = $1, admin_notes = $2, processed_by = $3, processed_at = NOW(), updated_at = NOW()
+            WHERE id = $4
+        `, [reason.trim(), adminNotes || null, processedBy || 'admin', withdrawalId]);
+
+        db.run(`
+            UPDATE withdrawal_requests 
+            SET status = 'rejected', rejection_reason = ?, admin_notes = ?, processed_by = ?, processed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `, [reason.trim(), adminNotes || null, processedBy || 'admin', withdrawalId]);
+
+        res.json({ success: true, message: 'Withdrawal request rejected. Funds restored to driver available balance.' });
+    } catch (err) {
+        console.error('Admin reject withdrawal error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });

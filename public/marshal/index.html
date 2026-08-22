@@ -1172,8 +1172,8 @@
         </div>
     </div>
 
-    <script src="kyc-validation.js?v=2"></script>
-    <script src="app.js?v=20260823_025000"></script>
+    <script src="js/sweetalert2.all.min.js"></script>
+    <script src="app.js?v=20260823_034400"></script>
     <script src="otp-boxes.js"></script>
     <script>
         lucide.createIcons();
@@ -1506,6 +1506,52 @@
         <div class="flex gap-3 mt-3">
             <button type="button" onclick="closeBankDetailsModal()" class="btn btn-secondary flex-1 py-3" style="border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; border-radius: 10px;">Cancel</button>
             <button type="button" id="btn-save-bank-details" onclick="savePayoutBankDetails()" class="btn btn-primary btn-glow flex-1 py-3 font-bold" style="background: #FACC15; color: #000; border-radius: 10px; border: none;">Save Bank Details</button>
+        </div>
+    </div>
+</div>
+
+<!-- Driver Withdrawal Request Modal -->
+<div id="driver-withdrawal-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 hidden" style="display: none;">
+    <div class="glass-card max-w-md w-full p-6 rounded-2xl border border-white/10 flex flex-col gap-4 max-h-[90vh] overflow-y-auto" style="background: #18181b; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+        <div class="flex justify-between items-center pb-3 border-b border-white/10">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-symbols-outlined text-warning" style="color: #FACC15;">account_balance_wallet</span>
+                Withdraw Funds
+            </h2>
+            <button type="button" onclick="closeDriverWithdrawalModal()" class="material-symbols-outlined text-gray-400 hover:text-white cursor-pointer" style="background: transparent; border: none; font-size: 24px;">close</button>
+        </div>
+
+        <!-- Withdrawable Balance Callout -->
+        <div style="background: rgba(250, 204, 21, 0.08); border: 1px solid rgba(250, 204, 21, 0.25); border-radius: 12px; padding: 14px; text-align: center;">
+            <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Available for Payout</div>
+            <div style="font-size: 2.2rem; font-weight: 900; color: #FACC15; margin-top: 4px;" id="modal-withdrawable-balance">₹0</div>
+        </div>
+
+        <!-- Destination Details -->
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 0.75rem; color: #a1a1aa; font-weight: 700; text-transform: uppercase;">Payout Destination</span>
+                <button type="button" onclick="closeDriverWithdrawalModal(); openBankDetailsModal();" style="background: none; border: none; color: #FACC15; font-size: 0.75rem; font-weight: 700; cursor: pointer; text-decoration: underline;">Change</button>
+            </div>
+            <div id="modal-payout-destination-info" style="font-size: 0.85rem; color: #fff; font-weight: 600;">
+                Loading bank details...
+            </div>
+        </div>
+
+        <!-- Amount Input -->
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="block text-xs font-bold text-gray-300">Withdrawal Amount (₹) *</label>
+                <button type="button" onclick="setWithdrawalMaxAmount()" style="background: rgba(250,204,21,0.15); border: 1px solid rgba(250,204,21,0.3); color: #FACC15; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; cursor: pointer;">Withdraw Max</button>
+            </div>
+            <input type="number" id="driver-withdrawal-amount-input" min="100" placeholder="Min. ₹100" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-lg font-bold focus:border-amber-500 focus:outline-none">
+            <div style="font-size: 0.7rem; color: #71717a; margin-top: 4px;">Minimum withdrawal is ₹100. Payouts are manually reviewed and processed by Admin.</div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3 mt-2">
+            <button type="button" onclick="closeDriverWithdrawalModal()" class="btn btn-secondary flex-1 py-3" style="border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; border-radius: 10px;">Cancel</button>
+            <button type="button" id="btn-submit-withdrawal-request" onclick="submitDriverWithdrawalRequest()" class="btn btn-primary btn-glow flex-1 py-3 font-bold" style="background: #FACC15; color: #000; border-radius: 10px; border: none;">Submit Request</button>
         </div>
     </div>
 </div>
