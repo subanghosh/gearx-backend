@@ -4831,48 +4831,39 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
 
                 try {
                     const bids = await apiGet(`/service-requests/${verifiedRequestId}/bids`);
-                    const bidsContainer = document.getElementById('fm-bids-container');
-                    const bidsList = document.getElementById('fm-bids-list');
                     if (bids && bids.length > 0) {
                         window.currentBidsList = bids;
-                        if (bidsContainer) bidsContainer.style.display = 'flex';
                         bids.sort((a, b) => a.distance - b.distance);
-                        if (bidsList) {
-                            bidsList.innerHTML = bids.map(bid => {
-                                const photoUrl = bid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
-                                return `
-                                    <div data-marshal-id="${bid.marshalId}" style="display:flex; justify-content:space-between; align-items:center; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
-                                        <div style="display:flex; align-items:center; gap: 10px;">
-                                            <img src="${photoUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
-                                            <div>
-                                                <div style="font-weight:700; font-size:0.85rem; color:#fff;">${bid.marshalName || 'Verified Driver'}</div>
-                                                <div style="font-size:0.7rem; color:var(--text-muted);">${bid.distance ? bid.distance.toFixed(1) + ' km away' : 'Nearby'} • Rating: ${bid.rating || '5.0'}</div>
-                                            </div>
-                                        </div>
-                                        <div class="fm-bid-btn-container" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">
-                                                ${bid.distance ? bid.distance.toFixed(1) + ' km' : 'Nearby'} (${bid.eta || 5} mins)
-                                            </div>
-                                            <button onclick="selectMarshalForRequest('${verifiedRequestId}', '${bid.marshalId}', ${paidAmount})" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 6px 14px; border-radius: 30px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);">
-                                                ACCEPT
-                                            </button>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('');
-                        }
-                    } else {
-                        window.currentBidsList = [];
-                        if (bidsList) bidsList.innerHTML = '';
-                        if (bidsContainer) bidsContainer.style.display = 'none';
+                        const vName = document.getElementById('fm-vehicle-name') ? document.getElementById('fm-vehicle-name').textContent : 'Selected Vehicle';
+                        window.renderDriverMatchScreen(bids, verifiedRequestId, paidAmount, vName);
                     }
-                } catch (errPoll) {
-                    console.warn('Error polling for marshal bids:', errPoll);
+                } catch (ePoll) {
+                    console.warn('Bid polling error:', ePoll);
                 }
             }, 2000);
+        };
 
-            // Global select function definition
-            window.selectMarshalForRequest = async function(reqId, marshalId, totalVal) {
+        window.switchSelectedDriver = function(marshalId) {
+            window.selectedDriverMarshalId = marshalId;
+            window.renderDriverMatchScreen(
+                window.currentDriverMatchBids,
+                window.currentMatchRequestId,
+                window.currentMatchPaidAmount,
+                document.getElementById('dm-trip-vehicle') ? document.getElementById('dm-trip-vehicle').textContent : ''
+            );
+        };
+
+        window.confirmSelectedDriverFromMatchScreen = function() {
+            if (!window.selectedDriverMarshalId || !window.currentMatchRequestId) return;
+            const btn = document.getElementById('btn-dm-accept-driver');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = 'Securing Driver...';
+            }
+            window.selectMarshalForRequest(window.currentMatchRequestId, window.selectedDriverMarshalId, window.currentMatchPaidAmount);
+        };
+
+        window.selectMarshalForRequest = async function(reqId, marshalId, totalVal) {
                 // Immediately clear polling to prevent race-condition re-renders
                 if (window.bookingPollInterval) clearInterval(window.bookingPollInterval);
                 if (window.fmInterval) clearInterval(window.fmInterval);
@@ -4908,6 +4899,8 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                         
                         const fmScreen = document.getElementById('finding-marshal-screen');
                         if (fmScreen) fmScreen.style.display = 'none';
+                        const dmScreen = document.getElementById('driver-match-screen');
+                        if (dmScreen) dmScreen.style.display = 'none';
                         
                         const btn = document.getElementById('btn-request-service');
                         if (btn) {
@@ -4932,7 +4925,6 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                     buttons.forEach(btnEl => { btnEl.disabled = false; btnEl.textContent = 'ACCEPT'; });
                 }
             };
-        };
 
         // Driver Search: 100% Free search creation without upfront payment gating
         const reqRes = await apiPost('/service-requests', {
@@ -5091,6 +5083,8 @@ async function cancelMarshalSearch() {
 
     const fmScreen = document.getElementById('finding-marshal-screen');
     if (fmScreen) fmScreen.style.display = 'none';
+    const dmScreen = document.getElementById('driver-match-screen');
+    if (dmScreen) dmScreen.style.display = 'none';
     const btn = document.getElementById('btn-request-service');
     if (btn) {
         btn.disabled = false;

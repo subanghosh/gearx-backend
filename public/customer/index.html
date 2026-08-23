@@ -747,6 +747,109 @@
             </div>
         </div>
     </div>
+    
+    <!-- Dedicated Driver Match & Selection Screen -->
+    <div id="driver-match-screen" class="modal" style="display: none; flex-direction: column; align-items: center; justify-content: flex-start; background: #0A0A0A; z-index: 2050; padding: 0 0 30px 0; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow-y: auto; font-family: 'Plus Jakarta Sans', sans-serif;">
+        <!-- Sticky Top Bar -->
+        <div style="width: 100%; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(10,10,10,0.9); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 10;">
+            <button onclick="cancelMarshalSearch()" style="background: none; border: none; color: #a1a1aa; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i> Cancel Search
+            </button>
+            <div style="color: #ffffff; font-weight: 800; font-size: 1.1rem; font-family: 'Montserrat', sans-serif; letter-spacing: 0.5px;">ReDrivo Match</div>
+            <div style="width: 80px;"></div>
+        </div>
+
+        <div style="width: 100%; max-width: 440px; padding: 20px; display: flex; flex-direction: column; gap: 16px; align-items: center;">
+            <!-- Match Status Header -->
+            <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981;"></span>
+                    <span style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #10b981;" id="dm-match-badge">Driver Available</span>
+                </div>
+                <span style="font-size: 0.75rem; color: #a1a1aa;" id="dm-bids-count">1 Matched</span>
+            </div>
+
+            <!-- Primary Selected Driver Hero Card -->
+            <div id="dm-selected-driver-card" style="width: 100%; background: #12161D; border: 1.5px solid rgba(250, 204, 21, 0.4); border-radius: 20px; padding: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div style="position: relative;">
+                        <img id="dm-driver-photo" src="" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid #FACC15;">
+                        <span style="position: absolute; bottom: -2px; right: -2px; background: #10b981; border: 2px solid #12161D; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #000;">
+                            <i data-lucide="check" style="width: 12px; height: 12px; stroke-width: 3;"></i>
+                        </span>
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="dm-driver-name" style="font-size: 1.15rem; font-weight: 800; color: #fff;">Rajesh Kumar</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(250, 204, 21, 0.15); color: #FACC15; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">
+                                <i data-lucide="star" style="width: 12px; height: 12px; fill: #FACC15; color: #FACC15;"></i>
+                                <span id="dm-driver-rating">4.9</span>
+                            </span>
+                            <span style="font-size: 0.75rem; color: #10b981; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                                <i data-lucide="shield-check" style="width: 13px; height: 13px;"></i> Verified Partner
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-cols-2; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="navigation" style="width: 16px; height: 16px; color: #FACC15;"></i>
+                        <div>
+                            <div style="font-size: 0.65rem; color: #888; text-transform: uppercase; font-weight: 700;">Distance</div>
+                            <div id="dm-driver-dist" style="font-size: 0.85rem; font-weight: 800; color: #fff;">1.2 km away</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="clock" style="width: 16px; height: 16px; color: #10b981;"></i>
+                        <div>
+                            <div style="font-size: 0.65rem; color: #888; text-transform: uppercase; font-weight: 700;">Arrival ETA</div>
+                            <div id="dm-driver-eta" style="font-size: 0.85rem; font-weight: 800; color: #10b981;">4 mins</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alternative Drivers Section (Rendered if >1 Driver Bids) -->
+            <div id="dm-other-drivers-section" style="display: none; width: 100%; flex-direction: column; gap: 8px;">
+                <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #a1a1aa; margin-top: 6px;">
+                    Other Available Drivers (<span id="dm-other-count">0</span>)
+                </div>
+                <div id="dm-other-drivers-list" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                    <!-- Alternative driver cards inject here -->
+                </div>
+            </div>
+
+            <!-- Trip & Fare Brief -->
+            <div style="width: 100%; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                    <span style="color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="car" style="width: 15px; height: 15px; color: #FACC15;"></i> Vehicle
+                    </span>
+                    <strong style="color: #fff;" id="dm-trip-vehicle">Maruti Suzuki Fronx</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 8px;">
+                    <span style="color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="receipt" style="width: 15px; height: 15px; color: #10b981;"></i> Estimated Fare
+                    </span>
+                    <strong style="color: #10b981; font-size: 1rem;" id="dm-trip-fare">₹279</strong>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                <button id="btn-dm-accept-driver" onclick="confirmSelectedDriverFromMatchScreen()" class="btn btn-primary" style="width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 1rem; border: none; background: #FACC15; color: #000; cursor: pointer; box-shadow: 0 4px 20px rgba(250, 204, 21, 0.4); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    ACCEPT DRIVER & CONTINUE <i data-lucide="arrow-right" style="width: 18px; height: 18px; stroke-width: 2.5;"></i>
+                </button>
+                <button onclick="cancelMarshalSearch()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; cursor: pointer; transition: all 0.2s;">
+                    Stop Search & Cancel Request
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Marshal En Route Overlay -->
     <div id="marshal-en-route-screen" class="modal" style="display: none; align-items: flex-start; justify-content: center; background: #0b0e14; z-index: 10000; padding: 0; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow-y: auto;">
         <div style="width: 100%; display: flex; flex-direction: column; min-height: 100%;">
