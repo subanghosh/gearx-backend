@@ -957,7 +957,7 @@ async function saveAllSkus() {
         return;
     }
 
-    btn.textContent = `⏳ Saving 0/${activeSkus.length}...`;
+    btn.textContent = `Saving 0/${activeSkus.length}...`;
     btn.disabled = true;
 
     let saved = 0;
@@ -988,7 +988,7 @@ async function saveAllSkus() {
                 });
             }
             saved++;
-            btn.textContent = `⏳ Saving ${saved}/${activeSkus.length}...`;
+            btn.textContent = `Saving ${saved}/${activeSkus.length}...`;
         } catch (e) {
             console.error('Save failed for', skuId, e);
         }
@@ -1378,8 +1378,8 @@ async function loadOrders() {
             <td>
                 <div>${o.customerName}</div>
                 <div style="font-size:0.75rem; color:var(--primary); font-weight:700;">${o.plate} • ${o.makeModel}</div>
-                ${o.garageDropoffOtp ? `<div style="font-size:0.72rem; color:#facc15; margin-top:4px; font-weight:600;">🔑 Dropoff OTP: <span style="font-family:monospace; font-size:0.8rem; background:rgba(250,204,21,0.1); padding:2px 6px; border-radius:4px;">${o.garageDropoffOtp}</span></div>` : ''}
-                ${o.garagePickupOtp ? `<div style="font-size:0.72rem; color:#22c55e; margin-top:4px; font-weight:600;">🔑 Pickup OTP: <span style="font-family:monospace; font-size:0.8rem; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:4px;">${o.garagePickupOtp}</span></div>` : ''}
+                ${o.garageDropoffOtp ? `<div style="font-size:0.72rem; color:#facc15; margin-top:4px; font-weight:600;">Dropoff OTP: <span style="font-family:monospace; font-size:0.8rem; background:rgba(250,204,21,0.1); padding:2px 6px; border-radius:4px;">${o.garageDropoffOtp}</span></div>` : ''}
+                ${o.garagePickupOtp ? `<div style="font-size:0.72rem; color:#22c55e; margin-top:4px; font-weight:600;">Pickup OTP: <span style="font-family:monospace; font-size:0.8rem; background:rgba(34,197,94,0.1); padding:2px 6px; border-radius:4px;">${o.garagePickupOtp}</span></div>` : ''}
             </td>
             <td><span class="status-badge" style="background:rgba(255,255,255,0.05); color:var(--text-muted);">${o.status.toUpperCase()}</span></td>
             <td><div style="font-size:0.75rem;">${o.auditStatus === 'submitted' ? 'Audited' : 'Pending'}</div></td>
@@ -2596,7 +2596,7 @@ async function loadProfile() {
 async function saveProfile() {
     const gid = user.garageId;
     const btn = document.getElementById('btn-save-profile');
-    btn.textContent = '⏳ Saving...'; btn.disabled = true;
+    btn.textContent = 'Saving...'; btn.disabled = true;
 
     // Build composite address string
     const addr = [
@@ -2864,7 +2864,7 @@ async function saveKyc() {
     
     const gid = user.garageId;
     const btn = document.getElementById('btn-save-kyc');
-    btn.textContent = '⏳ Saving...'; btn.disabled = true;
+    btn.textContent = 'Saving...'; btn.disabled = true;
 
     const body = {
         bankName:     document.getElementById('k-bank-name').value,

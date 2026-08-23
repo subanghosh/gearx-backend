@@ -1150,10 +1150,10 @@ async function renderDashboard(container) {
                         <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
                             <i data-lucide="layers" style="width:14px; height:14px; color:var(--primary);"></i>
                             <select id="exec-business-line-select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
-                                <option value="all" ${bLine === 'all' ? 'selected' : ''}>🌐 All Combined</option>
-                                <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>🚗 Drivers (P2P Rides)</option>
-                                <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>🔧 Garage (Service & Repairs)</option>
-                                <option value="rentals" ${bLine === 'rentals' ? 'selected' : ''}>🔑 Vehicle Rentals</option>
+                                <option value="all" ${bLine === 'all' ? 'selected' : ''}>All Combined</option>
+                                <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>Drivers (P2P Rides)</option>
+                                <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>Garage (Service & Repairs)</option>
+                                <option value="rentals" ${bLine === 'rentals' ? 'selected' : ''}>Vehicle Rentals</option>
                             </select>
                         </div>
 
@@ -1161,11 +1161,11 @@ async function renderDashboard(container) {
                         <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
                             <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
                             <select id="exec-range-select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
-                                <option value="today" ${range === 'today' ? 'selected' : ''}>📅 Today</option>
-                                <option value="week" ${range === 'week' ? 'selected' : ''}>📅 This Week</option>
-                                <option value="month" ${range === 'month' ? 'selected' : ''}>📅 This Month</option>
-                                <option value="year" ${range === 'year' ? 'selected' : ''}>📅 This Year</option>
-                                <option value="custom" ${range === 'custom' ? 'selected' : ''}>🛠️ Custom Range</option>
+                                <option value="today" ${range === 'today' ? 'selected' : ''}>Today</option>
+                                <option value="week" ${range === 'week' ? 'selected' : ''}>This Week</option>
+                                <option value="month" ${range === 'month' ? 'selected' : ''}>This Month</option>
+                                <option value="year" ${range === 'year' ? 'selected' : ''}>This Year</option>
+                                <option value="custom" ${range === 'custom' ? 'selected' : ''}>Custom Range</option>
                             </select>
                         </div>
 
@@ -1512,8 +1512,8 @@ function renderProviderPage(container, type) {
                 const bikeBrands = (item.authorizedBikeBrands || item.authorizedbikebrands || '').split(',').map(s => s.trim()).filter(Boolean);
                 const allBrands = [...carBrands, ...bikeBrands];
                 const brandBadge = isAuth && allBrands.length > 0 
-                    ? `<span class="badge" style="font-size:0.6rem; padding: 2px 6px; background: rgba(250, 204, 21, 0.15); color: var(--primary); border: 1px solid rgba(250, 204, 21, 0.3);">🏢 Auth (${allBrands.slice(0, 2).join(', ')}${allBrands.length > 2 ? ' +' + (allBrands.length - 2) : ''})</span>`
-                    : `<span class="badge badge-secondary" style="font-size:0.6rem; padding: 2px 6px;">🔧 Local</span>`;
+                    ? `<span class="badge" style="font-size:0.6rem; padding: 2px 6px; background: rgba(250, 204, 21, 0.15); color: var(--primary); border: 1px solid rgba(250, 204, 21, 0.3);">Authorized (${allBrands.slice(0, 2).join(', ')}${allBrands.length > 2 ? ' +' + (allBrands.length - 2) : ''})</span>`
+                    : `<span class="badge badge-secondary" style="font-size:0.6rem; padding: 2px 6px;">Local</span>`;
 
                 colName = `
                     <div style="display:flex; align-items:center; gap:10px;">
@@ -1925,7 +1925,7 @@ function switchGarageTab(tab, garageId, btnEl) {
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <span style="color:var(--text-muted)">Classification</span>
                                 <span class="badge ${(g.serviceCenterType || g.servicecentertype) === 'authorized' ? 'badge-warning' : 'badge-secondary'}">
-                                    ${(g.serviceCenterType || g.servicecentertype) === 'authorized' ? '🏢 Authorized OEM' : '🔧 Independent / Local'}
+                                    ${(g.serviceCenterType || g.servicecentertype) === 'authorized' ? 'Authorized OEM' : 'Independent / Local'}
                                 </span>
                             </div>
                             ${((g.serviceCenterType || g.servicecentertype) === 'authorized' && ((g.authorizedCarBrands || g.authorizedcarbrands) || (g.authorizedBikeBrands || g.authorizedbikebrands))) ? `
@@ -1964,7 +1964,7 @@ function switchGarageTab(tab, garageId, btnEl) {
                             </div>
                             <div style="text-align:center; padding: 10px; background: rgba(255,255,255,0.02); border-radius: 8px;">
                                 <div style="font-size: 0.8rem; color: var(--text-muted);">Avg. Rating</div>
-                                <div style="font-size: 1.2rem; font-weight: 700; color: var(--primary);">${g.rating || '4.5'} ⭐</div>
+                                <div style="font-size: 1.2rem; font-weight: 700; color: var(--primary);">${g.rating || '4.5'} <i data-lucide='star' style='width:14px; height:14px; display:inline-block; vertical-align:middle; fill:#facc15; color:#facc15;'></i></div>
                             </div>
                         </div>
                     </div>
@@ -3184,11 +3184,11 @@ async function reviewMarshalKYC(marshalId) {
     const hasCar = vTypesArr.includes('car') || vTypesArr.includes('auto');
     let vehicleBadge = '';
     if (hasBike && hasCar) {
-        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(212,175,55,0.15); color:#D4AF37; border:1px solid rgba(212,175,55,0.3);">🚗 CAR + 🏍️ BIKE</span>';
+        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(212,175,55,0.15); color:#D4AF37; border:1px solid rgba(212,175,55,0.3);">CAR + BIKE</span>';
     } else if (hasCar) {
-        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3);">🚗 CAR</span>';
+        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3);">CAR</span>';
     } else {
-        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3);">🏍️ BIKE</span>';
+        vehicleBadge = '<span class="badge" style="font-size:0.6rem; background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3);">BIKE</span>';
     }
 
     const modalHtml = `
@@ -3967,7 +3967,7 @@ function renderSurveyStep(container) {
                 <div class="form-group">
                     <label class="label" style="display:flex; justify-content:space-between">
                         <span>Location / Address</span>
-                        <span style="font-size:0.8rem; color:var(--primary); cursor:pointer" onclick="detectLocation()">📍 Auto-Detect</span>
+                        <span style="font-size:0.8rem; color:var(--primary); cursor:pointer" onclick="detectLocation()">Auto-Detect</span>
                     </label>
                     <input type="text" id="s-address" class="input" placeholder="Address" value="${surveyState.contact.address}" oninput="surveyState.contact.address = this.value">
                 </div>
@@ -7364,10 +7364,10 @@ async function renderIncentives(container) {
 
                         <div style="display:flex; gap:8px;">
                             <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'};">
-                                🚗 Car Slabs
+                                Car Slabs
                             </button>
                             <button class="tab-btn ${window._incentiveVehicleType === 'bike' ? 'active' : ''}" onclick="window._incentiveVehicleType='bike'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'bike' ? '#000' : '#fff'};">
-                                🏍️ Bike Slabs
+                                Bike Slabs
                             </button>
                         </div>
                     </div>
@@ -7446,10 +7446,10 @@ async function renderIncentives(container) {
 
                         <div style="display:flex; gap:8px;">
                             <button class="tab-btn ${window._incentiveVehicleType === 'car' ? 'active' : ''}" onclick="window._incentiveVehicleType='car'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'car' ? '#000' : '#fff'};">
-                                🚗 Car Rules
+                                Car Rules
                             </button>
                             <button class="tab-btn ${window._incentiveVehicleType === 'bike' ? 'active' : ''}" onclick="window._incentiveVehicleType='bike'; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._incentiveVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._incentiveVehicleType === 'bike' ? '#000' : '#fff'};">
-                                🏍️ Bike Rules
+                                Bike Rules
                             </button>
                         </div>
                     </div>

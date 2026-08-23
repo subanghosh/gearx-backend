@@ -2768,9 +2768,9 @@ window.toggleFavoriteAddress = function(placeId, name, address, lat, lng, vehicl
         color: '#fff',
         showDenyButton: true,
         showCancelButton: true,
-        confirmButtonText: '🏠 Home',
-        denyButtonText: '💼 Office',
-        cancelButtonText: '📍 Other',
+        confirmButtonText: 'Home',
+        denyButtonText: 'Office',
+        cancelButtonText: 'Other',
         confirmButtonColor: '#facc15',
         denyButtonColor: '#0284c7',
         cancelButtonColor: '#4b5563',
@@ -4819,7 +4819,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
                                             <img src="${photoUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                                             <div>
                                                 <div style="font-weight:700; font-size:0.85rem; color:#fff;">${bid.marshalName || 'Verified Driver'}</div>
-                                                <div style="font-size:0.7rem; color:var(--text-muted);">${bid.distance ? bid.distance.toFixed(1) + ' km away' : 'Nearby'} • ⭐ ${bid.rating || '5.0'}</div>
+                                                <div style="font-size:0.7rem; color:var(--text-muted);">${bid.distance ? bid.distance.toFixed(1) + ' km away' : 'Nearby'} • Rating: ${bid.rating || '5.0'}</div>
                                             </div>
                                         </div>
                                         <div class="fm-bid-btn-container" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
@@ -4996,7 +4996,7 @@ window.triggerRazorpayForTrip = async function(tripId, totalVal, reqId) {
                         if (paymentModal) paymentModal.style.display = 'none';
                         
                         await loadDashboard();
-                        showToast('Payment confirmed! Driver is on the way 🏁', 'success');
+                        showToast('Payment confirmed! Driver is on the way.', 'success');
                     } catch (eVer) {
                         console.error('Payment verification failed:', eVer);
                         showToast('Payment verification failed: ' + eVer.message, 'error');
@@ -5315,7 +5315,7 @@ async function simulatePayment() {
         // 3. Reload dashboard — this will find the active trip and call showMarshalEnRoute(trip)
         //    which populates addresses, OTP, timeline and starts map tracking
         await loadDashboard();
-        showToast('Payment confirmed! Driver is on the way 🏁', 'success');
+        showToast('Payment confirmed! Driver is on the way.', 'success');
     } catch (e) {
         showToast(e.message || 'Failed to confirm payment. Please try again.', 'error');
         const enRouteScreen = document.getElementById('marshal-en-route-screen');
@@ -6259,7 +6259,7 @@ window.renderNearbyGaragesListUI = function() {
         const allBrands = [...carBrands, ...bikeBrands];
         const authBadgeHtml = isAuth && allBrands.length > 0
             ? `<div style="display:inline-flex; align-items:center; gap:4px; font-size:0.72rem; color:var(--primary); background:rgba(250,204,21,0.12); border:1px solid rgba(250,204,21,0.25); padding:3px 8px; border-radius:12px; font-weight:700; margin-top:4px;">
-                 ⭐ OEM Authorized: ${allBrands.slice(0, 2).join(', ')}${allBrands.length > 2 ? ' +' + (allBrands.length - 2) : ''}
+                 OEM Authorized: ${allBrands.slice(0, 2).join(', ')}${allBrands.length > 2 ? ' +' + (allBrands.length - 2) : ''}
                </div>`
             : '';
 
@@ -6268,7 +6268,7 @@ window.renderNearbyGaragesListUI = function() {
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
                         <h4 style="font-weight: 800; font-size: 1.15rem; color: #fff; margin-bottom: 4px;">${name}</h4>
-                        <p style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">👤 Owner: ${owner}</p>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">Owner: ${owner}</p>
                         ${authBadgeHtml}
                     </div>
                     <span style="font-size: 0.75rem; color: var(--primary); background: rgba(250, 204, 21, 0.15); padding: 4px 10px; border-radius: 20px; font-weight: 700; border: 1px solid rgba(250, 204, 21, 0.3);">
@@ -9914,7 +9914,7 @@ window.fetchRentalData = async function() {
             }
 
             contentArea.innerHTML = data.partners.map(p => {
-                const ratingBadge = p.rating ? `⭐ ${p.rating} (Google)` : `⭐ New Partner`;
+                const ratingBadge = p.rating ? `${p.rating} (Google)` : `New Partner`;
                 return `
                     <div style="background: rgba(18, 22, 29, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px; margin-bottom: 14px;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
@@ -9931,12 +9931,12 @@ window.fetchRentalData = async function() {
                         </div>
 
                         <div style="font-size: 0.78rem; color: rgba(255,255,255,0.7); margin-bottom: 12px; background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 8px;">
-                            📍 <strong>Hub Address:</strong> ${p.serviceAddress}
+                            <strong>Hub Address:</strong> ${p.serviceAddress}
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-size: 0.8rem; color: var(--primary); font-weight: 700;">
-                                🚗 ${p.vehicleCount || 0} Vehicles Available
+                                ${p.vehicleCount || 0} Vehicles Available
                             </span>
                             <button onclick="openPartnerSubView('${p.id}')" style="background: var(--primary); color: #000; border: none; padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer;">
                                 View Partner Fleet ➔
@@ -9992,7 +9992,7 @@ window.fetchRentalData = async function() {
                             </div>
 
                             <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px;">
-                                🏭 <strong>Hub:</strong> ${v.businessName} (${v.city})
+                                <strong>Hub:</strong> ${v.businessName} (${v.city})
                             </div>
 
                             <button onclick="openRentalBookingModal('${v.id}')" style="width: 100%; background: var(--primary); color: #000; border: none; padding: 12px; border-radius: 10px; font-size: 0.88rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -10208,13 +10208,13 @@ window.validateRentalDatesAndTimes = function() {
 
         if (startH > 21 || (startH === 21 && startM > 0)) {
             isValid = false;
-            warnMsg = '⚠️ Same-day rental bookings cannot start after 9:00 PM.';
+            warnMsg = 'Same-day rental bookings cannot start after 9:00 PM.';
         } else {
             const currentMinutes = currentHour * 60 + currentMinute;
             const bookingMinutes = startH * 60 + (startM || 0);
             if (bookingMinutes - currentMinutes < 6 * 60) {
                 isValid = false;
-                warnMsg = '⚠️ Same-day bookings require at least 6 hours advance notice from current time.';
+                warnMsg = 'Same-day bookings require at least 6 hours advance notice from current time.';
             }
         }
     }
@@ -10423,7 +10423,7 @@ window.loadPartnerFleetView = async function() {
                             ${v.plateNumber} • ${v.fuelType} • ${v.transmission} • ₹${v.pricePerDay}/day
                         </div>
                         <div style="font-size: 0.72rem; color: rgba(255,255,255,0.5); margin-top: 2px;">
-                            📍 ${v.pickupLocationAddress || v.serviceCity}
+                            ${v.pickupLocationAddress || v.serviceCity}
                         </div>
                     </div>
                     <div>
@@ -10506,7 +10506,7 @@ window.loadPartnerBookingsView = async function() {
                         </span>
                     </div>
                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">
-                        👤 Customer: ${b.customerName} (${b.customerPhone}) • 📅 ${b.totaldays} Days
+                        Customer: ${b.customerName} (${b.customerPhone}) • ${b.totaldays} Days
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 6px; font-size: 0.8rem;">
                         <span style="color: rgba(255,255,255,0.7);">Partner Share: <strong>₹${b.vehicleRentalAmount}</strong></span>

@@ -272,10 +272,10 @@
                 <div style="padding: 0 16px; margin-bottom: 16px;">
                     <div style="display: flex; background: rgba(0, 0, 0, 0.4); padding: 4px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
                         <button type="button" id="btn-rental-subtab-partners" onclick="switchRentalSubtab('partners')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s;">
-                            📍 Nearby Partners
+                            Nearby Partners
                         </button>
                         <button type="button" id="btn-rental-subtab-vehicles" onclick="switchRentalSubtab('vehicles')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: transparent; color: #fff; font-weight: 600; font-size: 0.82rem; cursor: pointer; transition: all 0.2s;">
-                            🚘 All Vehicles
+                            All Vehicles
                         </button>
                     </div>
                 </div>
@@ -335,10 +335,10 @@
                 <!-- Garage Type Switcher Tabs -->
                 <div id="garage-type-tabs" style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.2); padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 16px;">
                     <button type="button" id="btn-gt-car" onclick="selectGarageTypeTab('car')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        🚗 Cars
+                        Cars
                     </button>
                     <button type="button" id="btn-gt-bike" onclick="selectGarageTypeTab('bike')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: transparent; color: #fff; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        🏍️ Bikes
+                        Bikes
                     </button>
                 </div>
 
@@ -837,7 +837,7 @@
                         <div style="color: #fff; font-weight: 800; font-family: 'Montserrat', sans-serif; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
                             <span id="enroute-marshal-name">-</span>
                             <span style="background: rgba(250, 204, 21, 0.1); color: var(--primary); font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">
-                                ⭐ 4.9
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15" style="display:inline-block; vertical-align:middle;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> 4.9
                             </span>
                         </div>
                         <div id="enroute-marshal-vehicle" style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; margin-top: 2px;">-</div>
@@ -1140,53 +1140,7 @@
         </div>
     </div>
 
-    <!-- Terms & Conditions Modal -->
-    <div id="terms-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
-        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
-            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Terms & Conditions</h3>
-            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
-                <h4>1. Vehicle Ownership & Authorization</h4>
-                <p>By requesting a service, you warrant that you are the legal owner of the vehicle or have explicit permission from the legal owner to request service and entrust the vehicle to our drivers.</p>
-                <br>
-                <h4>2. Inspection & Handover Protocol</h4>
-                <p>Both the pickup and drop-off steps require a mandatory vehicle inspection, including an odometer reading check and a 360-degree walkaround photo/video capture. This visual log is used to verify the condition of the vehicle and avoid discrepancies. You agree to cooperate with the driver during this process.</p>
-                <br>
-                <h4>3. Service Charges & Pricing</h4>
-                <p>Pricing is calculated based on pickup/drop distances from the selected partner garage and any service/inspection fees. All charges are transparently listed in your booking dashboard prior to trip initiation.</p>
-                <br>
-                <h4>4. Liability Limitation</h4>
-                <p>Re<span style="color: #FACC15;">D</span>rivo and its partner garages maintain commercial transit insurance. In the rare event of damage during driver transit, liability is limited as per our transit policy terms. Re<span style="color: #FACC15;">D</span>rivo is not liable for personal belongings left inside the vehicle.</p>
-            </div>
-            <button onclick="closeTermsModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: var(--primary); color: #000; cursor: pointer;">
-                Close
-            </button>
-        </div>
-    </div>
-
-    <!-- Privacy Policy Modal (DPDP 2023 Compliant) -->
-    <div id="privacy-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
-        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
-            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Privacy Policy & Consent Notice</h3>
-            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
-                <p><i>Compliant with the Digital Personal Data Protection (DPDP) Act, 2023 (India)</i></p>
-                <br>
-                <h4>1. Personal Data We Process</h4>
-                <p>We collect and process your name, contact phone number, vehicle registration plates, and device GPS coordinates. We also record 360-degree walkaround videos and odometer readings at vehicle handover.</p>
-                <br>
-                <h4>2. Purpose of Data Processing</h4>
-                <p>We process your data strictly to verify vehicle ownership, find nearby partner garages, assign nearby drivers for pickup/drop, track vehicle transit live, and process service invoices.</p>
-                <br>
-                <h4>3. Right to Withdraw Consent</h4>
-                <p>You have the right to withdraw your consent for location tracking or data collection at any time. Withdrawal can be requested by contacting our support team or updating permissions in your profile. Please note that withdrawing consent may limit our ability to provide transit services.</p>
-                <br>
-                <h4>4. Data Grievance Redressal Officer</h4>
-                <p>For any grievances regarding your data, you can reach out to our Grievance Redressal / Data Protection Officer:</p>
-                <p style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-top: 8px;">
-                    <b>Grievance Officer & DPO:</b> Rajesh Kumar<br>
-                    <b>Email:</b> grievance@redrivo.com / support@redrivo.com<br>
-                    <b>Address:</b> ReDrivo Tech Private Limited, BKC, Mumbai, India
-                </p>
-            </div>
+        
             <button onclick="closePrivacyModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: var(--primary); color: #000; cursor: pointer;">
                 Close
             </button>
@@ -1692,7 +1646,7 @@
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block;"><path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/></svg>
                                 <div style="text-align: left;">
-                                    <div style="font-size: 0.85rem; color: #fff; font-weight: 700;">Home ↔ Garage Round Trip</div>
+                                    <div style="font-size: 0.85rem; color: #fff; font-weight: 700;">Home - Garage Round Trip</div>
                                     <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 2px;">We handle pickup and delivery.</div>
                                 </div>
                             </div>
@@ -2127,7 +2081,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="app.js?v=20260823_032500"></script>
+    <script src="app.js?v=20260823_082300"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->
@@ -2599,10 +2553,10 @@
             <!-- Dashboard Subtabs -->
             <div style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.2);">
                 <button id="pd-tab-fleet" onclick="switchPartnerDashboardSubtab('fleet')" style="flex: 1; padding: 12px; border: none; background: none; color: var(--primary); font-weight: 700; border-bottom: 2px solid var(--primary); cursor: pointer; font-size: 0.85rem;">
-                    🚗 My Fleet Vehicles
+                    My Fleet Vehicles
                 </button>
                 <button id="pd-tab-bookings" onclick="switchPartnerDashboardSubtab('bookings')" style="flex: 1; padding: 12px; border: none; background: none; color: var(--text-muted); font-weight: 700; border-bottom: 2px solid transparent; cursor: pointer; font-size: 0.85rem;">
-                    📊 Bookings & Earnings
+                    Bookings & Earnings
                 </button>
             </div>
 

@@ -1326,9 +1326,9 @@ apiRouter.patch('/users/:id', async (req, res) => {
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
             if (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved') {
-                notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
+                notifyUserFCM(id, 'KYC Approved', 'Your KYC documents have been successfully approved. You can now accept pickups.');
             } else if (kycStatusVal === 'rejected' || kycStatusVal === 'Re-submit KYC') {
-                notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
+                notifyUserFCM(id, 'KYC Action Required', 'Some of your KYC documents were rejected. Please submit them again in the app.');
             } else if (kycStatusVal === 'pending_submission') {
                 notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
             }
@@ -1514,9 +1514,9 @@ apiRouter.put('/users/:id', async (req, res) => {
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
             if (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved') {
-                notifyUserFCM(id, 'KYC Approved! 🎉', 'Your KYC documents have been successfully approved. You can now accept pickups.');
+                notifyUserFCM(id, 'KYC Approved', 'Your KYC documents have been successfully approved. You can now accept pickups.');
             } else if (kycStatusVal === 'rejected' || kycStatusVal === 'Re-submit KYC') {
-                notifyUserFCM(id, 'KYC Action Required ⚠️', 'Some of your KYC documents were rejected. Please submit them again in the app.');
+                notifyUserFCM(id, 'KYC Action Required', 'Some of your KYC documents were rejected. Please submit them again in the app.');
             } else if (kycStatusVal === 'pending_submission') {
                 notifyUserFCM(id, 'KYC Re-verification Requested', 'We need you to re-submit your KYC documents. Tap to open and re-submit.');
             }
@@ -2338,7 +2338,7 @@ try {
     fs.unlinkSync(testProbe);
     console.log('[STARTUP-2] ✓ Persistent volume directory verified writable at:', activeUploadsDir);
 } catch (err) {
-    console.warn('[STARTUP-2] ⚠️ Primary uploads path ' + activeUploadsDir + ' not writable (' + err.message + '). Using os.tmpdir() fallback.');
+    console.warn('[STARTUP-2] [WARN] Primary uploads path ' + activeUploadsDir + ' not writable (' + err.message + '). Using os.tmpdir() fallback.');
     activeUploadsDir = require('os').tmpdir();
 }
 
