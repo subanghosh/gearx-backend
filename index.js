@@ -1059,7 +1059,23 @@ apiRouter.get('/requests', (req, res) => {
 });
 
 apiRouter.get('/garages', (req, res) => {
-    db.all("SELECT * FROM garages", (err, rows) => {
+    db.all(`
+        SELECT id, name, address, contact, email, status, photo, owner,
+               joinedDate as "joinedDate", joineddate,
+               lat, lng, businessType as "businessType", businesstype,
+               rating, serviceType as "serviceType", servicetype,
+               workerCount as "workerCount", workercount,
+               ownerCount as "ownerCount", ownercount,
+               serviceCenterType as "serviceCenterType", servicecentertype,
+               authorizedCarBrands as "authorizedCarBrands", authorizedcarbrands,
+               authorizedBikeBrands as "authorizedBikeBrands", authorizedbikebrands,
+               emailVerified as "emailVerified", emailverified,
+               phoneVerified as "phoneVerified", phoneverified,
+               panVerified as "panVerified", panverified,
+               aadhaarVerified as "aadhaarVerified", aadhaarverified,
+               bankVerified as "bankVerified", bankverified
+        FROM garages
+    `, (err, rows) => {
         if (err) {
             console.error("GET /garages DB error:", err.message);
             return res.status(500).json({ error: err.message });
@@ -1125,7 +1141,20 @@ apiRouter.post('/users', async (req, res) => {
 
 apiRouter.get('/users', async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM users");
+        const result = await pool.query(`
+            SELECT id, name, role, email, phone, garageId as "garageId", garageid,
+                   status, emailVerified as "emailVerified", emailverified,
+                   phoneVerified as "phoneVerified", phoneverified,
+                   panVerified as "panVerified", panverified,
+                   aadhaarVerified as "aadhaarVerified", aadhaarverified,
+                   dlVerified as "dlVerified", dlverified,
+                   bankVerified as "bankVerified", bankverified,
+                   kycStatus as "kycStatus", kycstatus,
+                   is_online, pincode, address, city, state, rating,
+                   profilePictureUrl as "profilePictureUrl", profilepictureurl,
+                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason
+            FROM users
+        `);
         res.json(result.rows || []);
     } catch (err) {
         console.error('GET /users error:', err.message);
