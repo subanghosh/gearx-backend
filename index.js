@@ -185,7 +185,13 @@ pool.on('error', (err, client) => {
 const db = {
     convertQuery: (sql) => {
         let i = 1;
-        return sql.replace(/\?/g, () => "$" + (i++));
+        // Matches single-quoted strings (handling '' and \' escapes) OR question marks
+        return sql.replace(/'(?:''|\\'|[^'])*'|\?/g, (match) => {
+            if (match === '?') {
+                return '$' + (i++);
+            }
+            return match; // Return string literal unchanged
+        });
     },
     run: (sql, params, cb) => {
         if (typeof params === 'function') { cb = params; params = []; }
