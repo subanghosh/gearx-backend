@@ -10648,16 +10648,10 @@ window.renderDriverMatchScreen = function(bids, requestId, paidAmount, vehicleNa
     const etaEl = document.getElementById('dm-driver-eta');
     if (etaEl) etaEl.textContent = (selectedBid.eta || 4) + ' mins';
 
-    const vehicleEl = document.getElementById('dm-trip-vehicle');
-    if (vehicleEl) vehicleEl.textContent = vehicleName || 'Selected Vehicle';
-
-    const fareEl = document.getElementById('dm-trip-fare');
-    if (fareEl) fareEl.textContent = `₹${paidAmount}`;
-
     const acceptBtn = document.getElementById('btn-dm-accept-driver');
     if (acceptBtn) {
         acceptBtn.disabled = false;
-        acceptBtn.innerHTML = 'ACCEPT DRIVER & CONTINUE <i data-lucide="arrow-right" style="width: 18px; height: 18px; stroke-width: 2.5;"></i>';
+        acceptBtn.innerHTML = 'ACCEPT';
     }
 
     const otherSection = document.getElementById('dm-other-drivers-section');
@@ -10672,7 +10666,7 @@ window.renderDriverMatchScreen = function(bids, requestId, paidAmount, vehicleNa
             otherList.innerHTML = alternativeBids.map(b => {
                 const altPhoto = b.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
                 return `
-                    <div onclick="switchSelectedDriver('${b.marshalId}')" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 10px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(250,204,21,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+                    <div onclick="switchSelectedDriver('${b.marshalId}')" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 10px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(16,185,129,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <img src="${altPhoto}" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">
                             <div>
@@ -10685,7 +10679,7 @@ window.renderDriverMatchScreen = function(bids, requestId, paidAmount, vehicleNa
                                 <i data-lucide="star" style="width: 10px; height: 10px; fill: #FACC15; color: #FACC15;"></i>
                                 ${b.rating || '4.9'}
                             </span>
-                            <span style="font-size: 0.75rem; color: #FACC15; font-weight: 700;">Select</span>
+                            <span style="font-size: 0.75rem; color: #10b981; font-weight: 700;">Select</span>
                         </div>
                     </div>
                 `;
@@ -10705,8 +10699,7 @@ window.switchSelectedDriver = function(marshalId) {
     window.renderDriverMatchScreen(
         window.currentDriverMatchBids,
         window.currentMatchRequestId,
-        window.currentMatchPaidAmount,
-        document.getElementById('dm-trip-vehicle') ? document.getElementById('dm-trip-vehicle').textContent : ''
+        window.currentMatchPaidAmount
     );
 };
 
@@ -10715,7 +10708,7 @@ window.confirmSelectedDriverFromMatchScreen = function() {
     const btn = document.getElementById('btn-dm-accept-driver');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = 'Securing Driver...';
+        btn.innerHTML = 'Selected ✓ (Securing...)';
     }
     window.selectMarshalForRequest(window.currentMatchRequestId, window.selectedDriverMarshalId, window.currentMatchPaidAmount);
 };

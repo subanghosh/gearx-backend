@@ -770,17 +770,17 @@
             </div>
 
             <!-- Primary Selected Driver Hero Card -->
-            <div id="dm-selected-driver-card" style="width: 100%; background: #12161D; border: 1.5px solid rgba(250, 204, 21, 0.4); border-radius: 20px; padding: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 16px;">
+            <div id="dm-selected-driver-card" style="width: 100%; background: #12161D; border: 1.5px solid rgba(16, 185, 129, 0.4); border-radius: 20px; padding: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 16px;">
                     <div style="position: relative;">
-                        <img id="dm-driver-photo" src="" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid #FACC15;">
+                        <img id="dm-driver-photo" src="" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid #10b981;">
                         <span style="position: absolute; bottom: -2px; right: -2px; background: #10b981; border: 2px solid #12161D; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #000;">
                             <i data-lucide="check" style="width: 12px; height: 12px; stroke-width: 3;"></i>
                         </span>
                     </div>
                     <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span id="dm-driver-name" style="font-size: 1.15rem; font-weight: 800; color: #fff;">Rajesh Kumar</span>
+                            <span id="dm-driver-name" style="font-size: 1.15rem; font-weight: 800; color: #fff;">Verified Driver</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
                             <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(250, 204, 21, 0.15); color: #FACC15; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">
@@ -796,7 +796,7 @@
 
                 <div style="display: grid; grid-cols-2; grid-template-columns: 1fr 1fr; gap: 10px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <i data-lucide="navigation" style="width: 16px; height: 16px; color: #FACC15;"></i>
+                        <i data-lucide="navigation" style="width: 16px; height: 16px; color: #10b981;"></i>
                         <div>
                             <div style="font-size: 0.65rem; color: #888; text-transform: uppercase; font-weight: 700;">Distance</div>
                             <div id="dm-driver-dist" style="font-size: 0.85rem; font-weight: 800; color: #fff;">1.2 km away</div>
@@ -822,29 +822,13 @@
                 </div>
             </div>
 
-            <!-- Trip & Fare Brief -->
-            <div style="width: 100%; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
-                    <span style="color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
-                        <i data-lucide="car" style="width: 15px; height: 15px; color: #FACC15;"></i> Vehicle
-                    </span>
-                    <strong style="color: #fff;" id="dm-trip-vehicle">Maruti Suzuki Fronx</strong>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.04); padding-top: 8px;">
-                    <span style="color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
-                        <i data-lucide="receipt" style="width: 15px; height: 15px; color: #10b981;"></i> Estimated Fare
-                    </span>
-                    <strong style="color: #10b981; font-size: 1rem;" id="dm-trip-fare">₹279</strong>
-                </div>
-            </div>
-
             <!-- Action Buttons -->
             <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-                <button id="btn-dm-accept-driver" onclick="confirmSelectedDriverFromMatchScreen()" class="btn btn-primary" style="width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 1rem; border: none; background: #FACC15; color: #000; cursor: pointer; box-shadow: 0 4px 20px rgba(250, 204, 21, 0.4); display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    ACCEPT DRIVER & CONTINUE <i data-lucide="arrow-right" style="width: 18px; height: 18px; stroke-width: 2.5;"></i>
+                <button id="btn-dm-accept-driver" onclick="confirmSelectedDriverFromMatchScreen()" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 14px 28px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); width: 100%; letter-spacing: 0.5px;">
+                    ACCEPT
                 </button>
                 <button onclick="cancelMarshalSearch()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; cursor: pointer; transition: all 0.2s;">
-                    Stop Search & Cancel Request
+                    Stop Search
                 </button>
             </div>
         </div>
@@ -2179,7 +2163,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./app.js?v=20260823_091100"></script>
+    <script src="./app.js?v=20260823_092300"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->
