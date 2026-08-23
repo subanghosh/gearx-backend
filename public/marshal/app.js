@@ -5294,11 +5294,33 @@ window.startDeliveryCamera = async function(mode) {
     document.getElementById('btn-confirm-delivery').style.display = 'none';
 
     try {
+        if (deliveryStream) {
+            deliveryStream.getTracks().forEach(t => t.stop());
+            deliveryStream = null;
+        }
         deliveryStream = await getMediaStreamWithFallback('environment', mode === '360');
         videoObj.srcObject = deliveryStream;
+        videoObj.muted = true;
+        videoObj.setAttribute('playsinline', '');
+        videoObj.setAttribute('autoplay', '');
         videoObj.style.display = 'block';
         controls.style.display = 'block';
         mainContent.style.display = 'none';
+
+        // 1. Explicitly play delivery video stream
+        await videoObj.play().catch(e => console.warn("deliveryVideo.play caught:", e));
+
+        // 2. Wait until frame metadata is loaded
+        if (videoObj.videoWidth === 0) {
+            await new Promise((resolve) => {
+                const onMeta = () => {
+                    videoObj.removeEventListener('loadedmetadata', onMeta);
+                    resolve();
+                };
+                videoObj.addEventListener('loadedmetadata', onMeta);
+                setTimeout(resolve, 800);
+            });
+        }
 
         if (mode === 'odo') {
             document.getElementById('btn-delivery-capture-photo').style.display = 'inline-block';
@@ -5306,26 +5328,40 @@ window.startDeliveryCamera = async function(mode) {
             document.getElementById('btn-delivery-start-record').style.display = 'inline-block';
         }
     } catch (err) {
-        alert("Camera access denied or unavailable.");
+        console.error("Delivery camera access failed:", err);
+        showToast("Camera access required: Please enable camera permissions in your device/browser settings to capture live odometer evidence.", "error");
     }
 };
 
 window.takeDeliveryPhoto = function() {
     const video = document.getElementById('delivery-camera-feed');
     const canvas = document.getElementById('delivery-camera-canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth || video.clientWidth || 1280;
+    const height = video.videoHeight || video.clientHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
 
     canvas.toBlob(blob => {
+        if (!blob) {
+            showToast("Failed to capture final odometer frame. Please retry.", "error");
+            return;
+        }
         deliveryOdoBlob = blob;
         const url = URL.createObjectURL(blob);
         const preview = document.getElementById('delivery-odo-preview');
-        preview.src = url;
-        preview.style.display = 'block';
+        if (preview) {
+            preview.src = url;
+            preview.style.display = 'block';
+        }
         
         stopDeliveryKycCamera();
-    }, 'image/jpeg');
+        showToast("Final odometer photo captured successfully!", "success");
+    }, 'image/jpeg', 0.90);
 };
 
 window.startDeliveryRecording = function() {
@@ -5475,10 +5511,32 @@ async function startCamera(mode) {
     document.getElementById('btn-stop-record').style.display = 'none';
 
     try {
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
         stream = await getMediaStreamWithFallback('environment', mode === '360');
         videoObj.srcObject = stream;
+        videoObj.muted = true;
+        videoObj.setAttribute('playsinline', '');
+        videoObj.setAttribute('autoplay', '');
         videoObj.style.display = 'block';
         controls.style.display = 'block';
+
+        // 1. Explicitly play video stream
+        await videoObj.play().catch(e => console.warn("video.play caught:", e));
+
+        // 2. Wait until frame metadata is loaded (videoWidth > 0)
+        if (videoObj.videoWidth === 0) {
+            await new Promise((resolve) => {
+                const onMeta = () => {
+                    videoObj.removeEventListener('loadedmetadata', onMeta);
+                    resolve();
+                };
+                videoObj.addEventListener('loadedmetadata', onMeta);
+                setTimeout(resolve, 800);
+            });
+        }
 
         if (mode === 'odo') {
             document.getElementById('btn-capture-photo').style.display = 'inline-block';
@@ -5486,26 +5544,41 @@ async function startCamera(mode) {
             document.getElementById('btn-start-record').style.display = 'inline-block';
         }
     } catch (err) {
-        alert("Camera access denied or unavailable. Details: " + err.message);
+        console.error("Camera access failed:", err);
+        showToast("Camera access required: Please enable camera permissions in your device/browser settings to capture live odometer evidence.", "error");
     }
 }
 
 function takePhoto() {
     const video = document.getElementById('camera-feed');
     const canvas = document.getElementById('camera-canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth || video.clientWidth || 1280;
+    const height = video.videoHeight || video.clientHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
 
     canvas.toBlob(blob => {
+        if (!blob) {
+            showToast("Failed to capture image frame. Please retry.", "error");
+            return;
+        }
         odoBlob = blob;
         const url = URL.createObjectURL(blob);
-        document.getElementById('odo-preview').src = url;
-        document.getElementById('odo-preview').style.display = 'block';
+        const preview = document.getElementById('odo-preview');
+        if (preview) {
+            preview.src = url;
+            preview.style.display = 'block';
+        }
         
         stopKycCamera();
         checkEvidenceComplete();
-    }, 'image/jpeg');
+        showToast("Odometer photo captured successfully!", "success");
+    }, 'image/jpeg', 0.90);
 }
 
 function startRecording() {
