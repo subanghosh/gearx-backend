@@ -810,6 +810,11 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Primary Driver ACCEPT Button INSIDE Card -->
+                <button id="btn-dm-accept-driver" onclick="confirmSelectedDriverFromMatchScreen()" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 12px 24px; border-radius: 30px; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); width: 100%; letter-spacing: 0.5px; margin-top: 4px;">
+                    ACCEPT
+                </button>
             </div>
 
             <!-- Alternative Drivers Section (Rendered if >1 Driver Bids) -->
@@ -823,10 +828,7 @@
             </div>
 
             <!-- Action Buttons -->
-            <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
-                <button id="btn-dm-accept-driver" onclick="confirmSelectedDriverFromMatchScreen()" style="background: #10B981; color: #000; font-weight: 800; border: none; padding: 14px 28px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); width: 100%; letter-spacing: 0.5px;">
-                    ACCEPT
-                </button>
+            <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
                 <button onclick="cancelMarshalSearch()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; cursor: pointer; transition: all 0.2s;">
                     Stop Search
                 </button>
@@ -2163,7 +2165,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./app.js?v=20260823_092300"></script>
+    <script src="./app.js?v=20260823_092800"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->
