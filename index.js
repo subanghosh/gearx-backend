@@ -1,10 +1,14 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
-const { Pool } = require('pg');
-const path = require('path');
-const multer = require('multer');
 const fs = require('fs');
+const path = require('path');
+if (fs.existsSync(path.join(__dirname, '.env.local'))) {
+    require('dotenv').config({ path: path.join(__dirname, '.env.local') });
+} else {
+    require('dotenv').config();
+}
+const { Pool } = require('pg');
+const multer = require('multer');
 const nodemailer = require('nodemailer');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -168,9 +172,10 @@ nodemailer.createTestAccount((err, account) => {
     }
 });
 
+const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('sslmode=require') || process.env.DATABASE_URL.includes('neon.tech'));
 const pool = new Pool({ 
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    ssl: isSsl ? { rejectUnauthorized: false } : false,
     keepAlive: true
 });
 
@@ -223,7 +228,8 @@ const db = {
 
 pool.connect((err, client, release) => {
     if (err) return console.error('Error acquiring client', err.stack);
-    console.log('Connected to Neon PostgreSQL.');
+    const dbTarget = process.env.DATABASE_URL ? (process.env.DATABASE_URL.split('@')[1] || 'local') : 'local';
+    console.log(`Connected to PostgreSQL database (${dbTarget}).`);
     release();
     initializeDatabase();
 });
@@ -1856,23 +1862,16 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
     try {
-        // Find valid OTP (Support bypass OTP 123456 for testing/prototyping)
-        let row;
-        if (otp === '123456') {
-            row = { id: 'bypass', phone: val, email: val };
-        } else {
-            const otpResult = await pool.query(
-                `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
-                [val, otp]
-            );
-            row = otpResult.rows[0];
-        }
+        // Find valid OTP
+        const otpResult = await pool.query(
+            `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
+            [val, otp]
+        );
+        const row = otpResult.rows[0];
         if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
         // Mark OTP as used
-        if (row.id !== 'bypass') {
-            await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
-        }
+        await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
 
         const cleanVal = val.replace('+91', '');
         const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
