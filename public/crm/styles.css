@@ -550,7 +550,7 @@ body {
 .select option {
     background: #1a1a1a; /* Darker background for options to ensure contrast */
     color: #fff;
-    padding: 12px;
+    padding: 8px 12px;
 }
 
 /* --- Search Box --- */

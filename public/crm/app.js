@@ -1149,7 +1149,7 @@ async function renderDashboard(container) {
                         <!-- Business Line Filter Dropdown -->
                         <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
                             <i data-lucide="layers" style="width:14px; height:14px; color:var(--primary);"></i>
-                            <select id="exec-business-line-select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
+                            <select id="exec-business-line-select" class="select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
                                 <option value="all" ${bLine === 'all' ? 'selected' : ''}>All Combined</option>
                                 <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>Drivers (P2P Rides)</option>
                                 <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>Garage (Service & Repairs)</option>
@@ -1160,7 +1160,7 @@ async function renderDashboard(container) {
                         <!-- Date Range Filter Dropdown -->
                         <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
                             <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
-                            <select id="exec-range-select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
+                            <select id="exec-range-select" class="select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
                                 <option value="today" ${range === 'today' ? 'selected' : ''}>Today</option>
                                 <option value="week" ${range === 'week' ? 'selected' : ''}>This Week</option>
                                 <option value="month" ${range === 'month' ? 'selected' : ''}>This Month</option>
