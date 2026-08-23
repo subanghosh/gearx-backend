@@ -1461,17 +1461,12 @@ apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
             // Sync to SQLite tables
             const sqFields = [];
             const sqVals = [];
-            if (req.body.name) { sqFields.push("name = ?"); sqVals.push(req.body.name); }
-            if (req.body.email) { sqFields.push("email = ?"); sqVals.push(req.body.email); }
-            if (req.body.phone) { sqFields.push("phone = ?"); sqVals.push(req.body.phone); }
-            if (req.body.lat !== undefined) { sqFields.push("lat = ?"); sqVals.push(req.body.lat); }
-            if (req.body.lng !== undefined) { sqFields.push("lng = ?"); sqVals.push(req.body.lng); }
-            if (req.body.kycStatus !== undefined) { sqFields.push("kycStatus = ?"); sqVals.push(req.body.kycStatus); }
-            if (req.body.kycRejectionReason !== undefined) { sqFields.push("kycRejectionReason = ?"); sqVals.push(req.body.kycRejectionReason); }
-            if (req.body.panVerified !== undefined) { sqFields.push("panVerified = ?"); sqVals.push(req.body.panVerified); }
-            if (req.body.aadhaarVerified !== undefined) { sqFields.push("aadhaarVerified = ?"); sqVals.push(req.body.aadhaarVerified); }
-            if (req.body.bankVerified !== undefined) { sqFields.push("bankVerified = ?"); sqVals.push(req.body.bankVerified); }
-            if (req.body.dlVerified !== undefined) { sqFields.push("dlVerified = ?"); sqVals.push(req.body.dlVerified); }
+            allowed.forEach(col => {
+                if (req.body[col] !== undefined) {
+                    sqFields.push(`${col} = ?`);
+                    sqVals.push(req.body[col]);
+                }
+            });
             if (sqFields.length > 0) {
                 sqVals.push(id);
                 const sqCustFields = [];
@@ -1629,11 +1624,12 @@ apiRouter.put('/users/:id', authMiddleware, async (req, res) => {
             // Sync to SQLite tables
             const sqFields = [];
             const sqVals = [];
-            if (req.body.name) { sqFields.push("name = ?"); sqVals.push(req.body.name); }
-            if (req.body.email) { sqFields.push("email = ?"); sqVals.push(req.body.email); }
-            if (req.body.phone) { sqFields.push("phone = ?"); sqVals.push(req.body.phone); }
-            if (req.body.lat !== undefined) { sqFields.push("lat = ?"); sqVals.push(req.body.lat); }
-            if (req.body.lng !== undefined) { sqFields.push("lng = ?"); sqVals.push(req.body.lng); }
+            allowed.forEach(col => {
+                if (req.body[col] !== undefined) {
+                    sqFields.push(`${col} = ?`);
+                    sqVals.push(req.body[col]);
+                }
+            });
             if (sqFields.length > 0) {
                 sqVals.push(id);
                 const sqCustFields = [];
