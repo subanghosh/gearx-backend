@@ -3717,7 +3717,7 @@ function renderTrips(trips) {
             statusBadge = `<span class="badge in-service">Service in Progress</span>`;
         } else if (t.status === 'pending_delivery') {
             statusBadge = `<span class="badge in-transit" style="background: rgba(59, 130, 246, 0.1); color: var(--primary);">Pending Final Delivery</span>`;
-            actionBtn = `<button class="btn btn-success" style="padding: 6px 12px; font-size: 0.8rem;" onclick='finalizeDelivery("${t.id}", "${t.deliveryOtp || t.deliveryotp || ''}")'>Pay & Get OTP</button>`;
+            actionBtn = `<button class="btn btn-primary" style="padding: 6px 12px; font-size: 0.8rem;" onclick='reviewDropoffOtp("${t.id}", "${t.deliveryOtp || t.deliveryotp || ''}")'>Show Dropoff OTP</button>`;
         } else {
             statusBadge = `<span class="badge pending">${t.status.replace('_', ' ')}</span>`;
         }
@@ -3791,6 +3791,33 @@ function renderApprovals(approvals) {
 }
 
 // --- Video Review Modal ---
+
+async function reviewDropoffOtp(tripId, otp) {
+    const modal = document.getElementById('video-modal');
+    const videoObj = document.getElementById('customer-review-video');
+    const revealBox = document.getElementById('otp-reveal-box');
+    const revealedOtpText = document.getElementById('revealed-otp');
+
+    // Reset Modal
+    if (revealBox) revealBox.style.display = 'none';
+    if (revealedOtpText) revealedOtpText.textContent = '';
+    
+    const h3 = document.querySelector('#video-modal h3');
+    if (h3) h3.textContent = "Dropoff Handover OTP";
+    const p = document.querySelector('#video-modal p');
+    if (p) p.textContent = "Please share this 4-digit OTP with the Driver upon vehicle delivery to complete handover.";
+
+    if (videoObj) {
+        videoObj.src = '';
+        videoObj.style.display = 'none';
+    }
+
+    if (revealedOtpText) revealedOtpText.textContent = otp || '----';
+    if (revealBox) revealBox.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
+}
+window.reviewDropoffOtp = reviewDropoffOtp;
+
 async function reviewTripMedia(tripId, otp) {
     const modal = document.getElementById('video-modal');
     const videoObj = document.getElementById('customer-review-video');

@@ -5446,7 +5446,7 @@ window.submitDeliveryMedia = async function() {
         const data = await resSubmit.json();
         if (!resSubmit.ok) throw new Error(data.error || "Failed to submit delivery details");
 
-        showToast("Media uploaded successfully! Waiting for customer to complete payment.", "success");
+        showToast("Handover media uploaded successfully! Please enter the customer's Dropoff OTP to complete handover.", "success");
         
         // Show Step 2 (OTP Entry)
         document.getElementById('delivery-step-media').classList.add('hidden');
