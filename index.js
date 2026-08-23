@@ -1294,7 +1294,7 @@ apiRouter.post('/settings/global', (req, res) => {
     });
 });
 
-apiRouter.get('/users/:id', async (req, res) => {
+apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
         const garageId = id.replace('_owner', '');
@@ -1302,6 +1302,9 @@ apiRouter.get('/users/:id', async (req, res) => {
         if (userLookup.rows[0]) {
             id = userLookup.rows[0].id;
         }
+    }
+    if (req.user.role !== 'admin' && req.user.id !== id) {
+        return res.status(403).json({ error: 'Forbidden: You can only access your own profile.' });
     }
     try {
         const userRes = await pool.query(`
@@ -1329,7 +1332,7 @@ apiRouter.get('/users/:id', async (req, res) => {
     }
 });
 
-apiRouter.patch('/users/:id', async (req, res) => {
+apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
         const garageId = id.replace('_owner', '');
@@ -1338,7 +1341,14 @@ apiRouter.patch('/users/:id', async (req, res) => {
             id = userLookup.rows[0].id;
         }
     }
-    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng', 'is_online', 'pincode', 'kycRejectionReason'];
+    if (req.user.role !== 'admin' && req.user.id !== id) {
+        return res.status(403).json({ error: 'Forbidden: You can only modify your own profile.' });
+    }
+    const USER_ALLOWED_FIELDS = ['name', 'email', 'phone', 'lat', 'lng', 'is_online', 'pincode', 'address', 'city', 'state'];
+    const ADMIN_ONLY_FIELDS = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'is_payment_on_hold', 'kycRejectionReason'];
+    const allowed = req.user.role === 'admin' 
+        ? [...USER_ALLOWED_FIELDS, ...ADMIN_ONLY_FIELDS]
+        : USER_ALLOWED_FIELDS;
     const fields = [];
     const vals = [];
     let idx = 1;
@@ -1506,7 +1516,10 @@ apiRouter.patch('/users/:id', async (req, res) => {
 
 // Alias PUT to PATCH for /users/:id to support PUT requests from frontend
 
-apiRouter.put('/users/:id/fcm-token', async (req, res) => {
+apiRouter.put('/users/:id/fcm-token', authMiddleware, async (req, res) => {
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     try {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ error: 'Token required' });
@@ -1518,7 +1531,7 @@ apiRouter.put('/users/:id/fcm-token', async (req, res) => {
     }
 });
 
-apiRouter.put('/users/:id', async (req, res) => {
+apiRouter.put('/users/:id', authMiddleware, async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
         const garageId = id.replace('_owner', '');
@@ -1527,7 +1540,14 @@ apiRouter.put('/users/:id', async (req, res) => {
             id = userLookup.rows[0].id;
         }
     }
-    const allowed = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'status', 'name', 'email', 'phone', 'emailVerified', 'lat', 'lng'];
+    if (req.user.role !== 'admin' && req.user.id !== id) {
+        return res.status(403).json({ error: 'Forbidden: You can only modify your own profile.' });
+    }
+    const USER_ALLOWED_FIELDS = ['name', 'email', 'phone', 'lat', 'lng', 'is_online', 'pincode', 'address', 'city', 'state'];
+    const ADMIN_ONLY_FIELDS = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'is_payment_on_hold', 'kycRejectionReason'];
+    const allowed = req.user.role === 'admin' 
+        ? [...USER_ALLOWED_FIELDS, ...ADMIN_ONLY_FIELDS]
+        : USER_ALLOWED_FIELDS;
     const fields = [];
     const vals = [];
     let idx = 1;
