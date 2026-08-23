@@ -2421,7 +2421,14 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
 
-apiRouter.post('/users/:id/profile-picture', upload.single('file'), async (req, res) => {
+const verifyOwnership = (req, res, next) => {
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You can only modify your own account.' });
+    }
+    next();
+};
+
+apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const file = req.file;
@@ -2440,7 +2447,7 @@ apiRouter.post('/users/:id/profile-picture', upload.single('file'), async (req, 
     }
 });
 
-apiRouter.post('/workers/:id/kyc-file', upload.single('file'), async (req, res) => {
+apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const { docType } = req.body;
@@ -2478,7 +2485,7 @@ apiRouter.post('/workers/:id/kyc-file', upload.single('file'), async (req, res) 
     }
 });
 
-apiRouter.put('/workers/:id/kyc', upload.fields([
+apiRouter.put('/workers/:id/kyc', authMiddleware, verifyOwnership, upload.fields([
     { name: 'panFile', maxCount: 1 }, 
     { name: 'panBackFile', maxCount: 1 }, 
     { name: 'aadhaarFile', maxCount: 1 }, 
