@@ -662,7 +662,34 @@ const router = {
     }
 };
 
-function renderDashboard(container) {
+async function renderDashboard(container) {
+    window._execDateRange = window._execDateRange || 'month';
+    window._execCustomStart = window._execCustomStart || '';
+    window._execCustomEnd = window._execCustomEnd || '';
+
+    let finData = {
+        revenue: 0,
+        driverPayout: 0,
+        netProfit: 0,
+        marginPercent: 0,
+        tripCount: 0,
+        avgPayoutPerTrip: 0
+    };
+
+    try {
+        let url = `${API_URL}/admin/executive-financials?range=${window._execDateRange}`;
+        if (window._execDateRange === 'custom' && window._execCustomStart) {
+            url += `&startDate=${window._execCustomStart}`;
+            if (window._execCustomEnd) url += `&endDate=${window._execCustomEnd}`;
+        }
+        const fRes = await fetch(url);
+        if (fRes.ok) {
+            finData = await fRes.json();
+        }
+    } catch (eFin) {
+        console.error("Failed to load executive financials:", eFin);
+    }
+
     // --- 1. Customer & Demand Calculations (Demand Side) ---
     // Active orders are requests in non-terminal states
     const activeRequests = PROTOTYPE_STATE.serviceRequests.filter(r => 
@@ -1071,15 +1098,17 @@ function renderDashboard(container) {
         `;
     }
 
+    const range = window._execDateRange || 'month';
+
     const html = `
         <div class="fade-in">
-            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:center;">
+            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div>
-                    <h1 class="page-title" style="display:flex; align-items:center; gap:10px;">
+                    <h1 class="page-title" style="display:flex; align-items:center; gap:10px; margin:0;">
                         <i data-lucide="activity" style="color:var(--primary); width:28px; height:28px;"></i>
                         Live CEO Operations Command Center
                     </h1>
-                    <p style="color: var(--text-dim); margin-top: 4px;">Real-time logistics supply-demand matching & dispatch metrics</p>
+                    <p style="color: var(--text-dim); margin-top: 4px; margin-bottom:0;">Real-time logistics supply-demand matching & dispatch metrics</p>
                 </div>
                 <div style="display:flex; gap: 12px;">
                     <button class="btn btn-secondary" onclick="fetchRealtimeData().then(() => renderDashboard(document.getElementById('app')))">
@@ -1087,6 +1116,104 @@ function renderDashboard(container) {
                     </button>
                 </div>
             </header>
+
+            <!-- EXECUTIVE FINANCIAL OVERVIEW PANEL -->
+            <div class="card" style="margin-top:0; margin-bottom:24px; background:var(--bg-surface); border:1px solid rgba(250,204,21,0.25); padding:22px; border-radius:var(--radius-lg);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <h2 style="margin:0; font-size:1.25rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="trending-up" style="color:var(--primary); width:22px; height:22px;"></i>
+                            Executive Financial Summary
+                        </h2>
+                        <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
+                            Realized revenue from completed customer rides, driver settlement costs, and net platform profit.
+                        </p>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
+                            <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
+                            <select id="exec-range-select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
+                                <option value="today" ${range === 'today' ? 'selected' : ''}>📅 Today</option>
+                                <option value="week" ${range === 'week' ? 'selected' : ''}>📅 This Week</option>
+                                <option value="month" ${range === 'month' ? 'selected' : ''}>📅 This Month</option>
+                                <option value="year" ${range === 'year' ? 'selected' : ''}>📅 This Year</option>
+                                <option value="custom" ${range === 'custom' ? 'selected' : ''}>🛠️ Custom Range</option>
+                            </select>
+                        </div>
+
+                        ${range === 'custom' ? `
+                            <div style="display:inline-flex; align-items:center; gap:6px;">
+                                <input type="date" id="exec-custom-start" value="${window._execCustomStart || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
+                                <span style="color:var(--text-muted); font-size:0.8rem;">to</span>
+                                <input type="date" id="exec-custom-end" value="${window._execCustomEnd || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
+                                <button onclick="window.applyExecCustomRange()" class="btn btn-sm btn-primary" style="font-weight:700; padding:6px 12px;">Apply</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- 3 KPI Cards Grid -->
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:18px;">
+                    <!-- Card 1: Gross Customer Revenue -->
+                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
+                                <div style="font-size: 2.2rem; font-weight: 800; color: #22C55E; margin: 6px 0 4px 0;">₹${finData.revenue.toLocaleString()}</div>
+                            </div>
+                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
+                                <i data-lucide="credit-card" style="width:22px; height:22px;"></i>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
+                                ${finData.tripCount} Completed Trips
+                            </span>
+                            <span>realized income</span>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Driver Payouts & Commission -->
+                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Driver Payouts & Settlements</span>
+                                <div style="font-size: 2.2rem; font-weight: 800; color: #3B82F6; margin: 6px 0 4px 0;">₹${finData.driverPayout.toLocaleString()}</div>
+                            </div>
+                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
+                                <i data-lucide="truck" style="width:22px; height:22px;"></i>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
+                                Avg ₹${finData.avgPayoutPerTrip} / trip
+                            </span>
+                            <span>driver earnings cost</span>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Net Platform Profit -->
+                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
+                                <div style="font-size: 2.2rem; font-weight: 800; color: #FACC15; margin: 6px 0 4px 0;">₹${finData.netProfit.toLocaleString()}</div>
+                            </div>
+                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
+                                <i data-lucide="wallet" style="width:22px; height:22px;"></i>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
+                                ${finData.marginPercent}% Net Margin
+                            </span>
+                            <span>retained platform profit</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Dashboard Tab Switcher -->
             <div class="tabs-header" style="display:flex; gap:16px; border-bottom:1px solid var(--border); margin-bottom:24px; padding-bottom:1px;">
                 <button onclick="window.activeDashboardTab='demand'; renderDashboard(document.getElementById('app'))" 
@@ -1106,13 +1233,26 @@ function renderDashboard(container) {
             <div style="display:grid; grid-template-columns: 1fr; gap: 24px;">
                 ${sectionHtml}
             </div>
-
-            </div>
         </div>
     `;
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
 }
+
+window.handleExecRangeChange = function(newRange) {
+    window._execDateRange = newRange;
+    renderDashboard(document.getElementById('app'));
+};
+
+window.applyExecCustomRange = function() {
+    const s = document.getElementById('exec-custom-start');
+    const e = document.getElementById('exec-custom-end');
+    if (s && s.value) {
+        window._execCustomStart = s.value;
+        window._execCustomEnd = e ? e.value : '';
+        renderDashboard(document.getElementById('app'));
+    }
+};
 function renderProviderPage(container, type) {
     if (!window.initialDataLoaded) {
         container.innerHTML = `

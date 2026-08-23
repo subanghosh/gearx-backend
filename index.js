@@ -5434,6 +5434,115 @@ apiRouter.get('/admin/withdrawals', async (req, res) => {
     }
 });
 
+// GET admin executive financials summary (Revenue, Driver Payouts, Net Profit)
+apiRouter.get('/admin/executive-financials', async (req, res) => {
+    const { range, startDate, endDate } = req.query;
+    
+    try {
+        const now = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + istOffset);
+        
+        let startUtc, endUtc;
+        endUtc = new Date(now.getTime() + 60000);
+
+        if (range === 'today') {
+            const istStart = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate(), 0, 0, 0, 0);
+            startUtc = new Date(istStart.getTime() - istOffset);
+        } else if (range === 'week') {
+            const day = istNow.getDay();
+            const diff = (day === 0 ? 6 : day - 1);
+            const istStart = new Date(istNow.getFullYear(), istNow.getMonth(), istNow.getDate() - diff, 0, 0, 0, 0);
+            startUtc = new Date(istStart.getTime() - istOffset);
+        } else if (range === 'month') {
+            const istStart = new Date(istNow.getFullYear(), istNow.getMonth(), 1, 0, 0, 0, 0);
+            startUtc = new Date(istStart.getTime() - istOffset);
+        } else if (range === 'year') {
+            const istStart = new Date(istNow.getFullYear(), 0, 1, 0, 0, 0, 0);
+            startUtc = new Date(istStart.getTime() - istOffset);
+        } else if (range === 'custom' && startDate) {
+            startUtc = new Date(startDate + 'T00:00:00+05:30');
+            if (endDate) {
+                endUtc = new Date(endDate + 'T23:59:59.999+05:30');
+            }
+        } else {
+            const istStart = new Date(istNow.getFullYear(), istNow.getMonth(), 1, 0, 0, 0, 0);
+            startUtc = new Date(istStart.getTime() - istOffset);
+        }
+
+        const query = `
+            WITH completed_trips AS (
+                SELECT 
+                    t.id AS trip_id,
+                    t.servicerequestid,
+                    t.marshalid,
+                    t.createdat AS trip_created_at,
+                    sr.totalcustomerprice,
+                    sr.baseamount,
+                    sr.extraamount
+                FROM trips t
+                JOIN service_requests sr ON t.servicerequestid = sr.id
+                WHERE t.status = 'completed'
+                  AND t.createdat >= $1 AND t.createdat <= $2
+            ),
+            trip_payments AS (
+                SELECT 
+                    service_request_id,
+                    SUM(amount_paid) AS total_paid
+                FROM ride_payments
+                WHERE status IN ('captured', 'completed', 'paid')
+                GROUP BY service_request_id
+            ),
+            trip_incentives AS (
+                SELECT 
+                    tripid,
+                    SUM(amount) AS total_driver_payout
+                FROM incentives
+                WHERE type != 'withdrawal'
+                GROUP BY tripid
+            )
+            SELECT 
+                COUNT(ct.trip_id)::int AS completed_trips_count,
+                COALESCE(SUM(
+                    COALESCE(
+                        tp.total_paid,
+                        ct.totalcustomerprice,
+                        (COALESCE(ct.baseamount, 0) + COALESCE(ct.extraamount, 0) + 99)
+                    )
+                ), 0)::float AS gross_revenue,
+                COALESCE(SUM(COALESCE(ti.total_driver_payout, 0)), 0)::float AS total_driver_payout
+            FROM completed_trips ct
+            LEFT JOIN trip_payments tp ON ct.servicerequestid = tp.service_request_id
+            LEFT JOIN trip_incentives ti ON ct.trip_id = ti.tripid
+        `;
+
+        const result = await pool.query(query, [startUtc.toISOString(), endUtc.toISOString()]);
+        const row = result.rows[0] || { completed_trips_count: 0, gross_revenue: 0, total_driver_payout: 0 };
+        
+        const tripCount = parseInt(row.completed_trips_count) || 0;
+        const revenue = Math.round((parseFloat(row.gross_revenue) || 0) * 100) / 100;
+        const driverPayout = Math.round((parseFloat(row.total_driver_payout) || 0) * 100) / 100;
+        const netProfit = Math.round((revenue - driverPayout) * 100) / 100;
+        const marginPercent = revenue > 0 ? Math.round(((netProfit / revenue) * 100) * 10) / 10 : 0.0;
+        const avgPayoutPerTrip = tripCount > 0 ? Math.round((driverPayout / tripCount) * 100) / 100 : 0.0;
+
+        res.json({
+            range: range || 'month',
+            startDate: startUtc.toISOString(),
+            endDate: endUtc.toISOString(),
+            tripCount,
+            revenue,
+            driverPayout,
+            netProfit,
+            marginPercent,
+            avgPayoutPerTrip
+        });
+    } catch (err) {
+        console.error('Executive financials fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST admin complete withdrawal (Mark Paid with UTR)
 apiRouter.post('/admin/withdrawals/:id/complete', async (req, res) => {
     const withdrawalId = req.params.id;
