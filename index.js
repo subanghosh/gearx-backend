@@ -4146,19 +4146,47 @@ apiRouter.get('/crm/ride-payments', async (req, res) => {
     }
 });
 
-apiRouter.post('/upload-kyc', upload.single('file'), (req, res) => {
+const OWNER_DOC_MAP = {
+    'owner_aadhaar': 'aadhaarPath',
+    'owner_pan': 'panPath'
+};
+const ALLOWED_MEDIA_DOC_TYPES = ['gst', 'cheque', 'trade_license', 'workshop_photo', 'banner', 'agreement', 'document', 'pan', 'aadhaar', 'dl', 'profile'];
+
+apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), (req, res) => {
     const { entityId, docType } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const filePath = 'uploads/' + req.file.filename;
     const fileName = req.file.originalname;
 
-    if (docType.startsWith('owner_')) {
-        const field = docType.replace('owner_', '') + 'Path'; // aadhaarPath or panPath
-        db.run(`UPDATE garage_owners SET ${field} = ? WHERE id = ?`, [filePath, entityId], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, filePath });
+    if (docType && docType.startsWith('owner_')) {
+        const field = OWNER_DOC_MAP[docType];
+        if (!field) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(400).json({ error: 'Invalid owner docType: ' + docType });
+        }
+        db.get("SELECT garageId FROM garage_owners WHERE id = ?", [entityId], (err, owner) => {
+            if (err || !owner) {
+                fs.unlink(req.file.path, () => {});
+                return res.status(404).json({ error: 'Owner record not found' });
+            }
+            if (req.user.role !== 'admin' && owner.garageId !== req.user.garageId && owner.garageId !== req.user.id) {
+                fs.unlink(req.file.path, () => {});
+                return res.status(403).json({ error: 'Forbidden: You do not own this garage partner profile.' });
+            }
+            db.run(`UPDATE garage_owners SET ${field} = ? WHERE id = ?`, [filePath, entityId], (errU) => {
+                if (errU) return res.status(500).json({ error: errU.message });
+                res.json({ success: true, filePath });
+            });
         });
     } else {
+        if (!docType || !ALLOWED_MEDIA_DOC_TYPES.includes(docType)) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(400).json({ error: 'Invalid media docType: ' + docType });
+        }
+        if (req.user.role !== 'admin' && entityId !== req.user.garageId && entityId !== req.user.id) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(403).json({ error: 'Forbidden: You do not own this entity.' });
+        }
         const id = 'doc_' + Date.now();
         db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
             [id, entityId, filePath, fileName, docType], () => res.json({ success: true, filePath }));
