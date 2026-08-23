@@ -1171,7 +1171,7 @@ apiRouter.get('/system-settings', (req, res) => {
     });
 });
 
-apiRouter.post('/system-settings', (req, res) => {
+apiRouter.post('/system-settings', authMiddleware, requireRole('admin'), (req, res) => {
     const { key, value } = req.body;
     if (!key) return res.status(400).json({ error: 'Key is required' });
     db.run(
@@ -1240,7 +1240,7 @@ apiRouter.get('/settings/incentives', (req, res) => {
     });
 });
 
-apiRouter.post('/settings/incentives', (req, res) => {
+apiRouter.post('/settings/incentives', authMiddleware, requireRole('admin'), (req, res) => {
     const { slabs } = req.body;
     if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
     
@@ -1275,7 +1275,7 @@ apiRouter.get('/settings/global', (req, res) => {
     });
 });
 
-apiRouter.post('/settings/global', (req, res) => {
+apiRouter.post('/settings/global', authMiddleware, requireRole('admin'), (req, res) => {
     const { settings } = req.body;
     if (!Array.isArray(settings)) return res.status(400).json({ error: 'Settings array is required' });
     
