@@ -4844,136 +4844,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         };
 
         
-        window.selectedDriverMarshalId = null;
-        window.currentDriverMatchBids = [];
-        window.currentMatchRequestId = null;
-        window.currentMatchPaidAmount = 0;
 
-        window.renderDriverMatchScreen = function(bids, requestId, paidAmount, vehicleName) {
-            if (!bids || bids.length === 0) return;
-
-            window.currentDriverMatchBids = bids;
-            window.currentMatchRequestId = requestId;
-            window.currentMatchPaidAmount = paidAmount;
-
-            // Default to the first (closest) bid if none currently selected or previous selection no longer exists
-            if (!window.selectedDriverMarshalId || !bids.some(b => b.marshalId === window.selectedDriverMarshalId)) {
-                window.selectedDriverMarshalId = bids[0].marshalId;
-            }
-
-            const selectedBid = bids.find(b => b.marshalId === window.selectedDriverMarshalId) || bids[0];
-
-            // Hide radar screen and stop radar timer
-            const fmScreen = document.getElementById('finding-marshal-screen');
-            if (fmScreen) fmScreen.style.display = 'none';
-            if (window.fmInterval) clearInterval(window.fmInterval);
-
-            // Show dedicated Driver Match Screen
-            const dmScreen = document.getElementById('driver-match-screen');
-            if (dmScreen) dmScreen.style.display = 'flex';
-
-            // Populate Match Badge & Count
-            const matchBadge = document.getElementById('dm-match-badge');
-            const bidsCount = document.getElementById('dm-bids-count');
-            if (bids.length > 1) {
-                if (matchBadge) matchBadge.textContent = `${bids.length} Drivers Available`;
-                if (bidsCount) bidsCount.textContent = `${bids.length} Matched`;
-            } else {
-                if (matchBadge) matchBadge.textContent = 'Driver Available';
-                if (bidsCount) bidsCount.textContent = '1 Matched';
-            }
-
-            // Populate Primary Selected Driver Hero Card
-            const photoUrl = selectedBid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
-            const photoEl = document.getElementById('dm-driver-photo');
-            if (photoEl) photoEl.src = photoUrl;
-
-            const nameEl = document.getElementById('dm-driver-name');
-            if (nameEl) nameEl.textContent = selectedBid.marshalName || 'Verified Driver';
-
-            const ratingEl = document.getElementById('dm-driver-rating');
-            if (ratingEl) ratingEl.textContent = selectedBid.rating || '4.9';
-
-            const distEl = document.getElementById('dm-driver-dist');
-            if (distEl) distEl.textContent = selectedBid.distance ? selectedBid.distance.toFixed(1) + ' km away' : 'Nearby';
-
-            const etaEl = document.getElementById('dm-driver-eta');
-            if (etaEl) etaEl.textContent = (selectedBid.eta || 4) + ' mins';
-
-            // Populate Trip Context
-            const vehicleEl = document.getElementById('dm-trip-vehicle');
-            if (vehicleEl) vehicleEl.textContent = vehicleName || 'Selected Vehicle';
-
-            const fareEl = document.getElementById('dm-trip-fare');
-            if (fareEl) fareEl.textContent = `₹${paidAmount}`;
-
-            // Reset accept button state
-            const acceptBtn = document.getElementById('btn-dm-accept-driver');
-            if (acceptBtn) {
-                acceptBtn.disabled = false;
-                acceptBtn.innerHTML = 'ACCEPT DRIVER & CONTINUE <i data-lucide="arrow-right" style="width: 18px; height: 18px; stroke-width: 2.5;"></i>';
-            }
-
-            // Multi-Bid Alternative Drivers List
-            const otherSection = document.getElementById('dm-other-drivers-section');
-            const otherList = document.getElementById('dm-other-drivers-list');
-            const otherCount = document.getElementById('dm-other-count');
-
-            const alternativeBids = bids.filter(b => b.marshalId !== selectedBid.marshalId);
-            if (alternativeBids.length > 0) {
-                if (otherSection) otherSection.style.display = 'flex';
-                if (otherCount) otherCount.textContent = alternativeBids.length;
-                if (otherList) {
-                    otherList.innerHTML = alternativeBids.map(b => {
-                        const altPhoto = b.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
-                        return `
-                            <div onclick="switchSelectedDriver('${b.marshalId}')" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 10px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(250,204,21,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <img src="${altPhoto}" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">
-                                    <div>
-                                        <div style="font-weight: 700; font-size: 0.85rem; color: #fff;">${b.marshalName || 'Verified Driver'}</div>
-                                        <div style="font-size: 0.7rem; color: #a1a1aa;">${b.distance ? b.distance.toFixed(1) + ' km' : 'Nearby'} • ${b.eta || 5}m arrival</div>
-                                    </div>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 6px;">
-                                    <span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(250, 204, 21, 0.15); color: #FACC15; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;">
-                                        <i data-lucide="star" style="width: 10px; height: 10px; fill: #FACC15; color: #FACC15;"></i>
-                                        ${b.rating || '4.9'}
-                                    </span>
-                                    <span style="font-size: 0.75rem; color: #FACC15; font-weight: 700;">Select</span>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                }
-            } else {
-                if (otherSection) otherSection.style.display = 'none';
-            }
-
-            if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
-            }
-        };
-
-        window.switchSelectedDriver = function(marshalId) {
-            window.selectedDriverMarshalId = marshalId;
-            window.renderDriverMatchScreen(
-                window.currentDriverMatchBids,
-                window.currentMatchRequestId,
-                window.currentMatchPaidAmount,
-                document.getElementById('dm-trip-vehicle') ? document.getElementById('dm-trip-vehicle').textContent : ''
-            );
-        };
-
-        window.confirmSelectedDriverFromMatchScreen = function() {
-            if (!window.selectedDriverMarshalId || !window.currentMatchRequestId) return;
-            const btn = document.getElementById('btn-dm-accept-driver');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = 'Securing Driver...';
-            }
-            window.selectMarshalForRequest(window.currentMatchRequestId, window.selectedDriverMarshalId, window.currentMatchPaidAmount);
-        };
 
         window.selectMarshalForRequest = async function(reqId, marshalId, totalVal) {
                 // Immediately clear polling to prevent race-condition re-renders
@@ -10721,3 +10592,130 @@ window.submitPartnerAddVehicle = async function(event) {
 };
 
 
+
+
+// ==========================================
+// DEDICATED DRIVER MATCH & SELECTION SCREEN
+// ==========================================
+window.selectedDriverMarshalId = null;
+window.currentDriverMatchBids = [];
+window.currentMatchRequestId = null;
+window.currentMatchPaidAmount = 0;
+
+window.renderDriverMatchScreen = function(bids, requestId, paidAmount, vehicleName) {
+    if (!bids || bids.length === 0) return;
+
+    window.currentDriverMatchBids = bids;
+    window.currentMatchRequestId = requestId;
+    window.currentMatchPaidAmount = paidAmount;
+
+    if (!window.selectedDriverMarshalId || !bids.some(b => b.marshalId === window.selectedDriverMarshalId)) {
+        window.selectedDriverMarshalId = bids[0].marshalId;
+    }
+
+    const selectedBid = bids.find(b => b.marshalId === window.selectedDriverMarshalId) || bids[0];
+
+    const fmScreen = document.getElementById('finding-marshal-screen');
+    if (fmScreen) fmScreen.style.display = 'none';
+    if (window.fmInterval) clearInterval(window.fmInterval);
+
+    const dmScreen = document.getElementById('driver-match-screen');
+    if (dmScreen) dmScreen.style.display = 'flex';
+
+    const matchBadge = document.getElementById('dm-match-badge');
+    const bidsCount = document.getElementById('dm-bids-count');
+    if (bids.length > 1) {
+        if (matchBadge) matchBadge.textContent = `${bids.length} Drivers Available`;
+        if (bidsCount) bidsCount.textContent = `${bids.length} Matched`;
+    } else {
+        if (matchBadge) matchBadge.textContent = 'Driver Available';
+        if (bidsCount) bidsCount.textContent = '1 Matched';
+    }
+
+    const photoUrl = selectedBid.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
+    const photoEl = document.getElementById('dm-driver-photo');
+    if (photoEl) photoEl.src = photoUrl;
+
+    const nameEl = document.getElementById('dm-driver-name');
+    if (nameEl) nameEl.textContent = selectedBid.marshalName || 'Verified Driver';
+
+    const ratingEl = document.getElementById('dm-driver-rating');
+    if (ratingEl) ratingEl.textContent = selectedBid.rating || '4.9';
+
+    const distEl = document.getElementById('dm-driver-dist');
+    if (distEl) distEl.textContent = selectedBid.distance ? selectedBid.distance.toFixed(1) + ' km away' : 'Nearby';
+
+    const etaEl = document.getElementById('dm-driver-eta');
+    if (etaEl) etaEl.textContent = (selectedBid.eta || 4) + ' mins';
+
+    const vehicleEl = document.getElementById('dm-trip-vehicle');
+    if (vehicleEl) vehicleEl.textContent = vehicleName || 'Selected Vehicle';
+
+    const fareEl = document.getElementById('dm-trip-fare');
+    if (fareEl) fareEl.textContent = `₹${paidAmount}`;
+
+    const acceptBtn = document.getElementById('btn-dm-accept-driver');
+    if (acceptBtn) {
+        acceptBtn.disabled = false;
+        acceptBtn.innerHTML = 'ACCEPT DRIVER & CONTINUE <i data-lucide="arrow-right" style="width: 18px; height: 18px; stroke-width: 2.5;"></i>';
+    }
+
+    const otherSection = document.getElementById('dm-other-drivers-section');
+    const otherList = document.getElementById('dm-other-drivers-list');
+    const otherCount = document.getElementById('dm-other-count');
+
+    const alternativeBids = bids.filter(b => b.marshalId !== selectedBid.marshalId);
+    if (alternativeBids.length > 0) {
+        if (otherSection) otherSection.style.display = 'flex';
+        if (otherCount) otherCount.textContent = alternativeBids.length;
+        if (otherList) {
+            otherList.innerHTML = alternativeBids.map(b => {
+                const altPhoto = b.photo || `https://i.pravatar.cc/100?img=${Math.floor(10 + Math.random() * 20)}`;
+                return `
+                    <div onclick="switchSelectedDriver('${b.marshalId}')" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 10px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(250,204,21,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <img src="${altPhoto}" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 0.85rem; color: #fff;">${b.marshalName || 'Verified Driver'}</div>
+                                <div style="font-size: 0.7rem; color: #a1a1aa;">${b.distance ? b.distance.toFixed(1) + ' km' : 'Nearby'} • ${b.eta || 5}m arrival</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(250, 204, 21, 0.15); color: #FACC15; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;">
+                                <i data-lucide="star" style="width: 10px; height: 10px; fill: #FACC15; color: #FACC15;"></i>
+                                ${b.rating || '4.9'}
+                            </span>
+                            <span style="font-size: 0.75rem; color: #FACC15; font-weight: 700;">Select</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    } else {
+        if (otherSection) otherSection.style.display = 'none';
+    }
+
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+};
+
+window.switchSelectedDriver = function(marshalId) {
+    window.selectedDriverMarshalId = marshalId;
+    window.renderDriverMatchScreen(
+        window.currentDriverMatchBids,
+        window.currentMatchRequestId,
+        window.currentMatchPaidAmount,
+        document.getElementById('dm-trip-vehicle') ? document.getElementById('dm-trip-vehicle').textContent : ''
+    );
+};
+
+window.confirmSelectedDriverFromMatchScreen = function() {
+    if (!window.selectedDriverMarshalId || !window.currentMatchRequestId) return;
+    const btn = document.getElementById('btn-dm-accept-driver');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'Securing Driver...';
+    }
+    window.selectMarshalForRequest(window.currentMatchRequestId, window.selectedDriverMarshalId, window.currentMatchPaidAmount);
+};
