@@ -20,10 +20,10 @@ app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately i
 
 console.log('[STARTUP-1] Starting GearX backend initialization...');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'gearx-secure-jwt-secret-2026-change-in-production-use-random-256bit';
 if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-    console.warn('WARNING: JWT_SECRET environment variable is using fallback.');
+    throw new Error('FATAL: JWT_SECRET environment variable is missing.');
 }
+const JWT_SECRET = process.env.JWT_SECRET || 'gearx-dev-jwt-secret';
 const BCRYPT_ROUNDS = 12;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBoc7eGvtpa-MPQ9W_FwWTdO9xAWn43TM0';
 if (!GOOGLE_MAPS_API_KEY && process.env.NODE_ENV === 'production') {
