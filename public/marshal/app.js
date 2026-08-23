@@ -3,24 +3,6 @@ const API_URL = isNativeApp
     ? 'https://api.redrivo.in/api'
     : (window.location.protocol === 'file:' ? 'http://localhost:3000/api' : `${window.location.origin}/api`);
 
-// Global Fetch Interceptor: Automatically attach Bearer token to all API requests
-const nativeFetch = window.fetch;
-window.fetch = async function(resource, init) {
-    init = init || {};
-    init.headers = init.headers || {};
-    const token = localStorage.getItem('redrivo_token');
-    if (token) {
-        if (init.headers instanceof Headers) {
-            if (!init.headers.has('Authorization')) init.headers.set('Authorization', `Bearer ${token}`);
-        } else {
-            if (!init.headers['Authorization'] && !init.headers['authorization']) {
-                init.headers['Authorization'] = `Bearer ${token}`;
-            }
-        }
-    }
-    return nativeFetch(resource, init);
-};
-
 window.DEV_MODE_MOCK_LOCATION = false; // Production mode: real GPS tracking active
 
 // Lazy getter for BatteryOptimization plugin
@@ -143,17 +125,21 @@ const createSvgIcon = (svgString, width, height) => {
 let currentUser = null;
 const nativeFetch = window.fetch;
 
-
-// Simplified Fetch Interceptor for API Authorization
+// Consolidated Global Fetch Interceptor: API Authorization & Session Expiry Guard
 window.fetch = async function(resource, init) {
     init = init || {};
     init.headers = init.headers || {};
     
     const token = localStorage.getItem('redrivo_token');
     if (token) {
-        init.headers['Authorization'] = `Bearer ${token}`;
+        if (init.headers instanceof Headers) {
+            if (!init.headers.has('Authorization')) init.headers.set('Authorization', `Bearer ${token}`);
+        } else {
+            if (!init.headers['Authorization'] && !init.headers['authorization']) {
+                init.headers['Authorization'] = `Bearer ${token}`;
+            }
+        }
     }
-    
 
     try {
         const res = await nativeFetch(resource, init);
@@ -166,7 +152,9 @@ window.fetch = async function(resource, init) {
                 localStorage.removeItem('marshalUser');
                 localStorage.removeItem('redrivo_token');
                 
-                showToast('Your session has expired, please log in again.', 'error');
+                if (typeof showToast === 'function') {
+                    showToast('Your session has expired, please log in again.', 'error');
+                }
                 setTimeout(() => {
                     location.reload();
                 }, 1500);
