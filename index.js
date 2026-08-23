@@ -25,9 +25,9 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'gearx-dev-jwt-secret';
 const BCRYPT_ROUNDS = 12;
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyBoc7eGvtpa-MPQ9W_FwWTdO9xAWn43TM0';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 if (!GOOGLE_MAPS_API_KEY && process.env.NODE_ENV === 'production') {
-    console.warn('WARNING: GOOGLE_MAPS_API_KEY is missing in production.');
+    throw new Error('FATAL: GOOGLE_MAPS_API_KEY environment variable is missing.');
 }
 
 
