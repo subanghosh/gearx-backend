@@ -5434,9 +5434,10 @@ apiRouter.get('/admin/withdrawals', async (req, res) => {
     }
 });
 
-// GET admin executive financials summary (Revenue, Driver Payouts, Net Profit)
+// GET admin executive financials summary (Revenue, Driver Payouts, Net Profit, Order Counts)
 apiRouter.get('/admin/executive-financials', async (req, res) => {
-    const { range, startDate, endDate } = req.query;
+    const { range, startDate, endDate, businessLine } = req.query;
+    const bLine = (businessLine || 'all').toLowerCase();
     
     try {
         const now = new Date();
@@ -5470,72 +5471,170 @@ apiRouter.get('/admin/executive-financials', async (req, res) => {
             startUtc = new Date(istStart.getTime() - istOffset);
         }
 
-        const query = `
-            WITH completed_trips AS (
-                SELECT 
-                    t.id AS trip_id,
-                    t.servicerequestid,
-                    t.marshalid,
-                    t.createdat AS trip_created_at,
-                    sr.totalcustomerprice,
-                    sr.baseamount,
-                    sr.extraamount
-                FROM trips t
-                JOIN service_requests sr ON t.servicerequestid = sr.id
-                WHERE t.status = 'completed'
-                  AND t.createdat >= $1 AND t.createdat <= $2
-            ),
-            trip_payments AS (
-                SELECT 
-                    service_request_id,
-                    SUM(amount_paid) AS total_paid
-                FROM ride_payments
-                WHERE status IN ('captured', 'completed', 'paid')
-                GROUP BY service_request_id
-            ),
-            trip_incentives AS (
-                SELECT 
-                    tripid,
-                    SUM(amount) AS total_driver_payout
-                FROM incentives
-                WHERE type != 'withdrawal'
-                GROUP BY tripid
-            )
-            SELECT 
-                COUNT(ct.trip_id)::int AS completed_trips_count,
-                COALESCE(SUM(
-                    COALESCE(
-                        tp.total_paid,
-                        ct.totalcustomerprice,
-                        (COALESCE(ct.baseamount, 0) + COALESCE(ct.extraamount, 0) + 99)
-                    )
-                ), 0)::float AS gross_revenue,
-                COALESCE(SUM(COALESCE(ti.total_driver_payout, 0)), 0)::float AS total_driver_payout
-            FROM completed_trips ct
-            LEFT JOIN trip_payments tp ON ct.servicerequestid = tp.service_request_id
-            LEFT JOIN trip_incentives ti ON ct.trip_id = ti.tripid
-        `;
+        const startEpoch = startUtc.getTime();
+        const endEpoch = endUtc.getTime();
 
-        const result = await pool.query(query, [startUtc.toISOString(), endUtc.toISOString()]);
-        const row = result.rows[0] || { completed_trips_count: 0, gross_revenue: 0, total_driver_payout: 0 };
-        
-        const tripCount = parseInt(row.completed_trips_count) || 0;
+        let row = { completed_count: 0, total_attempts: 0, gross_revenue: 0, total_payout: 0 };
+
+        if (bLine === 'rentals') {
+            const rQuery = `
+                WITH completed_rentals AS (
+                    SELECT 
+                        rb.id,
+                        rb.totalamount,
+                        rb.vehiclerentalamount,
+                        rb.driverfeeamount
+                    FROM rental_bookings rb
+                    WHERE rb.status IN ('completed', 'closed')
+                      AND rb.createdat >= $1 AND rb.createdat <= $2
+                ),
+                all_rentals AS (
+                    SELECT COUNT(rb.id)::int AS total_attempts
+                    FROM rental_bookings rb
+                    WHERE rb.createdat >= $1 AND rb.createdat <= $2
+                )
+                SELECT 
+                    COUNT(cr.id)::int AS completed_count,
+                    COALESCE((SELECT total_attempts FROM all_rentals), 0)::int AS total_attempts,
+                    COALESCE(SUM(cr.totalamount), 0)::float AS gross_revenue,
+                    COALESCE(SUM(COALESCE(cr.vehiclerentalamount * 0.8, 0) + COALESCE(cr.driverfeeamount, 0)), 0)::float AS total_payout
+                FROM completed_rentals cr
+            `;
+            const rRes = await pool.query(rQuery, [startUtc.toISOString(), endUtc.toISOString()]);
+            row = rRes.rows[0] || row;
+        } else if (bLine === 'garage') {
+            const gQuery = `
+                WITH completed_sr AS (
+                    SELECT 
+                        sr.id AS sr_id,
+                        sr.totalcustomerprice,
+                        sr.parts_cost,
+                        sr.labor_cost,
+                        sr.inspection_fee
+                    FROM service_requests sr
+                    WHERE sr.status IN ('completed', 'drop_completed', 'work_completed')
+                      AND (sr.booking_flow = 'garage' OR sr.garageid IS NOT NULL)
+                      AND sr.created_at >= $1 AND sr.created_at <= $2
+                ),
+                all_sr AS (
+                    SELECT COUNT(sr.id)::int AS total_attempts
+                    FROM service_requests sr
+                    WHERE (sr.booking_flow = 'garage' OR sr.garageid IS NOT NULL)
+                      AND sr.created_at >= $1 AND sr.created_at <= $2
+                ),
+                sr_payments AS (
+                    SELECT 
+                        service_request_id,
+                        SUM(amount_paid) AS total_paid
+                    FROM ride_payments
+                    WHERE status IN ('captured', 'completed', 'paid')
+                    GROUP BY service_request_id
+                )
+                SELECT 
+                    COUNT(csr.sr_id)::int AS completed_count,
+                    COALESCE((SELECT total_attempts FROM all_sr), 0)::int AS total_attempts,
+                    COALESCE(SUM(
+                        COALESCE(
+                            sp.total_paid,
+                            csr.totalcustomerprice,
+                            (COALESCE(csr.parts_cost, 0) + COALESCE(csr.labor_cost, 0) + COALESCE(csr.inspection_fee, 0))
+                        )
+                    ), 0)::float AS gross_revenue,
+                    COALESCE(SUM(COALESCE(csr.parts_cost, 0) + COALESCE(csr.labor_cost, 0)), 0)::float AS total_payout
+                FROM completed_sr csr
+                LEFT JOIN sr_payments sp ON csr.sr_id = sp.service_request_id
+            `;
+            const gRes = await pool.query(gQuery, [startEpoch, endEpoch]);
+            row = gRes.rows[0] || row;
+        } else {
+            // Drivers (p2p) or All Combined
+            let tripsFilter = `t.status = 'completed' AND t.createdat >= $1 AND t.createdat <= $2`;
+            let attemptsFilter = `sr.created_at >= $3 AND sr.created_at <= $4`;
+
+            if (bLine === 'drivers') {
+                tripsFilter += ` AND (sr.booking_flow = 'p2p' OR (sr.booking_flow IS NULL AND sr.garageid IS NULL))`;
+                attemptsFilter += ` AND (sr.booking_flow = 'p2p' OR (sr.booking_flow IS NULL AND sr.garageid IS NULL))`;
+            }
+
+            const p2pQuery = `
+                WITH completed_trips AS (
+                    SELECT 
+                        t.id AS trip_id,
+                        t.servicerequestid,
+                        t.marshalid,
+                        t.createdat AS trip_created_at,
+                        sr.totalcustomerprice,
+                        sr.baseamount,
+                        sr.extraamount
+                    FROM trips t
+                    JOIN service_requests sr ON t.servicerequestid = sr.id
+                    WHERE ${tripsFilter}
+                ),
+                all_sr_attempts AS (
+                    SELECT COUNT(sr.id)::int AS total_attempts
+                    FROM service_requests sr
+                    WHERE ${attemptsFilter}
+                ),
+                trip_payments AS (
+                    SELECT 
+                        service_request_id,
+                        SUM(amount_paid) AS total_paid
+                    FROM ride_payments
+                    WHERE status IN ('captured', 'completed', 'paid')
+                    GROUP BY service_request_id
+                ),
+                trip_incentives AS (
+                    SELECT 
+                        tripid,
+                        SUM(amount) AS total_driver_payout
+                    FROM incentives
+                    WHERE type != 'withdrawal'
+                    GROUP BY tripid
+                )
+                SELECT 
+                    COUNT(ct.trip_id)::int AS completed_count,
+                    COALESCE((SELECT total_attempts FROM all_sr_attempts), 0)::int AS total_attempts,
+                    COALESCE(SUM(
+                        COALESCE(
+                            tp.total_paid,
+                            ct.totalcustomerprice,
+                            (COALESCE(ct.baseamount, 0) + COALESCE(ct.extraamount, 0) + 99)
+                        )
+                    ), 0)::float AS gross_revenue,
+                    COALESCE(SUM(COALESCE(ti.total_driver_payout, 0)), 0)::float AS total_payout
+                FROM completed_trips ct
+                LEFT JOIN trip_payments tp ON ct.servicerequestid = tp.service_request_id
+                LEFT JOIN trip_incentives ti ON ct.trip_id = ti.tripid
+            `;
+            const pRes = await pool.query(p2pQuery, [startUtc.toISOString(), endUtc.toISOString(), startEpoch, endEpoch]);
+            row = pRes.rows[0] || row;
+        }
+
+        const completedCount = parseInt(row.completed_count) || 0;
+        const totalAttempts = parseInt(row.total_attempts) || 0;
+        const completionRate = totalAttempts > 0 
+            ? Math.round(((completedCount / totalAttempts) * 100) * 10) / 10 
+            : (completedCount > 0 ? 100.0 : 100.0);
+
         const revenue = Math.round((parseFloat(row.gross_revenue) || 0) * 100) / 100;
-        const driverPayout = Math.round((parseFloat(row.total_driver_payout) || 0) * 100) / 100;
-        const netProfit = Math.round((revenue - driverPayout) * 100) / 100;
+        const payout = Math.round((parseFloat(row.total_payout) || 0) * 100) / 100;
+        const netProfit = Math.round((revenue - payout) * 100) / 100;
         const marginPercent = revenue > 0 ? Math.round(((netProfit / revenue) * 100) * 10) / 10 : 0.0;
-        const avgPayoutPerTrip = tripCount > 0 ? Math.round((driverPayout / tripCount) * 100) / 100 : 0.0;
+        const avgPayoutPerOrder = completedCount > 0 ? Math.round((payout / completedCount) * 100) / 100 : 0.0;
 
         res.json({
+            businessLine: bLine,
             range: range || 'month',
             startDate: startUtc.toISOString(),
             endDate: endUtc.toISOString(),
-            tripCount,
+            completedCount,
+            totalAttempts,
+            completionRate,
             revenue,
-            driverPayout,
+            payout,
             netProfit,
             marginPercent,
-            avgPayoutPerTrip
+            avgPayoutPerOrder
         });
     } catch (err) {
         console.error('Executive financials fetch error:', err.message);

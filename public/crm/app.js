@@ -664,20 +664,24 @@ const router = {
 
 async function renderDashboard(container) {
     window._execDateRange = window._execDateRange || 'month';
+    window._execBusinessLine = window._execBusinessLine || 'all';
     window._execCustomStart = window._execCustomStart || '';
     window._execCustomEnd = window._execCustomEnd || '';
 
     let finData = {
+        businessLine: window._execBusinessLine,
+        completedCount: 0,
+        totalAttempts: 0,
+        completionRate: 100.0,
         revenue: 0,
-        driverPayout: 0,
+        payout: 0,
         netProfit: 0,
         marginPercent: 0,
-        tripCount: 0,
-        avgPayoutPerTrip: 0
+        avgPayoutPerOrder: 0
     };
 
     try {
-        let url = `${API_URL}/admin/executive-financials?range=${window._execDateRange}`;
+        let url = `${API_URL}/admin/executive-financials?range=${window._execDateRange}&businessLine=${window._execBusinessLine}`;
         if (window._execDateRange === 'custom' && window._execCustomStart) {
             url += `&startDate=${window._execCustomStart}`;
             if (window._execCustomEnd) url += `&endDate=${window._execCustomEnd}`;
@@ -725,8 +729,6 @@ async function renderDashboard(container) {
     }
     let pincodeStats = window._crmLiveDemandStats || [];
 
-
-
     // Active order feed ticker mapping
     const activeOrderTicker = activeRequests.map(r => {
         const customer = PROTOTYPE_STATE.customers.find(c => String(c.id) === String(r.customerId || r.customerid));
@@ -767,7 +769,6 @@ async function renderDashboard(container) {
     // Live Duty Stages
     const stages = { idle: 0, enRoute: 0, drivingToGarage: 0, returning: 0 };
     activeMarshals.forEach(m => {
-        // Find if this marshal is on an active trip
         const activeTrip = activeRequests.find(r => 
             String(r.marshalId) === String(m.id) || String(r.deliveryMarshalId) === String(m.id)
         );
@@ -896,7 +897,6 @@ async function renderDashboard(container) {
                     </table>
                 </div>
 
-
                 <!-- Vehicle Type Split (Doughnut Chart UI Representation) -->
                 <div style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:12px;">
                     <h3 style="font-size:0.95rem; color:#fff; margin-bottom:15px; display:flex; align-items:center; gap:6px;">
@@ -919,7 +919,6 @@ async function renderDashboard(container) {
                             </div>
                         </div>
                         
-                        <!-- Custom Doughnut Visualization -->
                         <div style="position:relative; width:80px; height:80px; display:flex; align-items:center; justify-content:center;">
                             <svg width="80" height="80" viewBox="0 0 36 36">
                                 <circle cx="18" cy="18" r="15.915" fill="none" stroke="#4B5563" stroke-width="4"></circle>
@@ -1002,7 +1001,6 @@ async function renderDashboard(container) {
                         Live Marshal Duty Stages Track
                     </h3>
                     <div style="display:flex; flex-direction:column; gap:12px;">
-                        <!-- Idle -->
                         <div>
                             <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Idle / Available</span>
@@ -1012,7 +1010,6 @@ async function renderDashboard(container) {
                                 <div style="width:${liveActiveCount > 0 ? (stages.idle / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:var(--primary);"></div>
                             </div>
                         </div>
-                        <!-- En Route to Customer -->
                         <div>
                             <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">En Route to Customer</span>
@@ -1022,7 +1019,6 @@ async function renderDashboard(container) {
                                 <div style="width:${liveActiveCount > 0 ? (stages.enRoute / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#10B981;"></div>
                             </div>
                         </div>
-                        <!-- Driving to Garage -->
                         <div>
                             <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Driving to Garage</span>
@@ -1032,7 +1028,6 @@ async function renderDashboard(container) {
                                 <div style="width:${liveActiveCount > 0 ? (stages.drivingToGarage / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#3B82F6;"></div>
                             </div>
                         </div>
-                        <!-- Returning to Customer -->
                         <div>
                             <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Returning to Customer</span>
@@ -1099,6 +1094,26 @@ async function renderDashboard(container) {
     }
 
     const range = window._execDateRange || 'month';
+    const bLine = window._execBusinessLine || 'all';
+
+    // Dynamic Card 2 Configuration
+    let card2Title = 'Partner & Driver Payouts';
+    let card2Badge = `Avg ₹${finData.avgPayoutPerOrder.toLocaleString()} / order`;
+    let card2Sub = 'total fulfillment costs';
+
+    if (bLine === 'drivers') {
+        card2Title = 'Driver Payouts & Settlements';
+        card2Badge = `Avg ₹${finData.avgPayoutPerOrder.toLocaleString()} / trip`;
+        card2Sub = 'driver earnings cost';
+    } else if (bLine === 'garage') {
+        card2Title = 'Garage & Parts Settlements';
+        card2Badge = `Avg ₹${finData.avgPayoutPerOrder.toLocaleString()} / job`;
+        card2Sub = 'parts + labor settlement';
+    } else if (bLine === 'rentals') {
+        card2Title = 'Partner Fleet & Driver Payouts';
+        card2Badge = `Avg ₹${finData.avgPayoutPerOrder.toLocaleString()} / booking`;
+        card2Sub = 'fleet & driver payouts';
+    }
 
     const html = `
         <div class="fade-in">
@@ -1126,11 +1141,23 @@ async function renderDashboard(container) {
                             Executive Financial Summary
                         </h2>
                         <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
-                            Realized revenue from completed customer rides, driver settlement costs, and net platform profit.
+                            Realized revenue, partner fulfillment costs, net platform profit, and order volumes.
                         </p>
                     </div>
 
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <!-- Business Line Filter Dropdown -->
+                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
+                            <i data-lucide="layers" style="width:14px; height:14px; color:var(--primary);"></i>
+                            <select id="exec-business-line-select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
+                                <option value="all" ${bLine === 'all' ? 'selected' : ''}>🌐 All Combined</option>
+                                <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>🚗 Drivers (P2P Rides)</option>
+                                <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>🔧 Garage (Service & Repairs)</option>
+                                <option value="rentals" ${bLine === 'rentals' ? 'selected' : ''}>🔑 Vehicle Rentals</option>
+                            </select>
+                        </div>
+
+                        <!-- Date Range Filter Dropdown -->
                         <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
                             <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
                             <select id="exec-range-select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none;">
@@ -1153,62 +1180,81 @@ async function renderDashboard(container) {
                     </div>
                 </div>
 
-                <!-- 3 KPI Cards Grid -->
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:18px;">
+                <!-- 4 KPI Cards Grid -->
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
                     <!-- Card 1: Gross Customer Revenue -->
-                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
-                                <div style="font-size: 2.2rem; font-weight: 800; color: #22C55E; margin: 6px 0 4px 0;">₹${finData.revenue.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #22C55E; margin: 6px 0 4px 0;">₹${finData.revenue.toLocaleString()}</div>
                             </div>
-                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
-                                <i data-lucide="credit-card" style="width:22px; height:22px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
+                                <i data-lucide="credit-card" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
-                                ${finData.tripCount} Completed Trips
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                                ${finData.completedCount} Completed
                             </span>
-                            <span>realized income</span>
+                            <span>realized receipts</span>
                         </div>
                     </div>
 
-                    <!-- Card 2: Driver Payouts & Commission -->
-                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                    <!-- Card 2: Partner / Driver Payouts -->
+                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Driver Payouts & Settlements</span>
-                                <div style="font-size: 2.2rem; font-weight: 800; color: #3B82F6; margin: 6px 0 4px 0;">₹${finData.driverPayout.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${card2Title}</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #3B82F6; margin: 6px 0 4px 0;">₹${finData.payout.toLocaleString()}</div>
                             </div>
-                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
-                                <i data-lucide="truck" style="width:22px; height:22px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
+                                <i data-lucide="truck" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
-                                Avg ₹${finData.avgPayoutPerTrip} / trip
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                                ${card2Badge}
                             </span>
-                            <span>driver earnings cost</span>
+                            <span>${card2Sub}</span>
                         </div>
                     </div>
 
                     <!-- Card 3: Net Platform Profit -->
-                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 12px; padding: 20px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
-                                <div style="font-size: 2.2rem; font-weight: 800; color: #FACC15; margin: 6px 0 4px 0;">₹${finData.netProfit.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #FACC15; margin: 6px 0 4px 0;">₹${finData.netProfit.toLocaleString()}</div>
                             </div>
-                            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
-                                <i data-lucide="wallet" style="width:22px; height:22px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
+                                <i data-lucide="wallet" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
                                 ${finData.marginPercent}% Net Margin
                             </span>
-                            <span>retained platform profit</span>
+                            <span>retained profit</span>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Total Completed Orders -->
+                    <div style="background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Completed Orders</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #A855F7; margin: 6px 0 4px 0;">${finData.completedCount}</div>
+                            </div>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); display:flex; align-items:center; justify-content:center; color:#A855F7;">
+                                <i data-lucide="package-check" style="width:20px; height:20px;"></i>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(168,85,247,0.15); color:#A855F7; border:1px solid rgba(168,85,247,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                                ${finData.completionRate}% Completion Rate
+                            </span>
+                            <span>${finData.completedCount} of ${finData.totalAttempts} total</span>
                         </div>
                     </div>
                 </div>
@@ -1238,6 +1284,11 @@ async function renderDashboard(container) {
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
 }
+
+window.handleExecBusinessLineChange = function(newBL) {
+    window._execBusinessLine = newBL;
+    renderDashboard(document.getElementById('app'));
+};
 
 window.handleExecRangeChange = function(newRange) {
     window._execDateRange = newRange;
