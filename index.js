@@ -1304,7 +1304,21 @@ apiRouter.get('/users/:id', async (req, res) => {
         }
     }
     try {
-        const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        const userRes = await pool.query(`
+            SELECT id, name, role, email, phone, garageId as "garageId", garageid,
+                   status, emailVerified as "emailVerified", emailverified,
+                   phoneVerified as "phoneVerified", phoneverified,
+                   panVerified as "panVerified", panverified,
+                   aadhaarVerified as "aadhaarVerified", aadhaarverified,
+                   dlVerified as "dlVerified", dlverified,
+                   bankVerified as "bankVerified", bankverified,
+                   kycStatus as "kycStatus", kycstatus,
+                   is_online, is_payment_on_hold as "is_payment_on_hold", is_payment_on_hold,
+                   lat, lng, pincode, address, city, state, rating,
+                   profilePictureUrl as "profilePictureUrl", profilepictureurl,
+                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason
+            FROM users WHERE id = $1
+        `, [id]);
         if (userRes.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
