@@ -4310,16 +4310,73 @@ apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUpl
     }
 });
 
-apiRouter.post('/media', upload.single('file'), validateUploadedFiles, (req, res) => {
+apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploadedFiles, async (req, res) => {
     const { referenceId, type } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!referenceId) {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: 'referenceId is required' });
+    }
+
     const filePath = 'uploads/' + req.file.filename;
     const fileName = req.file.originalname;
     const id = 'media_' + Date.now();
 
+    // Ownership Authorization Check
+    let isAuthorized = false;
+    if (req.user.role === 'admin') {
+        isAuthorized = true;
+    } else if (referenceId === req.user.id || referenceId === req.user.garageId) {
+        isAuthorized = true;
+    } else {
+        try {
+            // 1. Check if referenceId is a Trip
+            const tripCheck = await pool.query(
+                `SELECT t.marshalid, t.deliverymarshalid, t.garageid, sr.customerid 
+                 FROM trips t 
+                 LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+                 WHERE t.id = $1`,
+                [referenceId]
+            );
+            if (tripCheck.rows.length > 0) {
+                const t = tripCheck.rows[0];
+                if (t.marshalid === req.user.id || 
+                    t.deliverymarshalid === req.user.id || 
+                    t.customerid === req.user.id ||
+                    (req.user.garageId && (t.garageid === req.user.garageId || t.garageid === req.user.id))) {
+                    isAuthorized = true;
+                }
+            } else {
+                // 2. Check if referenceId is a Service Request
+                const srCheck = await pool.query(
+                    `SELECT customerid, workerid, garageid FROM service_requests WHERE id = $1`,
+                    [referenceId]
+                );
+                if (srCheck.rows.length > 0) {
+                    const sr = srCheck.rows[0];
+                    if (sr.customerid === req.user.id || 
+                        sr.workerid === req.user.id || 
+                        (req.user.garageId && (sr.garageid === req.user.garageId || sr.garageid === req.user.id))) {
+                        isAuthorized = true;
+                    }
+                }
+            }
+        } catch (dbErr) {
+            console.error('Media ownership verification error:', dbErr.message);
+        }
+    }
+
+    if (!isAuthorized) {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to upload media for this entity.' });
+    }
+
     db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
         [id, referenceId, filePath, fileName, type || 'document'], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
+            if (err) {
+                if (req.file) fs.unlink(req.file.path, () => {});
+                return res.status(500).json({ error: err.message });
+            }
             res.json({ success: true, id, filePath });
         });
 });
