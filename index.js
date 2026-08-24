@@ -3237,7 +3237,7 @@ apiRouter.get('/payout-rates', async (req, res) => {
     }
 });
 
-apiRouter.put('/admin/payout-rates', async (req, res) => {
+apiRouter.put('/admin/payout-rates', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const {
             commissionRatePercent,
@@ -5686,7 +5686,7 @@ apiRouter.post('/users/:id/withdrawals', async (req, res) => {
 });
 
 // GET admin withdrawal requests queue
-apiRouter.get('/admin/withdrawals', async (req, res) => {
+apiRouter.get('/admin/withdrawals', authMiddleware, requireRole('admin'), async (req, res) => {
     const statusFilter = req.query.status;
     try {
         let query = `
@@ -5710,7 +5710,7 @@ apiRouter.get('/admin/withdrawals', async (req, res) => {
 });
 
 // GET admin executive financials summary (Revenue, Driver Payouts, Net Profit, Order Counts)
-apiRouter.get('/admin/executive-financials', async (req, res) => {
+apiRouter.get('/admin/executive-financials', authMiddleware, requireRole('admin'), async (req, res) => {
     const { range, startDate, endDate, businessLine } = req.query;
     const bLine = (businessLine || 'all').toLowerCase();
     
@@ -5918,7 +5918,7 @@ apiRouter.get('/admin/executive-financials', async (req, res) => {
 });
 
 // POST admin complete withdrawal (Mark Paid with UTR)
-apiRouter.post('/admin/withdrawals/:id/complete', async (req, res) => {
+apiRouter.post('/admin/withdrawals/:id/complete', authMiddleware, requireRole('admin'), async (req, res) => {
     const withdrawalId = req.params.id;
     const { utrNumber, adminNotes, processedBy } = req.body;
 
@@ -5956,7 +5956,7 @@ apiRouter.post('/admin/withdrawals/:id/complete', async (req, res) => {
 });
 
 // POST admin reject withdrawal (with reason)
-apiRouter.post('/admin/withdrawals/:id/reject', async (req, res) => {
+apiRouter.post('/admin/withdrawals/:id/reject', authMiddleware, requireRole('admin'), async (req, res) => {
     const withdrawalId = req.params.id;
     const { reason, adminNotes, processedBy } = req.body;
 
