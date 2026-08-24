@@ -1896,6 +1896,22 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     // Clean expired OTPs (housekeeping)
     pool.query("DELETE FROM otp_verifications WHERE expiresat < NOW()").catch(() => {});
 
+    // Persistent per-account rate limit: Max 5 OTP requests per 10 minutes
+    try {
+        const rateCheck = await pool.query(
+            `SELECT COUNT(*) FROM otp_verifications 
+             WHERE (phone = $1 OR email = $2) 
+               AND createdat > NOW() - INTERVAL '10 minutes'`,
+            [phone || null, email || null]
+        );
+        const recentAttempts = parseInt(rateCheck.rows[0]?.count || 0, 10);
+        if (recentAttempts >= 5) {
+            return res.status(429).json({ error: 'Too many OTP requests for this account. Please wait 10 minutes before requesting again.' });
+        }
+    } catch (rateErr) {
+        console.warn('OTP rate limit check error:', rateErr.message);
+    }
+
     const otp = process.env.NODE_ENV !== 'production' ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
@@ -2427,6 +2443,53 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
 
+function checkMagicBytes(buffer, mimetype) {
+    if (!buffer || buffer.length < 4) return false;
+    // PNG: 89 50 4E 47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return mimetype === 'image/png';
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return mimetype === 'image/jpeg' || mimetype === 'image/jpg';
+    // PDF: %PDF (25 50 44 46)
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return mimetype === 'application/pdf';
+    // WebP: RIFF .... WEBP
+    if (buffer.length >= 12 && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return mimetype === 'image/webp';
+    // MP4 / QuickTime / 3GP (ISO Base Media File: ....ftyp or ....moov)
+    if (buffer.length >= 8) {
+        const typeTag = buffer.toString('ascii', 4, 8);
+        if (typeTag === 'ftyp' || typeTag === 'moov') return mimetype === 'video/mp4' || mimetype === 'video/quicktime' || mimetype === 'video/3gpp';
+    }
+    // WebM / Matroska (EBML header: 1A 45 DF A3)
+    if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) return mimetype === 'video/webm' || mimetype === 'video/x-matroska';
+    // Ogg: OggS (4F 67 67 53)
+    if (buffer[0] === 0x4F && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) return mimetype === 'video/ogg';
+    return false;
+}
+
+const validateUploadedFiles = (req, res, next) => {
+    const filesToCheck = [];
+    if (req.file) filesToCheck.push(req.file);
+    if (req.files) {
+        if (Array.isArray(req.files)) filesToCheck.push(...req.files);
+        else Object.values(req.files).flat().forEach(f => filesToCheck.push(f));
+    }
+    for (const file of filesToCheck) {
+        try {
+            const fd = fs.openSync(file.path, 'r');
+            const buffer = Buffer.alloc(32);
+            const bytesRead = fs.readSync(fd, buffer, 0, 32, 0);
+            fs.closeSync(fd);
+            if (bytesRead < 4 || !checkMagicBytes(buffer, file.mimetype)) {
+                filesToCheck.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+                return res.status(400).json({ error: `Invalid file content. The uploaded file does not match the signature for ${file.mimetype}.` });
+            }
+        } catch (err) {
+            filesToCheck.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+            return res.status(400).json({ error: 'Failed to inspect uploaded file.' });
+        }
+    }
+    next();
+};
+
 const verifyOwnership = (req, res, next) => {
     if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
         return res.status(403).json({ error: 'Forbidden: You can only modify your own account.' });
@@ -2434,7 +2497,7 @@ const verifyOwnership = (req, res, next) => {
     next();
 };
 
-apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, upload.single('file'), async (req, res) => {
+apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, upload.single('file'), validateUploadedFiles, async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const file = req.file;
@@ -2453,7 +2516,7 @@ apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, up
     }
 });
 
-apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.single('file'), async (req, res) => {
+apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.single('file'), validateUploadedFiles, async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const { docType } = req.body;
@@ -2499,7 +2562,7 @@ apiRouter.put('/workers/:id/kyc', authMiddleware, verifyOwnership, upload.fields
     { name: 'faceFile', maxCount: 1 },
     { name: 'dlFile', maxCount: 1 },
     { name: 'dlBackFile', maxCount: 1 }
-]), async (req, res) => {
+]), validateUploadedFiles, async (req, res) => {
     let { name, email, panNumber, aadhaarNumber, dlNumber, kycStatus,
             dob, gender, city, address, state, pincode,
             bankAccountName, bankAccountNumber, bankIFSC, bankName } = req.body;
@@ -4158,7 +4221,7 @@ const OWNER_DOC_MAP = {
 };
 const ALLOWED_MEDIA_DOC_TYPES = ['gst', 'cheque', 'trade_license', 'workshop_photo', 'banner', 'agreement', 'document', 'pan', 'aadhaar', 'dl', 'profile'];
 
-apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), (req, res) => {
+apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUploadedFiles, (req, res) => {
     const { entityId, docType } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const filePath = 'uploads/' + req.file.filename;
@@ -4199,7 +4262,7 @@ apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), (req, res) 
     }
 });
 
-apiRouter.post('/media', upload.single('file'), (req, res) => {
+apiRouter.post('/media', upload.single('file'), validateUploadedFiles, (req, res) => {
     const { referenceId, type } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const filePath = 'uploads/' + req.file.filename;
@@ -4213,9 +4276,13 @@ apiRouter.post('/media', upload.single('file'), (req, res) => {
         });
 });
 
-apiRouter.post('/garages/:id/documents', upload.single('file'), (req, res) => {
+apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), validateUploadedFiles, (req, res) => {
     const { docType } = req.body;
     const garageId = req.params.id;
+    if (req.user.role !== 'admin' && garageId !== req.user.garageId && garageId !== req.user.id) {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        return res.status(403).json({ error: 'Forbidden: You do not own this garage profile.' });
+    }
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const filePath = 'uploads/' + req.file.filename;
     const fileName = req.file.originalname;
@@ -4228,8 +4295,12 @@ apiRouter.post('/garages/:id/documents', upload.single('file'), (req, res) => {
         });
 });
 
-apiRouter.delete('/garages/:id/documents/:docType', (req, res) => {
-    db.run("DELETE FROM media WHERE referenceId = $1 AND docType = $2", [req.params.id, req.params.docType], (err) => {
+apiRouter.delete('/garages/:id/documents/:docType', authMiddleware, (req, res) => {
+    const garageId = req.params.id;
+    if (req.user.role !== 'admin' && garageId !== req.user.garageId && garageId !== req.user.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not own this garage profile.' });
+    }
+    db.run("DELETE FROM media WHERE referenceId = $1 AND docType = $2", [garageId, req.params.docType], (err) => {
         res.json({ success: !err });
     });
 });
