@@ -798,6 +798,19 @@ apiRouter.get('/admin/system/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly', timestamp: new Date() });
 });
 
+apiRouter.get('/admin/system/env-keys', authMiddleware, requireRole('admin'), (req, res) => {
+    res.json({
+        railway: {
+            commitSha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || null,
+            branch: process.env.RAILWAY_GIT_BRANCH || null,
+            commitMessage: process.env.RAILWAY_GIT_COMMIT_MESSAGE || null,
+            serviceName: process.env.RAILWAY_SERVICE_NAME || null,
+            environment: process.env.RAILWAY_ENVIRONMENT_NAME || null
+        },
+        envKeys: Object.keys(process.env).sort()
+    });
+});
+
 apiRouter.get('/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly' });
 });
