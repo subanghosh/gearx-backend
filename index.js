@@ -1968,6 +1968,43 @@ async function sendFast2SmsOtp(phone, otp) {
     }
 }
 
+apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), async (req, res) => {
+    const phone = req.query.phone || '9093184965';
+    const otp = req.query.otp || '123456';
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    const apiKey = process.env.FAST2SMS_API_KEY;
+
+    if (!apiKey) {
+        return res.json({
+            configured: false,
+            error: 'FAST2SMS_API_KEY is not configured in environment.'
+        });
+    }
+
+    try {
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
+        const start = Date.now();
+        const apiRes = await fetch(url);
+        const rawText = await apiRes.text();
+        let jsonData = null;
+        try { jsonData = JSON.parse(rawText); } catch (e) {}
+
+        res.json({
+            configured: true,
+            apiKeyPrefix: apiKey.slice(0, 4) + '****',
+            targetPhone: cleanPhone,
+            httpStatus: apiRes.status,
+            latencyMs: Date.now() - start,
+            fast2smsResponse: jsonData || rawText
+        });
+    } catch (err) {
+        res.status(500).json({
+            configured: true,
+            error: err.message
+        });
+    }
+});
+
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone } = req.body;
     if (!phone && !email)
