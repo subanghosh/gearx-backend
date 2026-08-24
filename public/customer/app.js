@@ -1,20 +1,101 @@
-// Global ngrok bypass patch for WebViews
-const originalFetch = window.fetch;
-window.fetch = function (input, init) {
-    let url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-    if (typeof url === 'string' && url.includes('ngrok-free.dev')) {
-        console.log('[DEBUG-TRACKING] Injecting ngrok bypass header for URL:', url);
-        init = init || {};
-        init.headers = init.headers || {};
+// Consolidated Global Fetch Interceptor: Tunnel Bypass, Bearer Auth & Session Expiry Guard
+const nativeFetch = window.fetch;
+window.fetch = async function (input, init) {
+    init = init || {};
+    init.headers = init.headers || {};
+
+    const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+
+    // 1. Inject bypass headers for development tunnels
+    if (typeof url === 'string' && (url.includes('ngrok-free.dev') || url.includes('ngrok-free.app') || url.includes('loca.lt'))) {
         if (init.headers instanceof Headers) {
             init.headers.set('ngrok-skip-browser-warning', 'true');
+            init.headers.set('Bypass-Tunnel-Reminder', 'true');
         } else if (Array.isArray(init.headers)) {
             init.headers.push(['ngrok-skip-browser-warning', 'true']);
+            init.headers.push(['Bypass-Tunnel-Reminder', 'true']);
         } else {
             init.headers['ngrok-skip-browser-warning'] = 'true';
+            init.headers['Bypass-Tunnel-Reminder'] = 'true';
         }
     }
-    return originalFetch(input, init);
+
+    // 2. Attach Authorization Bearer token (supports Objects, Headers instances, and FormData multipart requests)
+    const token = localStorage.getItem('redrivo_token') || localStorage.getItem('token');
+    if (token) {
+        if (init.headers instanceof Headers) {
+            if (!init.headers.has('Authorization')) init.headers.set('Authorization', `Bearer ${token}`);
+        } else if (Array.isArray(init.headers)) {
+            if (!init.headers.some(h => h[0].toLowerCase() === 'authorization')) {
+                init.headers.push(['Authorization', `Bearer ${token}`]);
+            }
+        } else {
+            if (!init.headers['Authorization'] && !init.headers['authorization']) {
+                init.headers['Authorization'] = `Bearer ${token}`;
+            }
+        }
+    }
+
+    // 3. Native CapacitorHttp routing (for non-FormData requests)
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp && !(init.body instanceof FormData)) {
+        try {
+            const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
+            let formattedHeaders = {};
+            if (init.headers instanceof Headers) {
+                formattedHeaders = Object.fromEntries(init.headers.entries());
+            } else if (Array.isArray(init.headers)) {
+                init.headers.forEach(([k, v]) => formattedHeaders[k] = v);
+            } else {
+                formattedHeaders = { ...init.headers };
+            }
+
+            const nativeRes = await window.Capacitor.Plugins.CapacitorHttp.request({
+                url: url,
+                method: method,
+                headers: formattedHeaders,
+                data: init.body
+            });
+
+            const res = new Response(typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data), {
+                status: nativeRes.status,
+                headers: new Headers(nativeRes.headers)
+            });
+
+            if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp')) {
+                if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
+                    console.warn('[AUTH] Session expired or revoked (401/403). Clearing session...');
+                    localStorage.removeItem('redrivo_token');
+                    localStorage.removeItem('redrivo_current_user');
+                    if (typeof showToast === 'function') {
+                        showToast('Session expired. Please log in again.', 'error');
+                    }
+                    setTimeout(() => location.reload(), 1500);
+                }
+            }
+
+            return res;
+        } catch (err) {
+            console.error("CapacitorHttp native request failed, falling back to browser fetch:", err);
+        }
+    }
+
+    // 4. Standard fetch fallback
+    const res = await nativeFetch(input, init);
+
+    // 5. Session expiry guard
+    if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp')) {
+        if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
+            console.warn('[AUTH] Session expired or revoked (401/403). Clearing session...');
+            localStorage.removeItem('redrivo_token');
+            localStorage.removeItem('redrivo_current_user');
+            if (typeof showToast === 'function') {
+                showToast('Session expired. Please log in again.', 'error');
+            }
+            setTimeout(() => location.reload(), 1500);
+        }
+    }
+
+    return res;
 };
 
 const isNativeApp = typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
@@ -209,50 +290,6 @@ function animateGoogleMarkerSmoothly(marker, toLat, toLng, duration = 3000) {
     requestAnimationFrame(step);
 }
 
-const nativeFetch = window.fetch;
-
-window.fetch = async function(resource, init) {
-    init = init || {};
-    init.headers = init.headers || {};
-    
-    const token = localStorage.getItem('redrivo_token') || localStorage.getItem('token') || localStorage.getItem('authToken');
-    if (token) {
-        init.headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 1. Inject bypass headers for our development tunnels
-    if (typeof resource === 'string' && (resource.includes('loca.lt') || resource.includes('ngrok-free.dev') || resource.includes('ngrok-free.app'))) {
-        init.headers['Bypass-Tunnel-Reminder'] = 'true';
-        init.headers['ngrok-skip-browser-warning'] = 'true';
-    }
-
-    // 2. If running natively and CapacitorHttp is available, route directly to native HTTP
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp) {
-        try {
-            const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
-            const headers = (init && init.headers) ? init.headers : {};
-            const body = (init && init.body) ? init.body : undefined;
-
-            const nativeRes = await window.Capacitor.Plugins.CapacitorHttp.request({
-                url: resource,
-                method: method,
-                headers: headers,
-                data: body
-            });
-
-            // Map native response back to standard fetch Response object
-            return new Response(typeof nativeRes.data === 'string' ? nativeRes.data : JSON.stringify(nativeRes.data), {
-                status: nativeRes.status,
-                headers: new Headers(nativeRes.headers)
-            });
-        } catch (err) {
-            console.error("CapacitorHttp native request failed, falling back to browser fetch:", err);
-        }
-    }
-
-    // 3. Fallback to browser's standard fetch
-    return nativeFetch(resource, init);
-};
 
 window.redrivoSystemSettings = {};
 window.customerRatePerKm = 15;
