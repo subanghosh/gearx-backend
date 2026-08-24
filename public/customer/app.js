@@ -106,6 +106,27 @@ const API_URL = isNativeApp
 // Safety Kill Switch: Customer advance payments disabled by default in production
 window.ENABLE_CUSTOMER_ADVANCE_PAYMENT = false;
 
+// --- XSS & DOM SANITIZATION HELPERS ---
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeAttrJs(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 // Initialize Socket.io connection
 window.socket = null;
 if (typeof io !== 'undefined') {
@@ -2628,12 +2649,15 @@ function getCurrentPickupAndDropHtml(vehicleId) {
         const lat = parseFloat(pickupInput.getAttribute('data-lat'));
         const lng = parseFloat(pickupInput.getAttribute('data-lng'));
         if (val && val !== 'Detecting current location...' && !isNaN(lat) && !isNaN(lng)) {
+            const escapedVal = escapeHtml(val);
+            const attrVal = escapeAttrJs(val);
+            const safeVehId = escapeAttrJs(vehicleId);
             html += `
-                <div class="suggestion-item" onclick="selectLocationSuggestion('${vehicleId}', '${val.replace(/'/g, "\\'")}', ${lat}, ${lng}, false, 'saved')">
+                <div class="suggestion-item" onclick="selectLocationSuggestion('${safeVehId}', '${attrVal}', ${lat}, ${lng}, false, 'saved')">
                     <span class="suggestion-icon" style="color:#facc15;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg></span>
                     <div class="suggestion-details">
                         <span class="suggestion-name" style="font-weight:700; color: #facc15;">Pickup Address</span>
-                        <span class="suggestion-address">${val}</span>
+                        <span class="suggestion-address">${escapedVal}</span>
                     </div>
                 </div>
             `;
@@ -2645,12 +2669,15 @@ function getCurrentPickupAndDropHtml(vehicleId) {
         const lat = parseFloat(dropInput.getAttribute('data-lat'));
         const lng = parseFloat(dropInput.getAttribute('data-lng'));
         if (val && !isNaN(lat) && !isNaN(lng)) {
+            const escapedVal = escapeHtml(val);
+            const attrVal = escapeAttrJs(val);
+            const safeVehId = escapeAttrJs(vehicleId);
             html += `
-                <div class="suggestion-item" onclick="selectLocationSuggestion('${vehicleId}', '${val.replace(/'/g, "\\'")}', ${lat}, ${lng}, false, 'saved')">
+                <div class="suggestion-item" onclick="selectLocationSuggestion('${safeVehId}', '${attrVal}', ${lat}, ${lng}, false, 'saved')">
                     <span class="suggestion-icon" style="color:#22c55e;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg></span>
                     <div class="suggestion-details">
                         <span class="suggestion-name" style="font-weight:700; color: #22c55e;">Drop Address</span>
-                        <span class="suggestion-address">${val}</span>
+                        <span class="suggestion-address">${escapedVal}</span>
                     </div>
                 </div>
             `;
@@ -2670,10 +2697,13 @@ function getCustomSavedAddressesHtml(vehicleId) {
     if (customAddresses.length === 0) return '';
 
     return customAddresses.map(item => {
-        const displayName = item.flat;
-        const subName = item.landmark ? `${item.area} (Landmark: ${item.landmark})` : item.area;
+        const displayName = escapeHtml(item.flat);
+        const rawSubName = item.landmark ? `${item.area} (Landmark: ${item.landmark})` : item.area;
+        const subName = escapeHtml(rawSubName);
+        const attrAddress = escapeAttrJs(item.address);
+        const safeVehId = escapeAttrJs(vehicleId);
         return `
-            <div class="suggestion-item" onclick="selectLocationSuggestion('${vehicleId}', '${item.address.replace(/'/g, "\\'")}', ${item.lat}, ${item.lng}, false, 'saved')">
+            <div class="suggestion-item" onclick="selectLocationSuggestion('${safeVehId}', '${attrAddress}', ${item.lat}, ${item.lng}, false, 'saved')">
                 <span class="suggestion-icon">${ICONS.other}</span>
                 <div class="suggestion-details">
                     <span class="suggestion-name" style="font-weight:700;">${displayName}</span>
@@ -2765,15 +2795,21 @@ function getSearchHistoryHtml(vehicleId) {
     const otherAddr = presets.other?.address || '';
 
     return history.map(item => {
-        const displayAddr = item.address || '';
-        const displayName = item.name || item.address.split(',')[0];
+        const rawAddr = item.address || '';
+        const rawName = item.name || rawAddr.split(',')[0];
+        const displayAddr = escapeHtml(rawAddr);
+        const displayName = escapeHtml(rawName);
+        const attrAddr = escapeAttrJs(rawAddr);
+        const attrName = escapeAttrJs(rawName);
+        const safePlaceId = escapeAttrJs(item.place_id || '');
+        const safeVehId = escapeAttrJs(vehicleId);
         
         // Determine heart icon status
-        const isSaved = displayAddr === homeAddr || displayAddr === officeAddr || displayAddr === otherAddr;
+        const isSaved = rawAddr === homeAddr || rawAddr === officeAddr || rawAddr === otherAddr;
         const heartIcon = isSaved ? 'favorite' : 'favorite_border';
         const heartColor = isSaved ? '#facc15' : '#94a3b8'; // Gold heart if saved, blue-grey otherwise
         
-        let clickHandler = `window.handleSearchItemClick('${vehicleId}', '${displayAddr.replace(/'/g, "\\'")}', ${item.lat}, ${item.lng}, '${item.place_id || ''}')`;
+        let clickHandler = `window.handleSearchItemClick('${safeVehId}', '${attrAddr}', ${item.lat}, ${item.lng}, '${safePlaceId}')`;
 
         return `
             <div class="suggestion-item" 
@@ -2788,7 +2824,7 @@ function getSearchHistoryHtml(vehicleId) {
                     </div>
                 </div>
                 
-                <span class="material-symbols-outlined" style="color: ${heartColor}; font-size: 1.2rem; cursor: pointer; padding: 8px;" onclick="event.stopPropagation(); window.toggleFavoriteAddress('${item.place_id || ''}', '${displayName.replace(/'/g, "\\'")}', '${displayAddr.replace(/'/g, "\\'")}', ${item.lat}, ${item.lng}, '${vehicleId}')">
+                <span class="material-symbols-outlined" style="color: ${heartColor}; font-size: 1.2rem; cursor: pointer; padding: 8px;" onclick="event.stopPropagation(); window.toggleFavoriteAddress('${safePlaceId}', '${attrName}', '${attrAddr}', ${item.lat}, ${item.lng}, '${safeVehId}')">
                     ${heartIcon}
                 </span>
             </div>
@@ -2929,10 +2965,16 @@ function handleLocationInput(vehicleId) {
                     const lng = item.lng || 0;
                     const placeId = item.place_id || '';
                     
-                    let displayAddr = item.address;
+                    let rawDisplayAddr = item.address;
                     if (item.name && item.name !== item.address && !item.address.includes(item.name)) {
-                        displayAddr = item.name + ', ' + item.address;
+                        rawDisplayAddr = item.name + ', ' + item.address;
                     }
+                    
+                    const displayName = escapeHtml(item.name);
+                    const displayAddr = escapeHtml(item.address);
+                    const attrDisplayAddr = escapeAttrJs(rawDisplayAddr);
+                    const safePlaceId = escapeAttrJs(placeId);
+                    const safeVehId = escapeAttrJs(vehicleId);
                     
                     let distanceBadge = '';
                     if (item.distance_meters) {
@@ -2941,15 +2983,15 @@ function handleLocationInput(vehicleId) {
                     }
                     
                     return `
-                        <div class="suggestion-item" onclick="selectLocationSuggestion('${vehicleId}', '${displayAddr.replace(/'/g, "\\'")}', ${lat}, ${lng}, false, null, '${placeId}')" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer;">
+                        <div class="suggestion-item" onclick="selectLocationSuggestion('${safeVehId}', '${attrDisplayAddr}', ${lat}, ${lng}, false, null, '${safePlaceId}')" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer;">
                             <span class="suggestion-icon" style="color: #71717a; margin-top: 2px;">
                                 <span class="material-symbols-outlined" style="font-size: 1.25rem;">location_on</span>
                             </span>
                             <div class="suggestion-details" style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
-                                <span class="suggestion-name" style="color: #ffffff; font-weight: 700; font-size: 0.88rem;">${item.name}</span>
+                                <span class="suggestion-name" style="color: #ffffff; font-weight: 700; font-size: 0.88rem;">${displayName}</span>
                                 <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                                     ${distanceBadge}
-                                    <span class="suggestion-address" style="color: #a1a1aa; font-size: 0.75rem; line-height: 1.2;">${item.address}</span>
+                                    <span class="suggestion-address" style="color: #a1a1aa; font-size: 0.75rem; line-height: 1.2;">${displayAddr}</span>
                                 </div>
                             </div>
                         </div>
@@ -2973,11 +3015,14 @@ function handleLocationInput(vehicleId) {
             
             // 4. Custom typed text (ONLY as fallback if zero suggestions are found)
             if (!data || data.length === 0) {
+                const escapedQuery = escapeHtml(query);
+                const attrQuery = escapeAttrJs(query);
+                const safeVehId = escapeAttrJs(vehicleId);
                 html += `
-                    <div class="suggestion-item" onclick="selectLocationSuggestion('${vehicleId}', '${query.replace(/'/g, "\\'")}', 19.0760, 72.8777, true)">
+                    <div class="suggestion-item" onclick="selectLocationSuggestion('${safeVehId}', '${attrQuery}', 19.0760, 72.8777, true)">
                         <span class="suggestion-icon">${ICONS.manual}</span>
                         <div class="suggestion-details">
-                            <span class="suggestion-name">Use custom: "${query}"</span>
+                            <span class="suggestion-name">Use custom: &quot;${escapedQuery}&quot;</span>
                             <span class="suggestion-address">Use typed text as location (coordinates will be generated)</span>
                         </div>
                     </div>
@@ -6387,11 +6432,15 @@ window.handleGarageLocationInput = function() {
                     const lat = item.lat || 0;
                     const lng = item.lng || 0;
                     const placeId = item.place_id || '';
+                    const displayName = escapeHtml(item.name);
+                    const displayAddr = escapeHtml(item.address);
+                    const attrAddr = escapeAttrJs(item.address);
+                    const safePlaceId = escapeAttrJs(placeId);
                     return `
                         <div class="suggestion-item" style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" 
-                             onclick="selectGarageLocationSuggestion('${item.address.replace(/'/g, "\\'")}', ${lat}, ${lng}, '${placeId}')">
-                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">${item.name}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">${item.address}</div>
+                             onclick="selectGarageLocationSuggestion('${attrAddr}', ${lat}, ${lng}, '${safePlaceId}')">
+                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">${displayName}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${displayAddr}</div>
                         </div>
                     `;
                 }).join('');
@@ -8550,14 +8599,19 @@ window.openRouteSearchModal = function(type, indexOrId = null) {
                             distanceBadge = `<span style="font-size: 0.7rem; color: #facc15; background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 4px; padding: 1px 4px; font-weight: 700; margin-right: 6px;">${km} km</span>`;
                         }
 
+                        const displayName = escapeHtml(item.name);
+                        const displayAddr = escapeHtml(item.address);
+                        const attrAddr = escapeAttrJs(item.address);
+                        const safePlaceId = escapeAttrJs(item.place_id || '');
+
                         return `
-                            <div class="suggestion-item" style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer;" onclick="selectRouteSearchSuggestion(window.currentSearchType, window.currentSearchIndex, '${item.address.replace(/'/g, "\\'")}', '${item.place_id}', ${item.lat || 'null'}, ${item.lng || 'null'})">
+                            <div class="suggestion-item" style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer;" onclick="selectRouteSearchSuggestion(window.currentSearchType, window.currentSearchIndex, '${attrAddr}', '${safePlaceId}', ${item.lat || 'null'}, ${item.lng || 'null'})">
                                 <span class="material-symbols-outlined" style="color: #a1a1aa; font-size: 1.2rem; margin-top: 2px;">location_on</span>
                                 <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
-                                    <span style="color: #ffffff; font-weight: 700; font-size: 0.9rem;">${item.name}</span>
+                                    <span style="color: #ffffff; font-weight: 700; font-size: 0.9rem;">${displayName}</span>
                                     <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                                         ${distanceBadge}
-                                        <span style="color: #a1a1aa; font-size: 0.78rem; line-height: 1.2;">${item.address}</span>
+                                        <span style="color: #a1a1aa; font-size: 0.78rem; line-height: 1.2;">${displayAddr}</span>
                                     </div>
                                 </div>
                             </div>
