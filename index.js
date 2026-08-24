@@ -1153,7 +1153,7 @@ apiRouter.post('/garages', (req, res) => {
 });
 
 
-apiRouter.post('/users', async (req, res) => {
+apiRouter.post('/users', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const { id, name, phone, email, role, password, status, pincode } = req.body;
         if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
@@ -1174,7 +1174,7 @@ apiRouter.post('/users', async (req, res) => {
     }
 });
 
-apiRouter.get('/users', async (req, res) => {
+apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, name, role, email, phone, garageId as "garageId", garageid,
