@@ -133,17 +133,46 @@ const uploadLimiter = rateLimit({
 app.use('/api', globalLimiter);
 
 // --- JWT HELPERS ---
-function signToken(payload) {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+function signToken(payload, tokenVersion = 1) {
+    return jwt.sign({ ...payload, tokenVersion: tokenVersion || 1 }, JWT_SECRET, { expiresIn: '24h' });
 }
 
-function authMiddleware(req, res, next) {
+async function revokeUserSessions(userId) {
+    if (!userId) return;
+    await pool.query('UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = $1', [userId]).catch(() => {});
+    await pool.query('UPDATE garage_workers SET token_version = COALESCE(token_version, 1) + 1 WHERE id = $1', [userId]).catch(() => {});
+}
+
+async function authMiddleware(req, res, next) {
     const header = req.headers.authorization;
     if (!header || !header.startsWith('Bearer ')) {
         return res.status(401).json({ error: 'Authorization token required' });
     }
     try {
-        req.user = jwt.verify(header.split(' ')[1], JWT_SECRET);
+        const token = header.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Live revocation and status verification
+        const result = await pool.query('SELECT token_version, status, role, garageid FROM users WHERE id = $1', [decoded.id]);
+        const liveUser = result.rows[0];
+
+        if (!liveUser) {
+            return res.status(401).json({ error: 'User account no longer exists' });
+        }
+        if (liveUser.status === 'suspended' || liveUser.status === 'banned' || liveUser.status === 'inactive') {
+            return res.status(403).json({ error: 'Account is suspended or inactive' });
+        }
+        if (decoded.tokenVersion !== undefined && liveUser.token_version !== undefined) {
+            if (decoded.tokenVersion !== liveUser.token_version) {
+                return res.status(401).json({ error: 'Session expired or revoked. Please log in again.' });
+            }
+        }
+
+        req.user = {
+            ...decoded,
+            role: liveUser.role || decoded.role,
+            garageId: liveUser.garageid || decoded.garageId
+        };
         next();
     } catch {
         res.status(401).json({ error: 'Token expired or invalid' });
@@ -1388,6 +1417,10 @@ apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
         vals.push(id);
         await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`, vals);
 
+        if (req.body.password !== undefined || req.body.role !== undefined || req.body.status !== undefined) {
+            await revokeUserSessions(id);
+        }
+
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
             if (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved') {
@@ -1580,6 +1613,10 @@ apiRouter.put('/users/:id', authMiddleware, async (req, res) => {
 
         vals.push(id);
         await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`, vals);
+
+        if (req.body.password !== undefined || req.body.role !== undefined || req.body.status !== undefined) {
+            await revokeUserSessions(id);
+        }
 
         const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
         if (kycStatusVal !== undefined) {
@@ -1883,9 +1920,18 @@ apiRouter.post('/auth/login', loginLimiter, async (req, res) => {
             valid = (password === user.password); // legacy plaintext
         }
         if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-        const token = signToken({ id: user.id, role: user.role, garageId: user.garageId });
+        const token = signToken({ id: user.id, role: user.role, garageId: user.garageId }, user.token_version || user.tokenversion || 1);
         res.json({ ...user, password: undefined, token });
     });
+});
+
+apiRouter.post('/auth/logout', authMiddleware, async (req, res) => {
+    try {
+        await revokeUserSessions(req.user.id);
+        res.json({ success: true, message: 'Logged out successfully. All sessions revoked.' });
+    } catch (err) {
+        res.status(500).json({ error: 'Logout failed: ' + err.message });
+    }
 });
 
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
@@ -1967,7 +2013,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 await pool.query(`UPDATE garage_workers SET phoneverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
             }
 
-            const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null });
+            const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null }, userObj.token_version || userObj.tokenversion || 1);
             return res.json({ verified: true, isNewUser, token, user: userObj });
         };
 
@@ -1986,7 +2032,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 status: user.status, 
                 kycStatus: user.kycStatus || user.kycstatus,
                 phone: user.phone,
-                email: user.email
+                email: user.email,
+                token_version: user.token_version || user.tokenversion || 1
             });
         }
 
@@ -2005,7 +2052,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 status: 'active', 
                 kycStatus: worker.kycStatus || worker.kycstatus,
                 phone: worker.phone,
-                email: null
+                email: null,
+                token_version: worker.token_version || worker.tokenversion || 1
             });
         }
 
