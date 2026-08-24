@@ -4332,7 +4332,7 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
         try {
             // 1. Check if referenceId is a Trip
             const tripCheck = await pool.query(
-                `SELECT t.marshalid, t.deliverymarshalid, t.garageid, sr.customerid 
+                `SELECT t.marshalid, t.deliverymarshalid, sr.garageid, sr.customerid 
                  FROM trips t 
                  LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
                  WHERE t.id = $1`,
