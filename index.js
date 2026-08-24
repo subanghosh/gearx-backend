@@ -5144,7 +5144,43 @@ apiRouter.post('/trips', (req, res) => {
     );
 });
 
-apiRouter.post('/trips/:id/approve-audit', (req, res) => res.json({ success: true }));
+apiRouter.post('/trips/:id/approve-audit', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.id, t.servicerequestid, sr.customerid 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [tripId]
+        );
+        const trip = tripRes.rows[0];
+        if (!trip) {
+            return res.status(404).json({ error: 'Trip not found' });
+        }
+
+        // Allow the trip's customer owner or an admin
+        if (req.user.role !== 'admin' && trip.customerid !== req.user.id) {
+            return res.status(403).json({ error: 'Forbidden: You do not have permission to approve the audit for this trip.' });
+        }
+
+        if (trip.servicerequestid) {
+            await pool.query(
+                `UPDATE service_requests SET auditstatus = 'approved', status = 'in_progress', updatedat = NOW() WHERE id = $1`,
+                [trip.servicerequestid]
+            );
+            db.run(
+                `UPDATE service_requests SET auditStatus = 'approved', status = 'in_progress' WHERE id = ?`,
+                [trip.servicerequestid]
+            );
+        }
+
+        res.json({ success: true, message: 'Trip audit approved successfully.' });
+    } catch (err) {
+        console.error('Error approving trip audit:', err.message);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
 apiRouter.post('/trips/:id/audit', (req, res) => res.json({ success: true, customerEstimate: 600 }));
 
 apiRouter.post('/trips/:id/verify-otp-1', (req, res) => {
