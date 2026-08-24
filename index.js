@@ -5166,7 +5166,7 @@ apiRouter.post('/trips/:id/approve-audit', authMiddleware, async (req, res) => {
 
         if (trip.servicerequestid) {
             await pool.query(
-                `UPDATE service_requests SET auditstatus = 'approved', status = 'in_progress', updatedat = NOW() WHERE id = $1`,
+                `UPDATE service_requests SET auditstatus = 'approved', status = 'in_progress' WHERE id = $1`,
                 [trip.servicerequestid]
             );
             db.run(
