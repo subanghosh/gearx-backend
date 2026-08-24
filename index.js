@@ -729,14 +729,28 @@ const { getMessaging } = require('firebase-admin/messaging');
 
 let fcmInitialized = false;
 try {
-    const serviceAccount = require('./firebaseServiceAccountKey.json');
-    initializeApp({
-        credential: cert(serviceAccount)
-    });
-    fcmInitialized = true;
-    console.log('Firebase Admin initialized.');
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        try {
+            serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        } catch (parseErr) {
+            serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8'));
+        }
+    } else if (fs.existsSync(path.join(__dirname, 'firebaseServiceAccountKey.json'))) {
+        serviceAccount = require('./firebaseServiceAccountKey.json');
+    }
+
+    if (serviceAccount) {
+        initializeApp({
+            credential: cert(serviceAccount)
+        });
+        fcmInitialized = true;
+        console.log('Firebase Admin initialized.');
+    } else {
+        console.warn('Firebase Admin: No credentials found. FCM disabled.');
+    }
 } catch(e) {
-    console.warn('Firebase Admin init failed (missing key json or error). FCM disabled.');
+    console.warn('Firebase Admin init failed (missing key json or error). FCM disabled:', e.message);
 }
 
 async function ensureKycColumns() {
