@@ -1753,6 +1753,12 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
             [userId, targetPhone, targetEmail, otp, expiresAt]
         );
 
+        if (field === 'phone' && value) {
+            sendFast2SmsOtp(value, otp).catch(smsErr => {
+                console.warn('[FAST2SMS] SMS send error:', smsErr.message);
+            });
+        }
+
         if (field === 'email') {
             transporter.sendMail({
                 from: '"GearX" <support@gearx.in>',
@@ -1934,6 +1940,34 @@ apiRouter.post('/auth/logout', authMiddleware, async (req, res) => {
     }
 });
 
+// --- FAST2SMS OTP DISPATCH HELPER ---
+async function sendFast2SmsOtp(phone, otp) {
+    if (!phone || !otp) return;
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    if (cleanPhone.length !== 10) {
+        console.warn('[FAST2SMS] Invalid 10-digit phone number:', phone);
+        return;
+    }
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    if (!apiKey) {
+        console.warn('[FAST2SMS] FAST2SMS_API_KEY is not configured in environment.');
+        return;
+    }
+    try {
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
+        const res = await fetch(url);
+        const data = await res.json().catch(() => null);
+        if (data && data.return === false) {
+            console.warn('[FAST2SMS] Fast2SMS dispatch response:', JSON.stringify(data));
+        } else {
+            console.log(`[FAST2SMS] OTP dispatched successfully to ${cleanPhone.slice(0, 2)}******${cleanPhone.slice(-2)} | Response:`, JSON.stringify(data));
+        }
+        return data;
+    } catch (err) {
+        console.warn('[FAST2SMS] SMS dispatch failed (non-fatal):', err.message);
+    }
+}
+
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone } = req.body;
     if (!phone && !email)
@@ -1966,6 +2000,12 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
             `INSERT INTO otp_verifications (entityid, entitytype, phone, email, otp, expiresat) VALUES ('TEMP', 'auth', $1, $2, $3, $4)`,
             [phone || null, email || null, otp, expiresAt]
         );
+
+        if (phone) {
+            sendFast2SmsOtp(phone, otp).catch(smsErr => {
+                console.warn('[FAST2SMS] SMS send error:', smsErr.message);
+            });
+        }
 
         if (email) {
             transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` }).catch(mailErr => {
