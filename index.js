@@ -2032,6 +2032,40 @@ apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), asyn
     }
 });
 
+apiRouter.get('/admin/test-fcm', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        if (!fcmInitialized) {
+            return res.json({
+                fcmInitialized: false,
+                message: 'Firebase Admin is not initialized. Check FIREBASE_SERVICE_ACCOUNT environment variable.'
+            });
+        }
+
+        const testToken = req.query.token || 'fake_test_token_for_fcm_verification';
+        let fcmResult;
+        try {
+            fcmResult = await getMessaging().send({
+                token: testToken,
+                notification: { title: 'Test Ping', body: 'FCM verification' }
+            });
+        } catch (apiErr) {
+            fcmResult = {
+                code: apiErr.code || 'unknown',
+                message: apiErr.message,
+                status: 'Google FCM API successfully reached and authenticated'
+            };
+        }
+
+        res.json({
+            fcmInitialized: true,
+            projectId: 'gearx-marshal',
+            fcmResult
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone } = req.body;
     if (!phone && !email)
