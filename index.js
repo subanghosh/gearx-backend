@@ -188,18 +188,34 @@ function requireRole(...roles) {
     };
 }
 
-let transporter = nodemailer.createTransport({ jsonTransport: true }); // fallback no-op by default
-nodemailer.createTestAccount((err, account) => {
-    if (err) {
-        console.error('Ethereal account creation failed, using fallback transporter');
-    } else {
-        transporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email', port: 587, secure: false,
-            auth: { user: account.user, pass: account.pass }
-        });
-        console.log('Ethereal mail transporter created successfully');
-    }
-});
+let transporter;
+if (process.env.RESEND_API_KEY) {
+    transporter = nodemailer.createTransport({
+        host: 'smtp.resend.com',
+        port: 465,
+        secure: true,
+        auth: {
+            user: 'resend',
+            pass: process.env.RESEND_API_KEY
+        }
+    });
+    console.log('[EMAIL] Initialized Resend SMTP transporter for live production delivery.');
+} else {
+    transporter = nodemailer.createTransport({ jsonTransport: true });
+    nodemailer.createTestAccount((err, account) => {
+        if (err) {
+            console.warn('[EMAIL] Ethereal test account creation failed, using fallback mock transporter');
+        } else {
+            transporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email',
+                port: 587,
+                secure: false,
+                auth: { user: account.user, pass: account.pass }
+            });
+            console.log('[EMAIL] RESEND_API_KEY not configured. Using Ethereal test mail transporter (emails will NOT reach real inboxes).');
+        }
+    });
+}
 
 const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('sslmode=require') || process.env.DATABASE_URL.includes('neon.tech'));
 const pool = new Pool({ 
@@ -1787,13 +1803,16 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
         }
 
         if (field === 'email') {
+            const fromEmail = process.env.RESEND_FROM_EMAIL || '"ReDrivo" <support@redrivo.in>';
             transporter.sendMail({
-                from: '"GearX" <support@gearx.in>',
+                from: fromEmail,
                 to: value,
                 subject: 'Verify your new email',
                 text: `Your verification OTP is: ${otp}. Valid for 10 minutes.`
+            }).then(info => {
+                console.log(`[EMAIL] Verification OTP sent successfully to: ${value} | MessageId: ${info.messageId}`);
             }).catch(mailErr => {
-                console.warn('Email send failed (non-fatal):', mailErr.message);
+                console.warn('[EMAIL] Email send failed (non-fatal):', mailErr.message);
             });
         }
 
@@ -2066,6 +2085,35 @@ apiRouter.get('/admin/test-fcm', authMiddleware, requireRole('admin'), async (re
     }
 });
 
+apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const targetEmail = req.query.email || 'subanghosh.dev@gmail.com';
+        const fromEmail = process.env.RESEND_FROM_EMAIL || '"ReDrivo" <support@redrivo.in>';
+        const isResend = !!process.env.RESEND_API_KEY;
+
+        const info = await transporter.sendMail({
+            from: fromEmail,
+            to: targetEmail,
+            subject: 'ReDrivo Email Gateway Test',
+            text: 'This is a live test email from ReDrivo via Resend SMTP gateway. If you received this, real production email delivery is operating correctly.'
+        });
+
+        res.json({
+            success: true,
+            provider: isResend ? 'Resend SMTP' : 'Ethereal Mock',
+            from: fromEmail,
+            to: targetEmail,
+            messageId: info.messageId,
+            response: info.response
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone } = req.body;
     if (!phone && !email)
@@ -2106,8 +2154,16 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         }
 
         if (email) {
-            transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` }).catch(mailErr => {
-                console.warn('Email send failed (non-fatal):', mailErr.message);
+            const fromEmail = process.env.RESEND_FROM_EMAIL || '"ReDrivo" <support@redrivo.in>';
+            transporter.sendMail({
+                from: fromEmail,
+                to: email,
+                subject: 'Your ReDrivo OTP',
+                text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.`
+            }).then(info => {
+                console.log(`[EMAIL] OTP sent successfully to: ${email} | MessageId: ${info.messageId}`);
+            }).catch(mailErr => {
+                console.warn('[EMAIL] Email send failed (non-fatal):', mailErr.message);
             });
         }
         // In production: remove otp from response, send via SMS only
