@@ -188,50 +188,44 @@ function requireRole(...roles) {
     };
 }
 
-let transporter;
-if (process.env.RESEND_API_KEY) {
-    transporter = {
-        sendMail: async ({ from, to, subject, text, html }) => {
-            const recipients = Array.isArray(to) ? to : [to];
-            const sender = from || process.env.RESEND_FROM_EMAIL || 'support@redrivo.in';
-            const res = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    from: sender,
-                    to: recipients,
-                    subject: subject,
-                    text: text,
-                    html: html
-                })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.message || (data.name ? `${data.name}: ${data.message}` : `Resend API error (${res.status})`));
-            }
-            return { messageId: data.id, response: JSON.stringify(data) };
+const transporter = {
+    sendMail: async ({ from, to, subject, text, html }) => {
+        const apiKey = process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim() : '';
+        const recipients = Array.isArray(to) ? to : [to];
+        const sender = from || process.env.RESEND_FROM_EMAIL || '"ReDrivo" <support@redrivo.in>';
+
+        if (!apiKey) {
+            console.warn('[EMAIL] RESEND_API_KEY is not configured in environment. Email dispatch skipped.');
+            return { messageId: 'mock-no-key', response: 'Skipped - no RESEND_API_KEY configured' };
         }
-    };
-    console.log('[EMAIL] Initialized Resend HTTPS API transporter for live production delivery.');
-} else {
-    transporter = nodemailer.createTransport({ jsonTransport: true });
-    nodemailer.createTestAccount((err, account) => {
-        if (err) {
-            console.warn('[EMAIL] Ethereal test account creation failed, using fallback mock transporter');
-        } else {
-            transporter = nodemailer.createTransport({
-                host: 'smtp.ethereal.email',
-                port: 587,
-                secure: false,
-                auth: { user: account.user, pass: account.pass }
-            });
-            console.log('[EMAIL] RESEND_API_KEY not configured. Using Ethereal test mail transporter (emails will NOT reach real inboxes).');
+
+        console.log(`[EMAIL] Dispatching email via Resend HTTPS API to: ${recipients.join(', ')}`);
+        const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                from: sender,
+                to: recipients,
+                subject: subject,
+                text: text,
+                html: html
+            })
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+            const errMsg = data?.message || (data?.name ? `${data.name}: ${data.message}` : `Resend HTTP error ${res.status}`);
+            console.error('[EMAIL] Resend API error:', errMsg, 'Data:', JSON.stringify(data));
+            throw new Error(errMsg);
         }
-    });
-}
+
+        console.log(`[EMAIL] ✓ Successfully sent email via Resend to: ${recipients.join(', ')} | ID: ${data?.id}`);
+        return { messageId: data?.id, response: JSON.stringify(data) };
+    }
+};
 
 const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('sslmode=require') || process.env.DATABASE_URL.includes('neon.tech'));
 const pool = new Pool({ 
