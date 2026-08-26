@@ -190,16 +190,32 @@ function requireRole(...roles) {
 
 let transporter;
 if (process.env.RESEND_API_KEY) {
-    transporter = nodemailer.createTransport({
-        host: 'smtp.resend.com',
-        port: 465,
-        secure: true,
-        auth: {
-            user: 'resend',
-            pass: process.env.RESEND_API_KEY
+    transporter = {
+        sendMail: async ({ from, to, subject, text, html }) => {
+            const recipients = Array.isArray(to) ? to : [to];
+            const sender = from || process.env.RESEND_FROM_EMAIL || 'support@redrivo.in';
+            const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: sender,
+                    to: recipients,
+                    subject: subject,
+                    text: text,
+                    html: html
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.message || (data.name ? `${data.name}: ${data.message}` : `Resend API error (${res.status})`));
+            }
+            return { messageId: data.id, response: JSON.stringify(data) };
         }
-    });
-    console.log('[EMAIL] Initialized Resend SMTP transporter for live production delivery.');
+    };
+    console.log('[EMAIL] Initialized Resend HTTPS API transporter for live production delivery.');
 } else {
     transporter = nodemailer.createTransport({ jsonTransport: true });
     nodemailer.createTestAccount((err, account) => {
