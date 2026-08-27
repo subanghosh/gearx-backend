@@ -242,7 +242,8 @@ function generateOtpEmailHtml(otp, title = 'Your ReDrivo Verification Code', sub
         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 480px; background-color: #151D2E; border: 1px solid #1E293B; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);">
           <tr>
             <td align="center" style="padding: 32px 24px 20px 24px; border-bottom: 1px solid #1E293B;">
-              <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #FFFFFF;">
+              <img src="https://api.redrivo.in/garage/assets/redrivo_logo_transparent.png" alt="ReDrivo" width="60" height="60" style="display: block; width: 60px; height: 60px; max-width: 60px; border: 0; outline: none; margin: 0 auto 8px auto;" />
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.3px; color: #FFFFFF; margin-bottom: 2px;">
                 <span style="color: #FACC15;">Re</span>Drivo
               </div>
               <div style="font-size: 11px; font-weight: 600; color: #94A3B8; margin-top: 4px; letter-spacing: 1.5px; text-transform: uppercase;">
