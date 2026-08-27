@@ -202,6 +202,91 @@ function handleLogout() {
     localStorage.removeItem('redrivo_token');
     document.getElementById('app-screen').style.display = 'none'; 
     document.getElementById('auth-screen').style.display = 'flex'; 
+    initGoogleOneTap();
+}
+
+// --- GOOGLE ONE TAP & SIGN-IN ---
+async function initGoogleOneTap() {
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) {
+        setTimeout(initGoogleOneTap, 250);
+        return;
+    }
+
+    let clientId = window.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+        try {
+            const res = await fetch(`${API_URL}/auth/google-client-id`);
+            const data = await res.json();
+            clientId = data.clientId;
+        } catch (e) {
+            console.warn('Failed to fetch Google Client ID from server:', e);
+        }
+    }
+
+    if (!clientId) {
+        console.warn('[Google One Tap] Client ID is not configured.');
+        return;
+    }
+
+    try {
+        google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true
+        });
+
+        const btnContainer = document.getElementById('g_id_signin_container');
+        if (btnContainer) {
+            btnContainer.innerHTML = '';
+            google.accounts.id.renderButton(btnContainer, {
+                theme: 'filled_black',
+                size: 'large',
+                shape: 'rectangular',
+                width: 320,
+                text: 'continue_with'
+            });
+        }
+
+        // Trigger One Tap floating prompt
+        google.accounts.id.prompt();
+    } catch (err) {
+        console.warn('Google One Tap init error:', err);
+    }
+}
+
+async function handleGoogleCredentialResponse(response) {
+    if (!response || !response.credential) {
+        showNotify('Google authentication was cancelled.', 'error');
+        return;
+    }
+
+    try {
+        showNotify('Signing in with Google...', 'info');
+        const res = await fetch(`${API_URL}/auth/google-signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: response.credential, role: 'garage' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Authentication failed');
+
+        user = data.user;
+        localStorage.setItem('redrivo_user', JSON.stringify(user));
+        if (data.token) {
+            localStorage.setItem('redrivo_token', data.token);
+        }
+        enterDashboard();
+
+        if (data.isNewUser) {
+            setTimeout(() => {
+                showNotify('Welcome to ReDrivo! Please complete your Business Profile & KYC.', 'success');
+                switchTab('profile');
+            }, 500);
+        }
+    } catch (err) {
+        showNotify(err.message, 'error');
+    }
 }
 
 // --- DASHBOARD ---
@@ -3127,10 +3212,15 @@ window.addEventListener('DOMContentLoaded', () => {
             if (parsed && parsed.id) {
                 user = parsed;
                 enterDashboard();
+            } else {
+                initGoogleOneTap();
             }
         } catch(e){
             console.error('Boot session error:', e);
             localStorage.removeItem('redrivo_user');
+            initGoogleOneTap();
         }
+    } else {
+        initGoogleOneTap();
     }
 });
