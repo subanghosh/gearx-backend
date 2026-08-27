@@ -227,6 +227,67 @@ const transporter = {
     }
 };
 
+function generateOtpEmailHtml(otp, title = 'Your ReDrivo Verification Code', subtitle = 'Use the one-time verification code below to authenticate your ReDrivo account.') {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0B0F19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #F8FAFC;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 480px; background-color: #151D2E; border: 1px solid #1E293B; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);">
+          <tr>
+            <td align="center" style="padding: 32px 24px 20px 24px; border-bottom: 1px solid #1E293B;">
+              <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #FFFFFF;">
+                <span style="color: #FACC15;">Re</span>Drivo
+              </div>
+              <div style="font-size: 11px; font-weight: 600; color: #94A3B8; margin-top: 4px; letter-spacing: 1.5px; text-transform: uppercase;">
+                Security Verification
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 28px 24px 28px; text-align: center;">
+              <h1 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #FFFFFF;">
+                ${title}
+              </h1>
+              <p style="margin: 0 0 28px 0; font-size: 14px; line-height: 22px; color: #94A3B8;">
+                ${subtitle}
+              </p>
+              <div style="background-color: #0B0F19; border: 2px dashed #FACC15; border-radius: 12px; padding: 18px 24px; margin: 0 auto 24px auto; display: inline-block;">
+                <span style="font-family: 'Courier New', Courier, monospace; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #FACC15; padding-left: 8px; display: block;">
+                  ${otp}
+                </span>
+              </div>
+              <div style="background-color: rgba(250, 204, 21, 0.08); border-radius: 8px; padding: 12px 16px; margin-bottom: 24px;">
+                <p style="margin: 0; font-size: 13px; font-weight: 500; color: #FDE047;">
+                  ⏳ Valid for <strong>10 minutes</strong>. Do not share this code with anyone.
+                </p>
+              </div>
+              <p style="margin: 0; font-size: 12px; line-height: 18px; color: #64748B;">
+                If you did not request this verification code, please disregard this email or contact support.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 24px; background-color: #0E1422; border-top: 1px solid #1E293B; text-align: center;">
+              <p style="margin: 0; font-size: 11px; color: #64748B;">
+                &copy; ${new Date().getFullYear()} ReDrivo Logistics &amp; Mobility. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('sslmode=require') || process.env.DATABASE_URL.includes('neon.tech'));
 const pool = new Pool({ 
     connectionString: process.env.DATABASE_URL,
@@ -1818,7 +1879,8 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
                 from: fromEmail,
                 to: value,
                 subject: 'Verify your new email',
-                text: `Your verification OTP is: ${otp}. Valid for 10 minutes.`
+                text: `Your verification OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.`,
+                html: generateOtpEmailHtml(otp, 'Verify Your New Email Address', 'Use the one-time verification code below to verify and update your ReDrivo account email.')
             }).then(info => {
                 console.log(`[EMAIL] Verification OTP sent successfully to: ${value} | MessageId: ${info.messageId}`);
             }).catch(mailErr => {
@@ -2097,7 +2159,7 @@ apiRouter.get('/admin/test-fcm', authMiddleware, requireRole('admin'), async (re
 
 apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
-        const targetEmail = req.query.email || 'subanghosh.dev@gmail.com';
+        const targetEmail = req.query.email || 'subanghosh7@gmail.com';
         const fromEmail = process.env.RESEND_FROM_EMAIL || '"ReDrivo" <support@redrivo.in>';
         const isResend = !!process.env.RESEND_API_KEY;
 
@@ -2105,12 +2167,13 @@ apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (
             from: fromEmail,
             to: targetEmail,
             subject: 'ReDrivo Email Gateway Test',
-            text: 'This is a live test email from ReDrivo via Resend SMTP gateway. If you received this, real production email delivery is operating correctly.'
+            text: 'This is a live test email from ReDrivo via Resend. If you received this, real production email delivery is operating correctly.',
+            html: generateOtpEmailHtml('748209', 'ReDrivo Email Gateway Test', 'This is a live test email from ReDrivo via Resend. If you received this, real production email delivery is operating correctly.')
         });
 
         res.json({
             success: true,
-            provider: isResend ? 'Resend SMTP' : 'Ethereal Mock',
+            provider: isResend ? 'Resend HTTPS API' : 'Ethereal Mock',
             from: fromEmail,
             to: targetEmail,
             messageId: info.messageId,
@@ -2169,7 +2232,8 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
                 from: fromEmail,
                 to: email,
                 subject: 'Your ReDrivo OTP',
-                text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.`
+                text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.`,
+                html: generateOtpEmailHtml(otp, 'Your ReDrivo OTP Code', 'Use the one-time verification code below to authenticate and sign in to your ReDrivo account.')
             }).then(info => {
                 console.log(`[EMAIL] OTP sent successfully to: ${email} | MessageId: ${info.messageId}`);
             }).catch(mailErr => {
