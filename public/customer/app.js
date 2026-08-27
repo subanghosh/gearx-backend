@@ -1027,6 +1027,64 @@ async function handleSignupStep2() {
     }
 }
 
+async function handleGoogleSignIn() {
+    try {
+        if (!window.Capacitor || !window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+            showToast('Google Sign-In is only available in the Android app build.', 'info');
+            return;
+        }
+
+        const { FirebaseAuthentication } = window.Capacitor.Plugins;
+        showToast('Connecting to Google...', 'info');
+
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const idToken = result.credential?.idToken || result.idToken;
+
+        if (!idToken) {
+            throw new Error('Google authentication was cancelled or did not return an ID token.');
+        }
+
+        showToast('Signing in...', 'info');
+        const res = await fetch(`${API_URL}/auth/google-signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken, role: 'customer' })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Google Sign-In failed');
+
+        // Setup Customer User Session
+        currentUser = {
+            id: data.user.id.replace('_user', ''),
+            name: data.user.name,
+            role: data.user.role,
+            phone: data.user.phone || '',
+            email: data.user.email || '',
+            emailVerified: data.user.emailVerified || data.user.emailverified || 1,
+            phoneVerified: data.user.phoneVerified || data.user.phoneverified || 0
+        };
+        localStorage.setItem('redrivo_current_user', JSON.stringify(currentUser));
+        if (data.token) {
+            localStorage.setItem('redrivo_token', data.token);
+        }
+        updateUserAvatar();
+
+        showToast(`Welcome back, ${data.user.name || 'Customer'}!`, 'success');
+
+        // Redirect to Dashboard
+        document.getElementById('display-name').textContent = currentUser.name;
+        document.getElementById('login-container').classList.add('hidden');
+        document.getElementById('app-container').classList.remove('hidden');
+
+        loadDashboard();
+        loadCategories();
+    } catch (err) {
+        console.error('Google Sign-In error:', err);
+        showToast(err.message || 'Google Sign-In failed', 'error');
+    }
+}
+
 function logout() {
     document.getElementById('logout-modal').style.display = 'flex';
 }

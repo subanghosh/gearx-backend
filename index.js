@@ -2426,16 +2426,20 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
         return res.status(400).json({ error: 'Google ID token is required' });
     }
 
-    const clientId = process.env.GOOGLE_OAUTH_WEB_CLIENT_ID;
-    if (!clientId) {
-        return res.status(500).json({ error: 'Google OAuth is not configured on the server (missing GOOGLE_OAUTH_WEB_CLIENT_ID)' });
+    const allowedAudiences = [
+        process.env.GOOGLE_OAUTH_WEB_CLIENT_ID,
+        process.env.GOOGLE_OAUTH_CUSTOMER_CLIENT_ID
+    ].filter(Boolean);
+
+    if (allowedAudiences.length === 0) {
+        return res.status(500).json({ error: 'Google OAuth is not configured on the server (missing Client IDs)' });
     }
 
     let payload;
     try {
         const ticket = await googleOAuthClient.verifyIdToken({
             idToken: idToken,
-            audience: clientId
+            audience: allowedAudiences
         });
         payload = ticket.getPayload();
     } catch (err) {
