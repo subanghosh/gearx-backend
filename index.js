@@ -14,6 +14,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
+const googleOAuthClient = new OAuth2Client();
 
 const app = express();
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
@@ -2411,6 +2413,154 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
     } catch (err) {
         console.error('verify-otp error:', err.message);
         res.status(500).json({ error: 'Server error: ' + err.message });
+    }
+});
+
+/**
+ * POST /api/auth/google-signin
+ * Validates Google One Tap / Credential Manager ID Token and authenticates user
+ */
+apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
+    const { idToken, role } = req.body;
+    if (!idToken) {
+        return res.status(400).json({ error: 'Google ID token is required' });
+    }
+
+    const clientId = process.env.GOOGLE_OAUTH_WEB_CLIENT_ID;
+    if (!clientId) {
+        return res.status(500).json({ error: 'Google OAuth is not configured on the server (missing GOOGLE_OAUTH_WEB_CLIENT_ID)' });
+    }
+
+    let payload;
+    try {
+        const ticket = await googleOAuthClient.verifyIdToken({
+            idToken: idToken,
+            audience: clientId
+        });
+        payload = ticket.getPayload();
+    } catch (err) {
+        console.error('[GOOGLE_AUTH] Token verification failed:', err.message);
+        return res.status(401).json({ error: 'Invalid or expired Google authentication token' });
+    }
+
+    const email = payload?.email ? payload.email.toLowerCase().trim() : null;
+    if (!email) {
+        return res.status(400).json({ error: 'Google account does not provide a verified email' });
+    }
+
+    const displayName = payload.name || payload.given_name || 'User';
+    const targetRole = role || 'customer';
+
+    try {
+        const buildResponse = async (userObj, isNewUser = false) => {
+            // Auto-mark email verified since Google has already verified it
+            await pool.query(`UPDATE users SET emailverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
+            const token = signToken(
+                { id: userObj.id, role: userObj.role, garageId: userObj.garageId || null },
+                userObj.token_version || userObj.tokenversion || 1
+            );
+            return res.json({ verified: true, isNewUser, token, user: userObj });
+        };
+
+        // Step 1: Check users table
+        const userResult = await pool.query(
+            `SELECT * FROM users WHERE email = $1 ORDER BY CASE WHEN role = $2 THEN 0 ELSE 1 END LIMIT 1`,
+            [email, targetRole]
+        );
+        if (userResult.rows[0]) {
+            const user = userResult.rows[0];
+            return await buildResponse({
+                id: user.id,
+                name: user.name,
+                role: user.role,
+                garageId: user.garageId || user.garageid,
+                status: user.status,
+                kycStatus: user.kycStatus || user.kycstatus,
+                phone: user.phone,
+                email: user.email,
+                token_version: user.token_version || user.tokenversion || 1
+            });
+        }
+
+        // Step 2: Garage owner check
+        const garageResult = await pool.query(
+            `SELECT * FROM garages WHERE email = $1 LIMIT 1`,
+            [email]
+        );
+        if (garageResult.rows[0]) {
+            const garage = garageResult.rows[0];
+            return await buildResponse({
+                id: garage.id + '_owner',
+                name: garage.name || 'Partner',
+                role: 'garage',
+                garageId: garage.id,
+                status: garage.status,
+                phone: garage.contact,
+                email: garage.email
+            });
+        }
+
+        // Step 3: New user creation
+        if (targetRole === 'marshal') {
+            const newUserId = 'marshal_' + Date.now();
+            await pool.query(
+                `INSERT INTO users (id, name, role, phone, email, status, kycstatus, emailverified) VALUES ($1, $2, 'marshal', NULL, $3, 'active', 'pending_submission', 1)`,
+                [newUserId, displayName, email]
+            );
+            return await buildResponse({
+                id: newUserId,
+                name: displayName,
+                role: 'marshal',
+                garageId: null,
+                status: 'active',
+                kycStatus: 'pending_submission',
+                phone: null,
+                email: email
+            }, true);
+        } else if (targetRole === 'garage') {
+            const newGarageId = 'gar_' + Date.now();
+            const newUserId = 'garage_' + Date.now();
+            await pool.query(
+                `INSERT INTO garages (id, name, contact, email, status) VALUES ($1, $2, NULL, $3, 'active')`,
+                [newGarageId, displayName, email]
+            );
+            await pool.query(
+                `INSERT INTO users (id, name, role, phone, email, garageId, status, emailverified) VALUES ($1, $2, 'garage', NULL, $3, $4, 'active', 1)`,
+                [newUserId, displayName, email, newGarageId]
+            );
+            return await buildResponse({
+                id: newUserId,
+                name: displayName,
+                role: 'garage',
+                garageId: newGarageId,
+                status: 'active',
+                phone: null,
+                email: email
+            }, true);
+        } else {
+            // Default: Customer
+            const newUserId = 'cust_' + Date.now();
+            await pool.query(
+                `INSERT INTO users (id, name, role, phone, email, status, emailverified) VALUES ($1, $2, 'customer', NULL, $3, 'active', 1)`,
+                [newUserId, displayName, email]
+            );
+            await pool.query(
+                `INSERT INTO customers (id, name, phone, email, status) VALUES ($1, $2, NULL, $3, 'active')`,
+                [newUserId, displayName, email]
+            );
+            return await buildResponse({
+                id: newUserId,
+                name: displayName,
+                role: 'customer',
+                garageId: null,
+                status: 'active',
+                phone: null,
+                email: email
+            }, true);
+        }
+    } catch (err) {
+        console.error('[GOOGLE_AUTH] DB error:', err.message);
+        res.status(500).json({ error: 'Database error: ' + err.message });
     }
 });
 
