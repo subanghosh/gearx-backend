@@ -675,13 +675,81 @@ function startOtpTimer(timerElId = 'resend-login-timer', resendBtnId = 'resend-l
     }, 1000);
 }
 
+let currentLoginMode = 'phone'; // 'phone' | 'email'
+
+function switchLoginMode(mode) {
+    currentLoginMode = mode;
+    const tabPhone = document.getElementById('tab-login-phone');
+    const tabEmail = document.getElementById('tab-login-email');
+    const label = document.getElementById('login-id-label');
+    const prefix = document.getElementById('login-id-prefix');
+    const input = document.getElementById('login-id');
+    const otpGroup = document.getElementById('login-otp-group');
+    const btn = document.getElementById('btn-login-action');
+
+    // Reset verification stage if switched
+    if (otpGroup) otpGroup.style.display = 'none';
+    if (btn) {
+        btn.innerHTML = 'Send OTP';
+        btn.disabled = false;
+    }
+    if (window.clearOtpBoxes) clearOtpBoxes('login-otp');
+    if (input) input.value = '';
+
+    if (mode === 'email') {
+        if (tabPhone) tabPhone.classList.remove('active');
+        if (tabEmail) tabEmail.classList.add('active');
+        if (label) label.innerText = 'Email Address';
+        if (prefix) prefix.style.display = 'none';
+        if (input) {
+            input.type = 'email';
+            input.placeholder = 'Enter your email address';
+            input.maxLength = 100;
+        }
+    } else {
+        if (tabPhone) tabPhone.classList.add('active');
+        if (tabEmail) tabEmail.classList.remove('active');
+        if (label) label.innerText = 'Phone Number (10 Digits)';
+        if (prefix) prefix.style.display = 'inline-block';
+        if (input) {
+            input.type = 'tel';
+            input.placeholder = 'Enter your 10 Digits Mobile Number';
+            input.maxLength = 10;
+        }
+    }
+}
+
+function handleLoginIdInput(input) {
+    if (currentLoginMode === 'phone') {
+        input.value = input.value.replace(/[^0-9]/g, '');
+    }
+}
+
+function validateLoginIdentifier() {
+    const raw = document.getElementById('login-id')?.value.trim() || '';
+    if (currentLoginMode === 'phone') {
+        if (raw.length !== 10 || !/^\d{10}$/.test(raw)) {
+            showToast('Enter a valid 10-digit mobile number.', 'error');
+            return null;
+        }
+        return { phone: `+91${raw}` };
+    } else {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(raw)) {
+            showToast('Enter a valid email address.', 'error');
+            return null;
+        }
+        return { email: raw.toLowerCase() };
+    }
+}
+
 async function handleResendOTP() {
     if (otpCooldownSeconds > 0) {
         showToast(`Please wait ${otpCooldownSeconds} seconds before requesting a new OTP.`, 'error');
         return;
     }
-    const phoneInput = document.getElementById('login-id').value.trim();
-    if (phoneInput.length !== 10) return showToast('Enter a valid 10-digit mobile number.', 'error');
+    const payload = validateLoginIdentifier();
+    if (!payload) return;
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000);
@@ -690,13 +758,13 @@ async function handleResendOTP() {
         const res = await fetch(`${API_URL}/auth/send-otp`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
-            body: JSON.stringify({ phone: `+91${phoneInput}` })
+            body: JSON.stringify(payload)
         });
         clearTimeout(timeoutId);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        showToast(`OTP resent! For testing, your code is: ${data.otp}`, 'success');
+        showToast(currentLoginMode === 'email' ? 'OTP sent to your email!' : 'OTP resent to your mobile number!', 'success');
         startOtpTimer();
     } catch (err) {
         clearTimeout(timeoutId);
@@ -718,11 +786,11 @@ async function handleResendOTP() {
 // --- Auth Handling ---
 async function handleLoginAction() {
     const btn = document.getElementById('btn-login-action');
-    const phoneInput = document.getElementById('login-id').value.trim();
-    
-    if (phoneInput.length !== 10) return showToast('Enter a valid 10-digit mobile number.', 'error');
+    const payload = validateLoginIdentifier();
+    if (!payload) return;
+
     const otpGroup = document.getElementById('login-otp-group');
-    const isVerifyStage = otpGroup.style.display === 'block';
+    const isVerifyStage = otpGroup && otpGroup.style.display === 'block';
 
     if (!isVerifyStage && otpCooldownSeconds > 0) {
         showToast(`Please wait ${otpCooldownSeconds} seconds before requesting a new OTP.`, 'error');
@@ -743,7 +811,7 @@ async function handleLoginAction() {
             const res = await fetch(`${API_URL}/auth/send-otp`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
-                body: JSON.stringify({ phone: `+91${phoneInput}` })
+                body: JSON.stringify(payload)
             });
             clearTimeout(timeoutId);
             const data = await res.json();
@@ -751,10 +819,9 @@ async function handleLoginAction() {
 
             otpGroup.style.display = 'block';
             btn.innerHTML = 'Verify & Login';
-            otpGroup.style.display = 'block';
             const firstBox = document.querySelector('.otp-boxes[data-target="login-otp"] .otp-box');
             if (firstBox) firstBox.focus();
-            showToast(`OTP sent! For testing, your code is: ${data.otp}`, 'success');
+            showToast(currentLoginMode === 'email' ? 'Verification OTP sent to your email!' : 'Verification OTP sent to your mobile number!', 'success');
             if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
             startOtpTimer();
             btn.disabled = false;
@@ -767,7 +834,7 @@ async function handleLoginAction() {
             const res = await fetch(`${API_URL}/auth/verify-otp`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
-                body: JSON.stringify({ phone: `+91${phoneInput}`, otp, role: 'marshal' })
+                body: JSON.stringify({ ...payload, otp, role: 'marshal' })
             });
             clearTimeout(timeoutId);
             const data = await res.json();

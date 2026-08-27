@@ -2268,10 +2268,13 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
 
         const cleanVal = val.replace('+91', '');
         const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
+        const isEmailInput = val.includes('@') || (email && email.includes('@'));
+        const finalEmail = email ? email.trim().toLowerCase() : (isEmailInput ? val.trim().toLowerCase() : null);
+        const finalPhone = isEmailInput ? (phone ? (phone.startsWith('+91') ? phone : '+91' + phone) : null) : prefixedVal;
 
         const buildResponse = async (userObj, isNewUser = false) => {
             // Update phone or email verification status
-            if (val.includes('@')) {
+            if (isEmailInput) {
                 await pool.query(`UPDATE users SET emailverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
                 await pool.query(`UPDATE garage_workers SET emailverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
             } else {
@@ -2348,7 +2351,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             const newUserId = 'marshal_' + Date.now();
             await pool.query(
                 `INSERT INTO users (id, name, role, phone, email, status, kycstatus) VALUES ($1, 'New Marshal', 'marshal', $2, $3, 'active', 'pending_submission')`,
-                [newUserId, prefixedVal, email || null]
+                [newUserId, finalPhone, finalEmail]
             );
             return await buildResponse({ 
                 id: newUserId, 
@@ -2357,8 +2360,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 garageId: null, 
                 status: 'active', 
                 kycStatus: 'pending_submission',
-                phone: prefixedVal,
-                email: email || null
+                phone: finalPhone,
+                email: finalEmail
             }, true);
         } else if (targetRole === 'garage') {
             const newGarageId = 'gar_' + Date.now();
@@ -2367,7 +2370,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             // Insert into garages
             await pool.query(
                 `INSERT INTO garages (id, name, contact, email, status) VALUES ($1, 'New Partner Garage', $2, $3, 'active')`,
-                [newGarageId, prefixedVal, email || null]
+                [newGarageId, finalPhone, finalEmail]
             );
             // Insert into users
             await pool.query(
