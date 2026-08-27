@@ -1037,7 +1037,9 @@ async function handleGoogleSignIn() {
         const { FirebaseAuthentication } = window.Capacitor.Plugins;
         showToast('Connecting to Google...', 'info');
 
-        const result = await FirebaseAuthentication.signInWithGoogle();
+        const result = await FirebaseAuthentication.signInWithGoogle({
+            useCredentialManager: false
+        });
         const idToken = result.credential?.idToken || result.idToken;
 
         if (!idToken) {
