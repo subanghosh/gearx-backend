@@ -2417,14 +2417,6 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
 });
 
 /**
- * GET /api/auth/google-client-id
- * Returns the public Google Web Client ID for client-side One Tap initialization
- */
-apiRouter.get('/auth/google-client-id', (req, res) => {
-    res.json({ clientId: process.env.GOOGLE_OAUTH_WEB_CLIENT_ID || null });
-});
-
-/**
  * POST /api/auth/google-signin
  * Validates Google One Tap / Credential Manager ID Token and authenticates user
  */

@@ -206,31 +206,17 @@ function handleLogout() {
 }
 
 // --- GOOGLE ONE TAP & SIGN-IN ---
-async function initGoogleOneTap() {
+const GOOGLE_CLIENT_ID = '301733544290-mun1fmu0r25jivnt0ii3t0tj6ue31ocb.apps.googleusercontent.com';
+
+function initGoogleOneTap() {
     if (!window.google || !window.google.accounts || !window.google.accounts.id) {
         setTimeout(initGoogleOneTap, 250);
         return;
     }
 
-    let clientId = window.GOOGLE_CLIENT_ID;
-    if (!clientId) {
-        try {
-            const res = await fetch(`${API_URL}/auth/google-client-id`);
-            const data = await res.json();
-            clientId = data.clientId;
-        } catch (e) {
-            console.warn('Failed to fetch Google Client ID from server:', e);
-        }
-    }
-
-    if (!clientId) {
-        console.warn('[Google One Tap] Client ID is not configured.');
-        return;
-    }
-
     try {
         google.accounts.id.initialize({
-            client_id: clientId,
+            client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleCredentialResponse,
             auto_select: false,
             cancel_on_tap_outside: true
