@@ -79,14 +79,27 @@
 
             <!-- OTP Login/Signup Flow -->
             <div id="signup-tab">
-                <!-- STEP 1: PHONE -->
+                <!-- Phone / Email Mode Toggle -->
+                <div class="auth-tab-group" style="display: flex; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 4px; margin-bottom: 20px; gap: 4px;">
+                    <button type="button" class="auth-tab-item active" id="tab-cust-phone" onclick="switchCustomerAuthMode('phone')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 600; color: #000000; background: #FFD700; border: none; transition: all 0.2s ease;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+                        Phone
+                    </button>
+                    <button type="button" class="auth-tab-item" id="tab-cust-email" onclick="switchCustomerAuthMode('email')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 600; color: #8B949E; background: transparent; border: none; transition: all 0.2s ease;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                        Email
+                    </button>
+                </div>
+
+                <!-- STEP 1: PHONE / EMAIL -->
                 <div id="su-step-phone">
                     <div class="form-group" style="margin-bottom: 24px;">
-                        <label style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Mobile Number</label>
+                        <label id="su-phone-label" style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Mobile Number</label>
                         <div class="phone-input-group" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; height: 56px; transition: all 0.3s ease;">
-                            <span class="prefix" style="background: transparent; border-right: 1px solid rgba(255, 255, 255, 0.1); color: #8B949E; font-weight: 600; padding: 0 20px;">+91</span>
+                            <span class="prefix" id="su-phone-prefix" style="background: transparent; border-right: 1px solid rgba(255, 255, 255, 0.1); color: #8B949E; font-weight: 600; padding: 0 20px; display: flex; align-items: center;">+91</span>
                             <input type="tel" id="su-phone" placeholder="Enter your 10-digit number" maxlength="10" style="background: transparent; border: none; outline: none; padding-left: 20px; font-size: 1.1rem; letter-spacing: 1px; color: #FFFFFF; font-weight: 500; width: 100%;">
                         </div>
+                        <button id="btn-signup-step1" class="btn btn-primary" style="width:100%; margin-top:16px; padding: 14px; font-size: 1rem; font-weight: 700; border-radius: 14px; background: #FFD700; color: #000000; border: none; cursor: pointer; display:none; transition: transform 0.2s, background 0.2s;" onclick="handleSignupStep1()">Send Verification OTP</button>
                         <div id="phone-retry-container" style="display: none; margin-top: 10px; text-align: right;">
                             <a href="javascript:void(0)" onclick="handleSignupStep1()" style="color: #FFD700; font-size: 0.85rem; font-weight: 600; text-decoration: none;">Tap to retry</a>
                         </div>

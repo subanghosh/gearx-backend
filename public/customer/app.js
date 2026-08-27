@@ -775,27 +775,86 @@ function startOtpCooldown(linkEl) {
 }
 
 // Passwordless Auth Flow
+let currentCustomerAuthMode = 'phone'; // 'phone' | 'email'
 let lastSentPhone = '';
+
+function switchCustomerAuthMode(mode) {
+    currentCustomerAuthMode = mode;
+    const tabPhone = document.getElementById('tab-cust-phone');
+    const tabEmail = document.getElementById('tab-cust-email');
+    const label = document.getElementById('su-phone-label');
+    const prefix = document.getElementById('su-phone-prefix');
+    const input = document.getElementById('su-phone');
+    const otpArea = document.getElementById('su-otp-area');
+    const btn1 = document.getElementById('btn-signup-step1');
+    const btn2 = document.getElementById('btn-signup-step2');
+
+    if (otpArea) otpArea.style.display = 'none';
+    if (btn2) btn2.style.display = 'none';
+    if (input) {
+        input.disabled = false;
+        input.value = '';
+    }
+    if (window.clearOtpBoxes) clearOtpBoxes('su-otp');
+
+    if (mode === 'email') {
+        if (tabPhone) { tabPhone.style.background = 'transparent'; tabPhone.style.color = '#8B949E'; tabPhone.classList.remove('active'); }
+        if (tabEmail) { tabEmail.style.background = '#FFD700'; tabEmail.style.color = '#000000'; tabEmail.classList.add('active'); }
+        if (label) label.innerText = 'Email Address';
+        if (prefix) prefix.style.display = 'none';
+        if (input) {
+            input.type = 'email';
+            input.placeholder = 'Enter your email address';
+            input.maxLength = 100;
+        }
+        if (btn1) {
+            btn1.style.display = 'block';
+            btn1.disabled = false;
+            btn1.innerHTML = 'Send Verification OTP';
+        }
+    } else {
+        if (tabPhone) { tabPhone.style.background = '#FFD700'; tabPhone.style.color = '#000000'; tabPhone.classList.add('active'); }
+        if (tabEmail) { tabEmail.style.background = 'transparent'; tabEmail.style.color = '#8B949E'; tabEmail.classList.remove('active'); }
+        if (label) label.innerText = 'Mobile Number';
+        if (prefix) prefix.style.display = 'flex';
+        if (input) {
+            input.type = 'tel';
+            input.placeholder = 'Enter your 10-digit number';
+            input.maxLength = 10;
+        }
+        if (btn1) btn1.style.display = 'none';
+    }
+}
+
+function getCustomerAuthIdentifier() {
+    const input = document.getElementById('su-phone');
+    const raw = input ? input.value.trim() : '';
+    if (currentCustomerAuthMode === 'phone') {
+        if (!raw || !/^\d{10}$/.test(raw)) {
+            showToast('Please enter a valid 10-digit phone number.', 'error');
+            return null;
+        }
+        return { phone: raw, countryCode: '+91' };
+    } else {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!raw || !emailRegex.test(raw)) {
+            showToast('Please enter a valid email address.', 'error');
+            return null;
+        }
+        return { email: raw.toLowerCase() };
+    }
+}
 
 async function handleSignupStep1() {
     if (otpCooldownSeconds > 0) {
         showToast(`Please wait ${otpCooldownSeconds} seconds before requesting a new OTP.`, 'error');
         return;
     }
+    const payload = getCustomerAuthIdentifier();
+    if (!payload) return;
+
     const phoneInput = document.getElementById('su-phone');
-    const phone = phoneInput ? phoneInput.value.trim() : '';
-
-    if (!phone) {
-        showToast('Please enter your phone number.', 'error');
-        return;
-    }
-    if (!/^\d{10}$/.test(phone)) {
-        showToast('Please enter a valid 10-digit phone number.', 'error');
-        return;
-    }
-
-    // Set lastSentPhone immediately after validation passes to cover both auto-advance and manual retry links
-    lastSentPhone = phone;
+    lastSentPhone = payload.phone || payload.email;
 
     // Hide retry container if visible
     const retryContainer = document.getElementById('phone-retry-container');
@@ -819,7 +878,7 @@ async function handleSignupStep1() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
-            body: JSON.stringify({ phone, countryCode: '+91' })
+            body: JSON.stringify(payload)
         });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -833,7 +892,7 @@ async function handleSignupStep1() {
         const resendLink = document.getElementById('resend-otp-link');
         startOtpCooldown(resendLink);
 
-        showToast(`OTP sent! For testing, your code is: ${data.otp}`, 'success');
+        showToast(currentCustomerAuthMode === 'email' ? 'OTP sent to your email!' : 'OTP sent to your mobile number!', 'success');
         if (data.otp) { console.log('DEV OTP:', data.otp); if (window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp); }
     } catch (e) {
         clearTimeout(timeoutId);
@@ -844,7 +903,7 @@ async function handleSignupStep1() {
         }
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = 'Send OTP';
+            btn.innerHTML = 'Send Verification OTP';
         }
         // Unlock input on failure so they can edit or try again
         if (phoneInput) phoneInput.disabled = false;
@@ -861,8 +920,8 @@ async function resendOTP() {
         return;
     }
 
-    const phoneNum = document.getElementById('su-phone').value.trim();
-    if (!phoneNum || phoneNum.length !== 10) { showToast('Valid phone required', 'error'); return; }
+    const payload = getCustomerAuthIdentifier();
+    if (!payload) return;
 
     showToast('Resending OTP...', 'info');
     const resendLink = document.getElementById('resend-otp-link');
@@ -876,7 +935,7 @@ async function resendOTP() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
-            body: JSON.stringify({ phone: phoneNum, countryCode: '+91' })
+            body: JSON.stringify(payload)
         });
         clearTimeout(timeoutId);
         const data = await res.json();
@@ -885,7 +944,7 @@ async function resendOTP() {
         // Restart 60-second cooldown
         startOtpCooldown(resendLink);
 
-        showToast(`New OTP sent! Code: ${data.otp}`, 'success');
+        showToast(currentCustomerAuthMode === 'email' ? 'New OTP sent to your email!' : 'New OTP sent to your mobile number!', 'success');
         if (data.otp) console.log('DEV OTP:', data.otp);
     } catch (e) {
         clearTimeout(timeoutId);
@@ -902,6 +961,9 @@ async function handleSignupStep2() {
     const otp = document.getElementById('su-otp').value.trim();
     if (otp.length !== 6) { showToast('Enter 6-digit OTP', 'error'); return; }
 
+    const payload = getCustomerAuthIdentifier();
+    if (!payload) return;
+
     const btn = document.getElementById('btn-signup-step2');
     if (btn && btn.disabled) return; // Prevent double-triggering if already verifying
     if (btn) {
@@ -909,14 +971,12 @@ async function handleSignupStep2() {
         btn.innerHTML = 'Verifying...';
     }
 
-    const phoneNum = document.getElementById('su-phone').value.trim();
-
     try {
         // 1. Verify OTP & Auto-Login
         const verifyRes = await fetch(`${API_URL}/auth/verify-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: phoneNum, otp, role: 'customer' })
+            body: JSON.stringify({ ...payload, otp, role: 'customer' })
         });
         const verifyData = await verifyRes.json();
         if (!verifyRes.ok) throw new Error(verifyData.error || 'OTP verification failed');
@@ -5582,6 +5642,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const phoneInput = document.getElementById('su-phone');
     if (phoneInput) {
         phoneInput.addEventListener('input', () => {
+            if (currentCustomerAuthMode !== 'phone') return;
             const val = phoneInput.value.trim();
             // Automatically trigger when exactly 10 digits are entered
             if (/^\d{10}$/.test(val) && val !== lastSentPhone) {
@@ -5606,6 +5667,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Trigger Google Phone Number Hint API on focus (only on Android, once per session, when empty)
         let hasPromptedPhoneHint = false;
         phoneInput.addEventListener('focus', async () => {
+            if (currentCustomerAuthMode !== 'phone') return;
             const val = phoneInput.value.trim();
             if (!val && !hasPromptedPhoneHint && window.Capacitor && window.Capacitor.isNativePlatform() && window.Capacitor.Plugins.AndroidSmsRetriever) {
                 hasPromptedPhoneHint = true;
