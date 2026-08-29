@@ -5417,7 +5417,32 @@ window.openDeliveryOtpModal = async function(tripId) {
     }
 };
 
+// --- Native Camera Permission Bridge ---
+async function ensureNativeCameraPermission() {
+    if (window.Capacitor && window.Capacitor.isPluginAvailable('Camera')) {
+        const { Camera } = window.Capacitor.Plugins;
+        try {
+            const check = await Camera.checkPermissions();
+            if (check.camera !== 'granted') {
+                const req = await Camera.requestPermissions({ permissions: ['camera'] });
+                if (req.camera !== 'granted') {
+                    showToast('Camera permission is required to capture photos. Please enable it in Android Settings.', 'error');
+                    return false;
+                }
+            }
+            return true;
+        } catch (e) {
+            console.warn('[Camera Permission Warning]', e);
+        }
+    }
+    return true;
+}
+
 async function getMediaStreamWithFallback(facingPreference, withAudio = false) {
+    const hasPermission = await ensureNativeCameraPermission();
+    if (!hasPermission) {
+        throw new Error("Camera permission was denied. Please enable camera permissions in Android Settings.");
+    }
     const attempts = [
         { video: { facingMode: { ideal: facingPreference } }, audio: withAudio },
         { video: { facingMode: facingPreference }, audio: withAudio },
@@ -5885,8 +5910,13 @@ async function startKycCamera() {
         document.getElementById('camera-container').style.display = 'flex';
         document.getElementById('photo-preview-container').style.display = 'none';
     } catch (err) {
-        alert("Camera access denied or unavailable. Please allow camera permissions. Details: " + err.message);
         console.error("Camera error:", err);
+        const errMsg = err?.message || String(err);
+        if (errMsg.toLowerCase().includes('denied') || errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('notallowed')) {
+            showToast("Camera permission denied. Please allow camera access in Android Settings to capture a selfie.", "error");
+        } else {
+            showToast("Camera access failed: " + errMsg, "error");
+        }
     }
 }
 
@@ -6078,7 +6108,12 @@ window.openDocumentCamera = function(docTypeLabel) {
             }
         } catch (err) {
             console.error('[DOC_CAMERA] Access failed:', err);
-            showToast("Camera access denied or unavailable: " + err.message, "error");
+            const errMsg = err?.message || String(err);
+            if (errMsg.toLowerCase().includes('denied') || errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('notallowed')) {
+                showToast("Camera permission denied. Please allow camera access in Android Settings.", "error");
+            } else {
+                showToast("Camera access failed: " + errMsg, "error");
+            }
             closeDocCamera();
             reject(err);
         }
