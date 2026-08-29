@@ -6998,6 +6998,23 @@ async function triggerBackgroundAccessSettings() {
 let lastBackPress = 0;
 
 window.handleAppBack = function() {
+    // 1. Check if Document Camera scanner modal is active
+    const docCamModal = document.getElementById('document-camera-modal');
+    if (docCamModal && (docCamModal.style.display === 'flex' || docCamModal.style.display === 'block')) {
+        console.log('Back pressed: Closing document camera modal');
+        if (typeof closeDocCamera === 'function') closeDocCamera();
+        else { docCamModal.style.display = 'none'; }
+        return true;
+    }
+
+    // 2. Check if Live Selfie camera preview is actively streaming
+    if (cameraStream) {
+        console.log('Back pressed: Stopping live selfie camera preview');
+        if (typeof stopKycCamera === 'function') stopKycCamera();
+        return true;
+    }
+
+    // 3. Check if standard modals are open and visible
     const modals = [
         'kyc-permission-modal', 'marshal-feedback-modal', 'confirm-modal', 
         'delivery-otp-modal', 'privacy-modal', 'terms-modal', 
@@ -7053,7 +7070,26 @@ window.handleAppBack = function() {
         }
     }
 
-    // Modal was not open, perform tab history back
+    // 4. Check if KYC screen is currently active
+    const kycScreen = document.getElementById('kyc-screen');
+    if (kycScreen && !kycScreen.classList.contains('hidden') && kycScreen.style.display !== 'none') {
+        const step2 = document.getElementById('kyc-step-2');
+        const isStep2Active = step2 && step2.style.display === 'block';
+
+        if (isStep2Active) {
+            console.log('Back pressed: Navigating back in KYC Wizard (substep', window.currentKycSubStepIndex, ')');
+            if (typeof window.prevWizardSubStep === 'function') {
+                window.prevWizardSubStep();
+                return true;
+            }
+        } else {
+            // In Step 1 (Contact Info) -> Return false to allow double-back-to-exit
+            console.log('Back pressed: At KYC Step 1, delegating to exitApp');
+            return false;
+        }
+    }
+
+    // 5. Modal / KYC was not open, perform tab history back
     if (window.marshalTabHistory && window.marshalTabHistory.length > 1) {
         window.marshalTabHistory.pop(); // Pop current tab
         const prevTab = window.marshalTabHistory[window.marshalTabHistory.length - 1];
