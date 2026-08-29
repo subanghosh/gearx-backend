@@ -1043,7 +1043,8 @@ async function handleGoogleSignIn() {
         const idToken = result.credential?.idToken || result.idToken;
 
         if (!idToken) {
-            throw new Error('Google authentication was cancelled or did not return an ID token.');
+            console.log('[Google Sign-In] No ID token returned (user dismissed prompt).');
+            return;
         }
 
         showToast('Signing in...', 'info');
@@ -1082,8 +1083,35 @@ async function handleGoogleSignIn() {
         loadDashboard();
         loadCategories();
     } catch (err) {
-        console.error('Google Sign-In error:', err);
-        showToast(err.message || 'Google Sign-In failed', 'error');
+        console.log('[Google Sign-In]', err);
+        const errMsg = (err && (err.message || err.errorMessage || String(err))) || '';
+        const errCode = (err && err.code) || '';
+        const lower = errMsg.toLowerCase();
+
+        // Silent return for user-initiated cancellation (no error toast)
+        if (
+            lower.includes('cancel') ||
+            lower.includes('12501') ||
+            lower.includes('sign_in_cancelled') ||
+            lower.includes('closed') ||
+            errCode === '12501' ||
+            errCode === 'ERROR_USER_CANCELLED'
+        ) {
+            console.log('[Google Sign-In] User cancelled sign-in prompt.');
+            return;
+        }
+
+        // User-friendly messages for genuine errors
+        let userMessage = 'Google Sign-In failed. Please try again.';
+        if (lower.includes('network') || lower.includes('failed to fetch')) {
+            userMessage = 'Network connection error. Please check your internet.';
+        } else if (lower.includes('invalid or expired')) {
+            userMessage = 'Authentication session expired. Please try signing in again.';
+        } else if (errMsg && !errMsg.includes('12500') && !errMsg.includes('12501') && !errMsg.includes('ApiException')) {
+            userMessage = errMsg;
+        }
+
+        showToast(userMessage, 'error');
     }
 }
 
