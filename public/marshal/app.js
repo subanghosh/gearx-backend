@@ -873,11 +873,97 @@ async function handleLoginAction() {
     }
 }
 
-function logout() {
+async function handleGoogleSignIn() {
+    try {
+        if (!window.Capacitor || !window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+            showToast('Google Sign-In is only available in the Android app build.', 'info');
+            return;
+        }
+
+        const { FirebaseAuthentication } = window.Capacitor.Plugins;
+        showToast('Connecting to Google...', 'info');
+
+        const result = await FirebaseAuthentication.signInWithGoogle({
+            useCredentialManager: false
+        });
+        const idToken = result.credential?.idToken || result.idToken;
+
+        if (!idToken) {
+            console.log('[Google Sign-In] No ID token returned (user dismissed prompt).');
+            return;
+        }
+
+        showToast('Signing in...', 'info');
+        const res = await fetch(`${API_URL}/auth/google-signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken, role: 'marshal' })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Google Sign-In failed');
+
+        if (data.user.role !== 'marshal') {
+            throw new Error('Access denied. This portal is for Drivers only.');
+        }
+
+        // Setup Marshal User Session
+        currentUser = normalizeUser(data.user);
+        safeSetLocalStorage('marshalUser', JSON.stringify(currentUser));
+        if (data.token) {
+            safeSetLocalStorage('redrivo_token', data.token);
+        }
+        syncAuthSessionToNative();
+        showToast(`Welcome back, ${data.user.name || 'Driver'}!`, 'success');
+        enterApp();
+    } catch (err) {
+        console.log('[Google Sign-In]', err);
+        const errMsg = (err && (err.message || err.errorMessage || String(err))) || '';
+        const errCode = (err && err.code) || '';
+        const lower = errMsg.toLowerCase();
+
+        // Silent return for user-initiated cancellation (no error toast)
+        if (
+            lower.includes('cancel') ||
+            lower.includes('12501') ||
+            lower.includes('sign_in_cancelled') ||
+            lower.includes('closed') ||
+            errCode === '12501' ||
+            errCode === 'ERROR_USER_CANCELLED'
+        ) {
+            console.log('[Google Sign-In] User cancelled sign-in prompt.');
+            return;
+        }
+
+        // User-friendly messages for genuine errors
+        let userMessage = 'Google Sign-In failed. Please try again.';
+        if (lower.includes('network') || lower.includes('failed to fetch')) {
+            userMessage = 'Network connection error. Please check your internet.';
+        } else if (lower.includes('invalid or expired')) {
+            userMessage = 'Authentication session expired. Please try signing in again.';
+        } else if (errMsg && !errMsg.includes('12500') && !errMsg.includes('12501') && !errMsg.includes('ApiException')) {
+            userMessage = errMsg;
+        }
+
+        showToast(userMessage, 'error');
+    }
+}
+
+async function logout() {
     currentUser = null;
     localStorage.removeItem('marshalUser');
     localStorage.removeItem('redrivo_token');
     
+    // Sign out from Google / Firebase to reset account picker for next login
+    try {
+        if (window.Capacitor && window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+            const { FirebaseAuthentication } = window.Capacitor.Plugins;
+            await FirebaseAuthentication.signOut();
+        }
+    } catch (e) {
+        console.warn('Firebase / Google sign-out warning:', e.message);
+    }
+
     const performReload = () => {
         location.reload();
     };

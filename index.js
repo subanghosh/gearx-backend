@@ -2428,7 +2428,8 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
 
     const allowedAudiences = [
         process.env.GOOGLE_OAUTH_WEB_CLIENT_ID,
-        process.env.GOOGLE_OAUTH_CUSTOMER_CLIENT_ID
+        process.env.GOOGLE_OAUTH_CUSTOMER_CLIENT_ID,
+        process.env.GOOGLE_OAUTH_MARSHAL_CLIENT_ID
     ].filter(Boolean);
 
     if (allowedAudiences.length === 0) {
