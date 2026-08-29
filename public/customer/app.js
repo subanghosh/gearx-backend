@@ -1095,12 +1095,22 @@ function closeLogoutModal() {
     document.getElementById('logout-modal').style.display = 'none';
 }
 
-function confirmLogout() {
+async function confirmLogout() {
     document.getElementById('logout-modal').style.display = 'none';
     currentUser = null;
     localStorage.removeItem('redrivo_current_user');
     localStorage.removeItem('redrivo_token');
     
+    // Sign out from Google / Firebase to reset account picker for next login
+    try {
+        if (window.Capacitor && window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+            const { FirebaseAuthentication } = window.Capacitor.Plugins;
+            await FirebaseAuthentication.signOut();
+        }
+    } catch (e) {
+        console.warn('Firebase / Google sign-out warning:', e.message);
+    }
+
     // Clear inputs and reset UI state of signup
     document.getElementById('su-phone').value = '';
     if (window.clearOtpBoxes) clearOtpBoxes('su-otp'); else document.getElementById('su-otp').value = '';
