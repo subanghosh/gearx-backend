@@ -5930,11 +5930,31 @@ async function startKycCamera() {
     try {
         cameraStream = await getMediaStreamWithFallback('user', false);
         const videoEl = document.getElementById('camera-preview');
-        videoEl.srcObject = cameraStream;
-        
-        document.getElementById('btn-start-camera').style.display = 'none';
-        document.getElementById('camera-container').style.display = 'flex';
-        document.getElementById('photo-preview-container').style.display = 'none';
+        if (videoEl) {
+            videoEl.srcObject = cameraStream;
+            videoEl.muted = true;
+            videoEl.setAttribute('playsinline', '');
+            videoEl.setAttribute('autoplay', '');
+            await videoEl.play().catch(e => console.warn("selfieVideo.play caught:", e));
+        }
+
+        const btnStart = document.getElementById('btn-start-camera');
+        if (btnStart) {
+            btnStart.classList.add('hidden');
+            btnStart.style.display = 'none';
+        }
+
+        const camContainer = document.getElementById('camera-container');
+        if (camContainer) {
+            camContainer.classList.remove('hidden');
+            camContainer.style.display = 'flex';
+        }
+
+        const previewContainer = document.getElementById('photo-preview-container');
+        if (previewContainer) {
+            previewContainer.classList.add('hidden');
+            previewContainer.style.display = 'none';
+        }
     } catch (err) {
         console.error("Camera error:", err);
         const errMsg = err?.message || String(err);
@@ -5949,9 +5969,23 @@ async function startKycCamera() {
 function stopKycCamera() {
     if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
-        document.getElementById('camera-preview').srcObject = null;
-        document.getElementById('camera-container').style.display = 'none';
-        if (!document.getElementById('on-face-file').files.length) { document.getElementById('btn-start-camera').style.display = 'inline-block'; }
+        cameraStream = null;
+    }
+    const videoEl = document.getElementById('camera-preview');
+    if (videoEl) {
+        videoEl.srcObject = null;
+    }
+    const camContainer = document.getElementById('camera-container');
+    if (camContainer) {
+        camContainer.classList.add('hidden');
+        camContainer.style.display = 'none';
+    }
+    const faceFileInput = document.getElementById('on-face-file');
+    const hasFile = faceFileInput && faceFileInput.files && faceFileInput.files.length > 0;
+    const btnStart = document.getElementById('btn-start-camera');
+    if (btnStart && !hasFile) {
+        btnStart.classList.remove('hidden');
+        btnStart.style.display = 'inline-block';
     }
 }
 window.stopKycCamera = stopKycCamera;
@@ -6046,41 +6080,65 @@ window.captureSelfie = function() {
 
             // Display the captured photo
             const imgUrl = URL.createObjectURL(blob);
-            document.getElementById('captured-photo').src = imgUrl;
-            document.getElementById('photo-preview-container').style.display = 'flex';
+            const capturedImg = document.getElementById('captured-photo');
+            if (capturedImg) capturedImg.src = imgUrl;
+            const previewContainer = document.getElementById('photo-preview-container');
+            if (previewContainer) {
+                previewContainer.classList.remove('hidden');
+                previewContainer.style.display = 'flex';
+            }
         }, 'image/jpeg', 0.85);
     } catch (err) {
         console.error("Error in captureSelfie:", err);
         showToast("An error occurred while capturing the photo: " + err.message, "error");
     }
-}
+};
 
 window.retakeSelfie = function() {
-    document.getElementById('photo-preview-container').style.display = 'none';
-    document.getElementById('captured-photo').src = '';
+    const previewContainer = document.getElementById('photo-preview-container');
+    if (previewContainer) {
+        previewContainer.classList.add('hidden');
+        previewContainer.style.display = 'none';
+    }
+    const capturedImg = document.getElementById('captured-photo');
+    if (capturedImg) capturedImg.src = '';
     
     // Clear file input
     const dt = new DataTransfer();
-    document.getElementById('on-face-file').files = dt.files;
+    const faceFileInput = document.getElementById('on-face-file');
+    if (faceFileInput) faceFileInput.files = dt.files;
     
     // Restart camera
     if (typeof startKycCamera === 'function') {
         startKycCamera();
     }
-}
+};
 
 window.cancelSelfie = function() {
-    document.getElementById('photo-preview-container').style.display = 'none';
-    document.getElementById('captured-photo').src = '';
+    const previewContainer = document.getElementById('photo-preview-container');
+    if (previewContainer) {
+        previewContainer.classList.add('hidden');
+        previewContainer.style.display = 'none';
+    }
+    const capturedImg = document.getElementById('captured-photo');
+    if (capturedImg) capturedImg.src = '';
     
     // Clear file input
     const dt = new DataTransfer();
-    document.getElementById('on-face-file').files = dt.files;
+    const faceFileInput = document.getElementById('on-face-file');
+    if (faceFileInput) faceFileInput.files = dt.files;
     
-    // Ensure both camera container and start button are in correct states
-    document.getElementById('camera-container').style.display = 'none';
-    document.getElementById('btn-start-camera').style.display = 'inline-block';
-}
+    const camContainer = document.getElementById('camera-container');
+    if (camContainer) {
+        camContainer.classList.add('hidden');
+        camContainer.style.display = 'none';
+    }
+    const btnStart = document.getElementById('btn-start-camera');
+    if (btnStart) {
+        btnStart.classList.remove('hidden');
+        btnStart.style.display = 'inline-block';
+    }
+};
 
 // ─── DOCUMENT IN-APP CAMERA CONTROLLER ────────────────────────────────────
 let docCameraStream = null;
