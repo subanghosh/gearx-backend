@@ -3354,7 +3354,7 @@ async function acceptPickup(id) {
             }, 2000);
         }
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast(err.message, 'error');
     }
 }
 
@@ -5507,14 +5507,19 @@ window.startDeliveryCamera = async function(mode) {
             });
         }
 
-        if (mode === 'odo') {
+          if (mode === 'odo') {
             document.getElementById('btn-delivery-capture-photo').style.display = 'inline-block';
         } else {
             document.getElementById('btn-delivery-start-record').style.display = 'inline-block';
         }
     } catch (err) {
         console.error("Delivery camera access failed:", err);
-        showToast("Camera access required: Please enable camera permissions in your device/browser settings to capture live odometer evidence.", "error");
+        const errMsg = err?.message || String(err);
+        if (errMsg.toLowerCase().includes('denied') || errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('notallowed')) {
+            showToast("Camera permission denied. Please allow camera access in Android Settings.", "error");
+        } else {
+            showToast("Camera access failed: " + errMsg, "error");
+        }
     }
 };
 
@@ -5533,116 +5538,132 @@ window.takeDeliveryPhoto = function() {
 
     canvas.toBlob(blob => {
         if (!blob) {
-            showToast("Failed to capture final odometer frame. Please retry.", "error");
+            showToast("Failed to process photo blob", "error");
             return;
         }
         deliveryOdoBlob = blob;
-        const url = URL.createObjectURL(blob);
-        const preview = document.getElementById('delivery-odo-preview');
-        if (preview) {
-            preview.src = url;
-            preview.style.display = 'block';
-        }
-        
+        document.getElementById('delivery-odo-preview').src = URL.createObjectURL(blob);
+        document.getElementById('delivery-odo-preview-wrap').style.display = 'block';
+        document.getElementById('btn-delivery-cam-odo').innerHTML = '<span class="material-symbols-outlined" style="vertical-align: middle; font-size:18px;">refresh</span> Retake Odometer Photo';
         stopDeliveryKycCamera();
-        showToast("Final odometer photo captured successfully!", "success");
-    }, 'image/jpeg', 0.90);
+        showToast("Odometer photo captured!", "success");
+    }, 'image/jpeg', 0.85);
 };
 
 window.startDeliveryRecording = function() {
+    if (!deliveryStream) {
+        showToast("No active camera stream for recording", "error");
+        return;
+    }
     deliveryRecordedChunks = [];
-    deliveryMediaRecorder = new MediaRecorder(deliveryStream, { mimeType: 'video/webm' });
-    deliveryMediaRecorder.ondataavailable = e => { if (e.data.size > 0) deliveryRecordedChunks.push(e.data); };
-    deliveryMediaRecorder.onstop = () => {
-        deliveryVideoBlob = new Blob(deliveryRecordedChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(deliveryVideoBlob);
-        const preview = document.getElementById('delivery-video-preview');
-        preview.src = url;
-        preview.style.display = 'block';
+    try {
+        let options = { mimeType: 'video/webm;codecs=vp8,opus' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/mp4' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options = {};
+            }
+        }
+        deliveryMediaRecorder = new MediaRecorder(deliveryStream, options);
+    } catch (e) {
+        console.error("MediaRecorder creation failed:", e);
+        showToast("Video recording unsupported on this device.", "error");
+        return;
+    }
+
+    deliveryMediaRecorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) {
+            deliveryRecordedChunks.push(e.data);
+        }
     };
-    deliveryMediaRecorder.start();
-    
+
+    deliveryMediaRecorder.onstop = function() {
+        const blobType = deliveryMediaRecorder.mimeType || 'video/webm';
+        deliveryVideoBlob = new Blob(deliveryRecordedChunks, { type: blobType });
+        const videoUrl = URL.createObjectURL(deliveryVideoBlob);
+        const preview = document.getElementById('delivery-video-preview');
+        preview.src = videoUrl;
+        document.getElementById('delivery-video-preview-wrap').style.display = 'block';
+        document.getElementById('btn-delivery-record-360').innerHTML = '<span class="material-symbols-outlined" style="vertical-align: middle; font-size:18px;">refresh</span> Re-record 360 Video';
+        stopDeliveryKycCamera();
+        showToast("360 Walkaround Video saved!", "success");
+    };
+
+    deliveryMediaRecorder.start(1000);
     document.getElementById('btn-delivery-start-record').style.display = 'none';
     document.getElementById('btn-delivery-stop-record').style.display = 'inline-block';
+    showToast("Recording started... Complete a 360 walkaround.", "info");
 };
 
 window.stopDeliveryRecording = function() {
-    if (deliveryMediaRecorder) deliveryMediaRecorder.stop();
-    stopDeliveryKycCamera();
+    if (deliveryMediaRecorder && deliveryMediaRecorder.state !== 'inactive') {
+        deliveryMediaRecorder.stop();
+    }
 };
 
 window.stopDeliveryKycCamera = function() {
-    if (deliveryStream) deliveryStream.getTracks().forEach(track => track.stop());
-    deliveryStream = null;
-    document.getElementById('delivery-camera-feed').style.display = 'none';
-    document.getElementById('delivery-camera-controls').style.display = 'none';
-    document.getElementById('delivery-main-content').style.display = 'block';
-    
-    // Toggle correct button based on active step
-    const isMediaActive = !document.getElementById('delivery-step-media').classList.contains('hidden');
-    document.getElementById('btn-submit-delivery-media').style.display = isMediaActive ? 'block' : 'none';
-    document.getElementById('btn-confirm-delivery').style.display = isMediaActive ? 'none' : 'block';
+    if (deliveryStream) {
+        deliveryStream.getTracks().forEach(track => track.stop());
+        deliveryStream = null;
+    }
+    const videoObj = document.getElementById('delivery-camera-feed');
+    if (videoObj) {
+        videoObj.srcObject = null;
+        videoObj.style.display = 'none';
+    }
+    const controls = document.getElementById('delivery-camera-controls');
+    if (controls) controls.style.display = 'none';
+    const mainContent = document.getElementById('delivery-main-content');
+    if (mainContent) mainContent.style.display = 'block';
 };
 
 window.submitDeliveryMedia = async function() {
     const odoValue = document.getElementById('delivery-odo-reading').value.trim();
 
-    if (!odoValue) return alert("Please enter final odometer reading");
-    if (!deliveryOdoBlob) return alert("Please capture final odometer photo");
-    if (!deliveryVideoBlob) return alert("Please record 360 walkaround video");
+    if (!odoValue) { showToast("Please enter final odometer reading", "error"); return; }
+    if (!deliveryOdoBlob) { showToast("Please capture final odometer photo", "error"); return; }
+    if (!deliveryVideoBlob) { showToast("Please record 360 walkaround video", "error"); return; }
 
     if (marshalLat === null || marshalLng === null) {
-        alert("Waiting for GPS lock... Please wait a moment.");
+        showToast("Waiting for GPS lock... Please wait a moment.", "info");
         return;
     }
 
     const btn = document.getElementById('btn-submit-delivery-media');
     const originalText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = "Uploading Media...";
+    btn.textContent = 'Uploading Proof...';
 
     try {
-        // 1. Upload Odometer Photo
-        const formDataOdo = new FormData();
-        formDataOdo.append('referenceId', currentTripId);
-        formDataOdo.append('type', 'odometer_end');
-        formDataOdo.append('file', deliveryOdoBlob, 'odo_end.jpg');
-        let resOdo = await fetch(`${API_URL}/media`, { method: 'POST', body: formDataOdo });
-        if (!resOdo.ok) throw new Error("Failed to upload odometer photo");
+        const formData = new FormData();
+        formData.append('odometerReading', odoValue);
+        formData.append('odometerPhoto', deliveryOdoBlob, 'delivery_odo.jpg');
+        formData.append('walkaroundVideo', deliveryVideoBlob, 'delivery_360.webm');
+        formData.append('lat', marshalLat);
+        formData.append('lng', marshalLng);
 
-        // 2. Upload 360 Video
-        const formDataVid = new FormData();
-        formDataVid.append('referenceId', currentTripId);
-        formDataVid.append('type', '360_delivery');
-        formDataVid.append('file', deliveryVideoBlob, '360_delivery.webm');
-        let resVid = await fetch(`${API_URL}/media`, { method: 'POST', body: formDataVid });
-        if (!resVid.ok) throw new Error("Failed to upload 360 walkaround video");
-
-        // 3. Submit Delivery Media to Backend
-        const resSubmit = await fetch(`${API_URL}/trips/${currentTripId}/submit-delivery-media`, {
+        const res = await fetch(`${API_URL}/marshal/orders/${currentDeliveryTripId}/deliver`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ 
-                odometer: parseInt(odoValue, 10),
-                lat: marshalLat,
-                lng: marshalLng
-            })
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('redrivo_token')}`
+            },
+            body: formData
         });
-        const data = await resSubmit.json();
-        if (!resSubmit.ok) throw new Error(data.error || "Failed to submit delivery details");
 
-        showToast("Handover media uploaded successfully! Please enter the customer's Dropoff OTP to complete handover.", "success");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to submit delivery media');
+
+        showToast('Proof uploaded successfully! Proceed to verify Customer OTP.', 'success');
         
-        // Show Step 2 (OTP Entry)
+        // Advance to step 2: OTP
         document.getElementById('delivery-step-media').classList.add('hidden');
         document.getElementById('delivery-step-otp').classList.remove('hidden');
         document.getElementById('btn-submit-delivery-media').style.display = 'none';
         document.getElementById('btn-confirm-delivery').style.display = 'block';
 
-        if (window.loadMyTrips) loadMyTrips();
-    } catch(err) {
-        showToast("Submission failed: " + err.message, "error");
-    } finally {
+    } catch (err) {
+        console.error("Delivery submission error:", err);
+        showToast(err.message, "error");
         btn.disabled = false;
         btn.textContent = originalText;
     }
@@ -5730,7 +5751,12 @@ async function startCamera(mode) {
         }
     } catch (err) {
         console.error("Camera access failed:", err);
-        showToast("Camera access required: Please enable camera permissions in your device/browser settings to capture live odometer evidence.", "error");
+        const errMsg = err?.message || String(err);
+        if (errMsg.toLowerCase().includes('denied') || errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('notallowed')) {
+            showToast("Camera permission denied. Please allow camera access in Android Settings.", "error");
+        } else {
+            showToast("Camera access failed: " + errMsg, "error");
+        }
     }
 }
 
