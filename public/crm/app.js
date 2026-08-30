@@ -581,10 +581,13 @@ const router = {
         app.classList.add('fade-in');
 
         const sidebar = document.querySelector('.sidebar');
+        const topNav = document.querySelector('.top-nav');
         if (page === 'login' || page === 'public-survey') {
             if (sidebar) sidebar.style.display = 'none';
+            if (topNav) topNav.style.display = 'none';
         } else {
             if (sidebar) sidebar.style.display = 'flex';
+            if (topNav) topNav.style.display = 'flex';
             
             if (page !== 'login') {
                 // Show subtle sync indicator
