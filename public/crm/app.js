@@ -3637,74 +3637,203 @@ function renderLogin(container) {
         <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg-base);">
             <div class="card" style="width: 100%; max-width: 400px; padding: 40px; border: 1px solid var(--border-bright);">
                 <div style="text-align: center; margin-bottom: 40px;">
-                    <img src="assets/redrivo_logo_transparent_dark_bg.png" alt="ReDrivo Logo" style="width: 160px; height: auto; margin: 0 auto 12px; display: block;" />
-                    <p style="color:var(--text-dim); font-size:0.9rem; margin-top:4px;">Operational Command Center</p>
+let adminOtpCooldownTimer = null;
+let adminOtpPendingEmail = '';
+
+function renderLogin(container) {
+    const html = `
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background: radial-gradient(circle at center, #111 0%, #000 100%); padding: 20px;">
+            <div class="card" style="width: 100%; max-width: 420px; padding: 40px; border: 1px solid var(--border-bright); background: #121214; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+                <div style="text-align: center; margin-bottom: 32px;">
+                    <img src="assets/redrivo_logo_transparent_dark_bg.png" alt="ReDrivo Logo" style="width: 150px; height: auto; margin: 0 auto 12px; display: block;" />
+                    <p style="color:var(--text-dim); font-size:0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-top:4px;">Command Center Access</p>
                 </div>
                 
-                <div class="form-group">
-                    <label class="label">SECURE IDENTIFIER</label>
-                    <input type="text" id="login-id" class="input" placeholder="admin@redrivo.com">
+                <div id="login-notification" style="margin-bottom: 20px; display: none;"></div>
+
+                <!-- Email Section -->
+                <div id="admin-email-section">
+                    <div class="form-group">
+                        <label class="label" style="font-size: 0.75rem; letter-spacing: 1px; color: var(--text-dim);">ADMINISTRATOR EMAIL</label>
+                        <input type="email" id="login-email" class="input" placeholder="subanghosh7@gmail.com" style="margin-top: 6px; height: 50px; font-size: 0.95rem;" onkeydown="if(event.key==='Enter') handleSendAdminOTP()">
+                    </div>
+                    
+                    <button id="btn-send-admin-otp" onclick="handleSendAdminOTP()" class="btn btn-primary" style="width: 100%; margin-top: 24px; height: 50px; font-weight:700; font-size: 0.95rem;">
+                        Send Secure OTP
+                    </button>
                 </div>
-                <div class="form-group" style="margin-top:20px;">
-                    <label class="label">ACCESS KEY</label>
-                    <input type="password" id="login-pass" class="input" placeholder="••••••••">
+
+                <!-- OTP Section -->
+                <div id="admin-otp-section" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="label" style="font-size: 0.75rem; letter-spacing: 1px; color: var(--text-dim);">6-DIGIT OTP</label>
+                        <a href="javascript:void(0)" onclick="resetAdminLoginView()" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">Change Email</a>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px;">
+                        Sent to <strong id="admin-otp-target-display" style="color: #fff;"></strong>
+                    </div>
+
+                    <div class="otp-boxes" data-target="admin-login-otp" style="margin-bottom: 20px;">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                    </div>
+                    <input type="hidden" id="admin-login-otp" value="">
+
+                    <button id="btn-verify-admin-otp" onclick="handleVerifyAdminOTP()" class="btn btn-primary" style="width: 100%; height: 50px; font-weight:700; font-size: 0.95rem;">
+                        Verify & Launch Portal
+                    </button>
+
+                    <div style="text-align: center; margin-top: 16px; font-size: 0.8rem; color: var(--text-dim);">
+                        <span id="admin-resend-countdown">Resend in 60s</span>
+                        <a id="admin-resend-btn" href="javascript:void(0)" onclick="handleSendAdminOTP(true)" style="display: none; color: var(--primary); text-decoration: none; font-weight: 700;">Resend OTP</a>
+                    </div>
                 </div>
                 
-                <button onclick="handleLogin()" class="btn btn-primary" style="width: 100%; margin-top: 30px; height: 50px; font-weight:700;">
-                    Initialize Access
-                </button>
-                
-                <div style="margin: 30px 0; display:flex; align-items:center; gap:10px;">
+                <div style="margin: 28px 0 20px; display:flex; align-items:center; gap:10px;">
                     <div style="flex:1; height:1px; background:var(--border);"></div>
                     <span style="font-size:0.75rem; color:var(--text-dim); font-weight:700;">OR</span>
                     <div style="flex:1; height:1px; background:var(--border);"></div>
                 </div>
                 
                 <div style="text-align: center;">
-                    <button onclick="window.location.hash='#public-survey'; location.reload();" class="btn btn-secondary" style="width: 100%; height: 50px;">
+                    <button onclick="window.location.hash='#public-survey'; location.reload();" class="btn btn-secondary" style="width: 100%; height: 46px; font-size: 0.85rem;">
                         <i data-lucide="clipboard-list"></i> Public Survey Portal
                     </button>
-                    <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 10px;">No authentication required for surveys</p>
                 </div>
             </div>
         </div>
     `;
     container.innerHTML = html;
     lucide.createIcons();
+    if (window.initOtpBoxes) window.initOtpBoxes();
 }
 
-async function handleLogin() {
-    const identifier = document.getElementById('login-id').value;
-    const password = document.getElementById('login-pass').value;
+function showAdminLoginNotify(msg, type = 'error') {
+    const el = document.getElementById('login-notification');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.padding = '12px 16px';
+    el.style.borderRadius = '10px';
+    el.style.fontSize = '0.85rem';
+    el.style.fontWeight = '600';
+    if (type === 'error') {
+        el.style.background = 'rgba(239, 68, 68, 0.12)';
+        el.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        el.style.color = '#ef4444';
+    } else {
+        el.style.background = 'rgba(16, 185, 129, 0.12)';
+        el.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        el.style.color = '#10b981';
+    }
+    el.textContent = msg;
+}
 
-    if (!identifier || !password) {
-        alert('Please enter both ID and Password');
+async function handleSendAdminOTP(isResend = false) {
+    const emailInput = document.getElementById('login-email');
+    const email = isResend ? adminOtpPendingEmail : (emailInput ? emailInput.value.trim() : '');
+    if (!email || !email.includes('@')) {
+        showAdminLoginNotify('Please enter a valid administrator email.');
         return;
     }
 
+    const sendBtn = document.getElementById('btn-send-admin-otp');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Dispatching OTP...'; }
+
     try {
-        const response = await fetch(`${API_URL}/auth/login`, {
+        const res = await fetch(`${API_URL}/auth/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier, password })
+            body: JSON.stringify({ email, role: 'admin' })
         });
+        const data = await res.json();
+        if (!res.ok) {
+            showAdminLoginNotify(data.error || 'Failed to send OTP.');
+            if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send Secure OTP'; }
+            return;
+        }
 
-        const data = await response.json();
+        adminOtpPendingEmail = email;
+        document.getElementById('admin-email-section').style.display = 'none';
+        document.getElementById('admin-otp-section').style.display = 'block';
+        document.getElementById('admin-otp-target-display').textContent = email;
+        showAdminLoginNotify('OTP sent successfully to ' + email, 'success');
+        startAdminOtpCooldown();
+        if (window.initOtpBoxes) window.initOtpBoxes();
+        const firstBox = document.querySelector('.otp-box');
+        if (firstBox) firstBox.focus();
+    } catch (err) {
+        showAdminLoginNotify('Connection error. Is backend reachable?');
+    } finally {
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send Secure OTP'; }
+    }
+}
 
-        if (response.ok) {
-            PROTOTYPE_STATE.currentUser = data;
-            localStorage.setItem('redrivo_current_user', JSON.stringify(data));
+async function handleVerifyAdminOTP() {
+    const otp = document.getElementById('admin-login-otp')?.value || '';
+    if (!otp || otp.length !== 6) {
+        showAdminLoginNotify('Please enter the full 6-digit OTP code.');
+        return;
+    }
+
+    const verifyBtn = document.getElementById('btn-verify-admin-otp');
+    if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.textContent = 'Verifying Session...'; }
+
+    try {
+        const res = await fetch(`${API_URL}/auth/verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: adminOtpPendingEmail, otp, role: 'admin' })
+        });
+        const data = await res.json();
+        if (res.ok && data.verified) {
+            PROTOTYPE_STATE.currentUser = data.user;
+            localStorage.setItem('redrivo_current_user', JSON.stringify(data.user));
             if (data.token) {
                 localStorage.setItem('redrivo_token', data.token);
             }
             router.navigate('dashboard');
         } else {
-            alert(data.error || 'Invalid Credentials');
+            showAdminLoginNotify(data.error || 'Invalid or expired OTP.');
         }
     } catch (err) {
-        console.error('Login Error:', err);
-        alert('Connection error. Is the backend running?');
+        showAdminLoginNotify('Verification connection failed.');
+    } finally {
+        if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Launch Portal'; }
     }
+}
+
+function resetAdminLoginView() {
+    clearInterval(adminOtpCooldownTimer);
+    document.getElementById('admin-otp-section').style.display = 'none';
+    document.getElementById('admin-email-section').style.display = 'block';
+    if (window.clearOtpBoxes) window.clearOtpBoxes('admin-login-otp');
+}
+
+function startAdminOtpCooldown() {
+    let seconds = 60;
+    const countdownEl = document.getElementById('admin-resend-countdown');
+    const resendBtn = document.getElementById('admin-resend-btn');
+    if (!countdownEl || !resendBtn) return;
+    
+    countdownEl.style.display = 'inline';
+    resendBtn.style.display = 'none';
+    countdownEl.textContent = `Resend in ${seconds}s`;
+    
+    clearInterval(adminOtpCooldownTimer);
+    adminOtpCooldownTimer = setInterval(() => {
+        seconds--;
+        if (seconds <= 0) {
+            clearInterval(adminOtpCooldownTimer);
+            countdownEl.style.display = 'none';
+            resendBtn.style.display = 'inline';
+        } else {
+            countdownEl.textContent = `Resend in ${seconds}s`;
+        }
+    }, 1000);
 }
 
 function handleLogout() {

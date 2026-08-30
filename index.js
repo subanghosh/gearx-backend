@@ -1519,7 +1519,7 @@ apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
             vals.push(0);
         }
         if (req.body.email) {
-            const exists = await pool.query(`SELECT id FROM users WHERE email = $1 AND id != $2`, [req.body.email, id]);
+            const exists = await pool.query(`SELECT id FROM users WHERE email = $1 AND id != $2 AND role = $3`, [req.body.email, id, req.user.role]);
             if (exists.rows.length > 0) return res.status(400).json({ error: 'Email is already associated with another account.' });
             // Only reset if we are not actively verifying it in the same request
             if (req.body.emailVerified === undefined) {
@@ -1717,7 +1717,7 @@ apiRouter.put('/users/:id', authMiddleware, async (req, res) => {
             vals.push(0);
         }
         if (req.body.email) {
-            const exists = await pool.query(`SELECT id FROM users WHERE email = $1 AND id != $2`, [req.body.email, id]);
+            const exists = await pool.query(`SELECT id FROM users WHERE email = $1 AND id != $2 AND role = $3`, [req.body.email, id, req.user.role]);
             if (exists.rows.length > 0) return res.status(400).json({ error: 'Email is already associated with another account.' });
             if (req.body.emailVerified === undefined) {
                 fields.push(`emailverified = $${idx++}`);
@@ -2188,9 +2188,17 @@ apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (
 });
 
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
-    const { email, phone } = req.body;
+    const { email, phone, role } = req.body;
     if (!phone && !email)
         return res.status(400).json({ error: 'Phone or email is required' });
+
+    if (role === 'admin') {
+        const allowedAdminEmails = (process.env.ADMIN_EMAILS || 'subanghosh7@gmail.com').split(',').map(e => e.trim().toLowerCase());
+        const reqEmail = (email || '').trim().toLowerCase();
+        if (!reqEmail || !allowedAdminEmails.includes(reqEmail)) {
+            return res.status(403).json({ error: 'Access restricted: Unauthorized administrator email address.' });
+        }
+    }
 
     // Clean expired OTPs (housekeeping)
     pool.query("DELETE FROM otp_verifications WHERE expiresat < NOW()").catch(() => {});
@@ -2287,6 +2295,30 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null }, userObj.token_version || userObj.tokenversion || 1);
             return res.json({ verified: true, isNewUser, token, user: userObj });
         };
+
+        // Admin Authentication: (1) Whitelist Check, (2) Role-specific row lookup/creation, (3) JWT issuance
+        if (role === 'admin') {
+            const allowedAdminEmails = (process.env.ADMIN_EMAILS || 'subanghosh7@gmail.com').split(',').map(e => e.trim().toLowerCase());
+            if (!finalEmail || !allowedAdminEmails.includes(finalEmail)) {
+                return res.status(403).json({ error: 'Access restricted: Unauthorized administrator email address.' });
+            }
+            let adminUserRes = await pool.query(
+                `SELECT * FROM users WHERE email = $1 AND role = 'admin' LIMIT 1`,
+                [finalEmail]
+            );
+            let adminUser = adminUserRes.rows[0];
+            let isNewAdmin = false;
+            if (!adminUser) {
+                const newAdminId = `usr_adm_${Date.now()}`;
+                const insertAdmin = await pool.query(
+                    `INSERT INTO users (id, name, role, email, status, emailverified) VALUES ($1, 'Admin', 'admin', $2, 'active', 1) RETURNING *`,
+                    [newAdminId, finalEmail]
+                );
+                adminUser = insertAdmin.rows[0];
+                isNewAdmin = true;
+            }
+            return await buildResponse(adminUser, isNewAdmin);
+        }
 
         // Step 1: Check users table
         const userResult = await pool.query(
