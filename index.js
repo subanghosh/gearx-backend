@@ -2377,7 +2377,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             // Insert into users
             await pool.query(
                 `INSERT INTO users (id, name, role, phone, email, garageId, status) VALUES ($1, 'New Partner', 'garage', $2, $3, $4, 'active')`,
-                [newUserId, prefixedVal, email || null, newGarageId]
+                [newUserId, finalPhone, finalEmail, newGarageId]
             );
             return await buildResponse({ 
                 id: newGarageId + '_owner', 
@@ -2385,19 +2385,19 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 role: 'garage', 
                 garageId: newGarageId, 
                 status: 'active',
-                phone: prefixedVal,
-                email: email || null
+                phone: finalPhone,
+                email: finalEmail
             }, true);
         } else {
             // Default: customer
             const newUserId = 'cust_' + Date.now();
             await pool.query(
                 `INSERT INTO users (id, name, role, phone, email, status) VALUES ($1, 'New Customer', 'customer', $2, $3, 'active')`,
-                [newUserId, prefixedVal, email || null]
+                [newUserId, finalPhone, finalEmail]
             );
             await pool.query(
                 `INSERT INTO customers (id, name, phone, email, status) VALUES ($1, 'New Customer', $2, $3, 'active')`,
-                [newUserId, prefixedVal, email || null]
+                [newUserId, finalPhone, finalEmail]
             );
             return await buildResponse({ 
                 id: newUserId, 
@@ -2405,8 +2405,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 role: 'customer', 
                 garageId: null, 
                 status: 'active',
-                phone: prefixedVal,
-                email: email || null
+                phone: finalPhone,
+                email: finalEmail
             }, true);
         }
 

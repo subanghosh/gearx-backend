@@ -103,14 +103,85 @@ function startResendTimer() {
     }, 1000);
 }
 
+let currentLoginMode = 'phone'; // 'phone' | 'email'
+
+function switchLoginMode(mode) {
+    currentLoginMode = mode;
+    const tabPhone = document.getElementById('tab-login-phone');
+    const tabEmail = document.getElementById('tab-login-email');
+    const label = document.getElementById('auth-input-label');
+    const prefix = document.getElementById('auth-phone-prefix');
+    const input = document.getElementById('auth-phone');
+    const otpSection = document.getElementById('otp-section');
+    const btnSend = document.getElementById('btn-send-otp');
+    const btnVerify = document.getElementById('btn-verify-otp');
+
+    // Reset OTP section and button states if toggled
+    if (otpSection) otpSection.style.display = 'none';
+    if (btnSend) {
+        btnSend.style.display = 'block';
+        btnSend.disabled = false;
+        btnSend.innerHTML = 'Send Secure OTP';
+    }
+    if (btnVerify) btnVerify.style.display = 'none';
+    if (window.clearOtpBoxes) clearOtpBoxes('auth-otp');
+    const authOtp = document.getElementById('auth-otp');
+    if (authOtp) authOtp.value = '';
+    if (input) input.value = '';
+
+    if (mode === 'email') {
+        if (tabPhone) tabPhone.classList.remove('active');
+        if (tabEmail) tabEmail.classList.add('active');
+        if (label) label.textContent = 'Email Address';
+        if (prefix) prefix.style.display = 'none';
+        if (input) {
+            input.type = 'email';
+            input.placeholder = 'partner@garage.com';
+            input.maxLength = 100;
+        }
+    } else {
+        if (tabPhone) tabPhone.classList.add('active');
+        if (tabEmail) tabEmail.classList.remove('active');
+        if (label) label.textContent = 'Mobile Number';
+        if (prefix) prefix.style.display = 'flex';
+        if (input) {
+            input.type = 'tel';
+            input.placeholder = '9876543210';
+            input.maxLength = 10;
+        }
+    }
+}
+
+function handleLoginIdInput(input) {
+    if (currentLoginMode === 'phone') {
+        input.value = input.value.replace(/[^0-9]/g, '');
+    }
+}
+
+function validateLoginIdentifier() {
+    const val = document.getElementById('auth-phone')?.value.trim() || '';
+    if (currentLoginMode === 'phone') {
+        if (val.length !== 10 || !/^\d{10}$/.test(val)) {
+            showNotify('Please enter exactly 10 digits.', 'error');
+            return null;
+        }
+        return { phone: `+91${val}` };
+    } else {
+        if (!val || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+            showNotify('Please enter a valid email address.', 'error');
+            return null;
+        }
+        return { email: val.toLowerCase() };
+    }
+}
+
 async function handleSendOTP() {
     if (otpCooldownSeconds > 0) {
         showNotify(`Please wait ${otpCooldownSeconds} seconds before requesting a new OTP.`, 'error');
         return;
     }
-    const val = document.getElementById('auth-phone').value.trim();
-    if (val.length !== 10) return showNotify('Please enter exactly 10 digits.');
-    const id = `+91${val}`;
+    const identifier = validateLoginIdentifier();
+    if (!identifier) return;
 
     const btn = document.getElementById('btn-send-otp');
     const originalText = btn.innerHTML;
@@ -119,7 +190,7 @@ async function handleSendOTP() {
         btn.disabled = true;
         btn.innerHTML = '<div class="loader-spin" style="width:20px; height:20px;"></div> Sending...';
 
-        const body = { phone: id };
+        const body = { ...identifier };
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout for Render cold start
 
@@ -133,7 +204,7 @@ async function handleSendOTP() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Server Error');
 
-        showNotify(`OTP sent! For testing, your code is: ${data.otp}`, 'success'); // Simulated for testing
+        showNotify('OTP sent successfully! Please check your messages/inbox.', 'success');
         if (data.otp && window.fillOtpBoxes) fillOtpBoxes('auth-otp', data.otp);
 
         document.getElementById('otp-section').style.display = 'block';
@@ -152,9 +223,8 @@ async function handleSendOTP() {
 }
 
 async function handleVerifyOTP() {
-    const val = document.getElementById('auth-phone').value.trim();
-    if (val.length !== 10) return showNotify('Please enter exactly 10 digits.');
-    const id = `+91${val}`;
+    const identifier = validateLoginIdentifier();
+    if (!identifier) return;
     const otp = document.getElementById('auth-otp').value.trim();
     if (otp.length !== 6) return showNotify('Enter 6-digit OTP');
 
@@ -165,7 +235,7 @@ async function handleVerifyOTP() {
         btn.disabled = true;
         btn.innerHTML = '<div class="loader-spin" style="width:20px; height:20px;"></div> Verifying...';
 
-        const body = { phone: id, otp, role: 'garage' };
+        const body = { ...identifier, otp, role: 'garage' };
         const res = await fetch(`${API_URL}/auth/verify-otp`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
@@ -202,6 +272,7 @@ function handleLogout() {
     localStorage.removeItem('redrivo_token');
     document.getElementById('app-screen').style.display = 'none'; 
     document.getElementById('auth-screen').style.display = 'flex'; 
+    if (typeof switchLoginMode === 'function') switchLoginMode('phone');
     initGoogleOneTap();
 }
 
