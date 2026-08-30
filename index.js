@@ -895,7 +895,7 @@ async function notifyUserFCM(userId, title, body, payloadData = {}) {
 const apiRouter = express.Router();
 
 
-apiRouter.get('/admin/system/health', (req, res) => {
+apiRouter.get('/admin/system/health', authMiddleware, requireRole('admin'), (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly', timestamp: new Date() });
 });
 
@@ -1177,7 +1177,7 @@ apiRouter.get('/maps/reverse-geocode', async (req, res) => {
 });
 
 // --- BASIC ENTITY ROUTES ---
-apiRouter.get('/customers', (req, res) => {
+apiRouter.get('/customers', authMiddleware, requireRole('admin'), (req, res) => {
     db.all("SELECT * FROM customers", (err, rows) => {
         if (err) {
             console.error("GET /customers DB error:", err.message);
@@ -1197,7 +1197,7 @@ apiRouter.get('/vehicles', (req, res) => {
     });
 });
 
-apiRouter.get('/requests', (req, res) => {
+apiRouter.get('/requests', authMiddleware, requireRole('admin'), (req, res) => {
     db.all("SELECT * FROM service_requests", (err, rows) => {
         if (err) {
             console.error("GET /requests DB error:", err.message);
@@ -1207,7 +1207,7 @@ apiRouter.get('/requests', (req, res) => {
     });
 });
 
-apiRouter.get('/garages', (req, res) => {
+apiRouter.get('/garages', authMiddleware, requireRole('admin'), (req, res) => {
     db.all(`
         SELECT id, name, address, contact, email, status, photo, owner,
                joinedDate as "joinedDate", joineddate,
@@ -1255,7 +1255,7 @@ apiRouter.get('/garages/nearby', (req, res) => {
     });
 });
 
-apiRouter.post('/garages', (req, res) => {
+apiRouter.post('/garages', authMiddleware, requireRole('admin'), (req, res) => {
     const { id, name, owner, phone, location, gmapLink, type, commissionRate, joinedDate } = req.body;
     db.run(`INSERT INTO garages (id, name, owner, contact, address, status, serviceType, joinedDate) 
             VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`,
@@ -1415,7 +1415,7 @@ apiRouter.post('/settings/incentives', authMiddleware, requireRole('admin'), (re
     });
 });
 
-apiRouter.get('/settings/global', (req, res) => {
+apiRouter.get('/settings/global', authMiddleware, requireRole('admin'), (req, res) => {
     db.all("SELECT key, value FROM system_settings WHERE key IN ('five_star_bonus', 'payout_days')", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         const settings = { five_star_bonus: 50, payout_days: 3 }; // defaults
@@ -1992,7 +1992,7 @@ apiRouter.post('/users/:id/verify-update-otp', async (req, res) => {
     }
 });
 
-apiRouter.get('/trips', (req, res) => {
+apiRouter.get('/trips', authMiddleware, requireRole('admin'), (req, res) => {
     db.all(`
         SELECT trips.*, 
                sr.customerId AS "customerId",
@@ -3630,7 +3630,7 @@ apiRouter.get('/demand/recommended-pincodes', async (req, res) => {
 });
 
 // ── Dual Payout Model (Commission % vs Subscription) ────────────────────────
-apiRouter.get('/payout-rates', async (req, res) => {
+apiRouter.get('/payout-rates', authMiddleware, requireRole('admin', 'marshal'), async (req, res) => {
     try {
         const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
         const rates = ratesRes.rows[0] || {
@@ -4112,7 +4112,7 @@ apiRouter.post('/webhooks/razorpay', async (req, res) => {
 });
 
 // 4. CRM Subscription Ledger
-apiRouter.get('/crm/driver-subscriptions', async (req, res) => {
+apiRouter.get('/crm/driver-subscriptions', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const { status, cycle, driverId } = req.query;
         let query = `
@@ -4147,7 +4147,7 @@ apiRouter.get('/crm/driver-subscriptions', async (req, res) => {
 });
 
 // 5. CRM Admin Refund Action
-apiRouter.post('/crm/driver-subscriptions/:id/refund', async (req, res) => {
+apiRouter.post('/crm/driver-subscriptions/:id/refund', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const paymentId = req.params.id;
         const { adminId, reason } = req.body;
@@ -4664,7 +4664,7 @@ apiRouter.post('/trips/:id/record-shortfall', async (req, res) => {
 });
 
 // 6. CRM Ride Payments Ledger & Admin Refunds
-apiRouter.get('/crm/ride-payments', async (req, res) => {
+apiRouter.get('/crm/ride-payments', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const { status, customerId } = req.query;
         let query = `
@@ -4834,7 +4834,7 @@ apiRouter.delete('/garages/:id/documents/:docType', authMiddleware, (req, res) =
     });
 });
 
-apiRouter.get('/crm/entities', (req, res) => {
+apiRouter.get('/crm/entities', authMiddleware, requireRole('admin'), (req, res) => {
     db.all("SELECT * FROM garages", (errG, garages) => {
         db.all("SELECT * FROM users WHERE role = 'customer'", (errC, customers) => {
             db.all("SELECT sr.*, c.name as customerName FROM service_requests sr JOIN customers c ON sr.customerId = c.id", (errS, requests) => {
@@ -5002,7 +5002,7 @@ apiRouter.patch('/serialized-parts/:id', (req, res) => {
 
 // --- MISSING ENDPOINTS ADDED FOR E2E WORKFLOW ---
 
-apiRouter.post('/customers', (req, res) => {
+apiRouter.post('/customers', authMiddleware, requireRole('admin'), (req, res) => {
     const { id, name, phone, email } = req.body;
     db.run("INSERT INTO customers (id, name, phone, email) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, email = EXCLUDED.email",
         [id || `cust_${Date.now()}`, name, phone, email], (err) => {
@@ -5095,8 +5095,8 @@ const createRequest = (req, res) => {
         insertReq(garageId);
     }
 };
-apiRouter.post('/service-requests', createRequest);
-apiRouter.post('/requests', createRequest);
+apiRouter.post('/service-requests', authMiddleware, requireRole('customer', 'admin'), createRequest);
+apiRouter.post('/requests', authMiddleware, requireRole('customer', 'admin'), createRequest);
 
 function calcDistanceKm(lat1, lng1, lat2, lng2) {
     if (!lat1 || !lng1 || !lat2 || !lng2) return null;
@@ -5555,7 +5555,7 @@ apiRouter.put('/trips/:id/status', (req, res) => {
     });
 });
 
-apiRouter.post('/trips', (req, res) => {
+apiRouter.post('/trips', authMiddleware, requireRole('admin', 'marshal'), (req, res) => {
     const { id, serviceRequestId, marshalId, status, startOdometer, pickupLat, pickupLng } = req.body;
     const tripId = id || `trip_${Date.now()}`;
     db.run(
@@ -6523,7 +6523,7 @@ apiRouter.post('/disputes', async (req, res) => {
 });
 
 // GET all disputes
-apiRouter.get('/disputes', async (req, res) => {
+apiRouter.get('/disputes', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const disputes = await pool.query(`
             SELECT disputes.*,
@@ -6547,7 +6547,7 @@ apiRouter.get('/disputes', async (req, res) => {
 });
 
 // POST resolve a dispute
-apiRouter.post('/disputes/:id/resolve', async (req, res) => {
+apiRouter.post('/disputes/:id/resolve', authMiddleware, requireRole('admin'), async (req, res) => {
     const disputeId = req.params.id;
     const { action, deductionAmount } = req.body;
     
