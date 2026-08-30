@@ -266,6 +266,42 @@ async function handleVerifyOTP() {
     }
 }
 
+// --- Profile Dropdown Menu ---
+function toggleProfileMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('profile-dropdown-menu');
+    const chevron = document.getElementById('profile-chevron');
+    if (!menu) return;
+    const isVisible = menu.style.display === 'block';
+    menu.style.display = isVisible ? 'none' : 'block';
+    if (chevron) chevron.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
+function closeProfileMenu() {
+    const menu = document.getElementById('profile-dropdown-menu');
+    const chevron = document.getElementById('profile-chevron');
+    if (menu) menu.style.display = 'none';
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+}
+
+function handleProfileNav(tabId) {
+    closeProfileMenu();
+    switchTab(tabId);
+}
+
+function handleProfileLogout() {
+    closeProfileMenu();
+    handleLogout();
+}
+
+// Outside-click listener to dismiss dropdown
+document.addEventListener('click', (e) => {
+    const container = document.getElementById('profile-menu-container');
+    if (container && !container.contains(e.target)) {
+        closeProfileMenu();
+    }
+});
+
 function handleLogout() { 
     user = null; 
     localStorage.removeItem('redrivo_user');
@@ -354,6 +390,15 @@ function enterDashboard() {
     document.getElementById('nav-user-name').textContent = user.name;
     document.getElementById('nav-user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=facc15&color=000`;
     document.getElementById('nav-user-role').textContent = user.role.toUpperCase();
+
+    // Populate dropdown header
+    const dropName = document.getElementById('dropdown-user-name');
+    const dropContact = document.getElementById('dropdown-user-contact');
+    const dropRole = document.getElementById('dropdown-user-role');
+    if (dropName) dropName.textContent = user.name || 'Partner';
+    if (dropContact) dropContact.textContent = user.email || user.phone || 'Partner Account';
+    if (dropRole) dropRole.textContent = (user.role || 'partner').toUpperCase();
+    if (window.lucide && window.lucide.createIcons) lucide.createIcons();
     
     // Visibility based on role
     const isOwner = user.role === 'garage' || user.role === 'admin';
