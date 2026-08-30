@@ -459,16 +459,19 @@
                                     </div>
 
                                     <div id="camera-container" class="hidden flex-col items-center gap-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5 mb-6">
+                                        <div id="selfie-status-pill" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-zinc-800 border border-yellow-500/30 text-yellow-400 text-center transition-all duration-300">
+                                            Position your face inside the oval
+                                        </div>
                                         <div class="relative w-full max-w-[280px] aspect-square rounded-full overflow-hidden bg-black border-2 border-white/10">
                                             <video id="camera-preview" autoplay playsinline muted class="w-full h-full object-cover scale-x-[-1]"></video>
                                             <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
                                                 <svg width="100%" height="100%" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                     <path d="M 0,0 L 200,0 L 200,200 L 0,200 Z M 100,20 C 60,20 60,110 60,130 C 60,165 80,180 100,180 C 120,180 140,165 140,130 C 140,110 140,20 100,20 Z" fill="black" fill-opacity="0.6" fill-rule="evenodd"/>
-                                                    <path d="M 100,20 C 60,20 60,110 60,130 C 60,165 80,180 100,180 C 120,180 140,165 140,130 C 140,110 140,20 100,20 Z" stroke="#CCFF00" stroke-width="2" stroke-dasharray="4 4"/>
+                                                    <path id="selfie-oval-stroke" d="M 100,20 C 60,20 60,110 60,130 C 60,165 80,180 100,180 C 120,180 140,165 140,130 C 140,110 140,20 100,20 Z" stroke="#FACC15" stroke-width="3" stroke-dasharray="4 4" class="transition-all duration-300"/>
                                                 </svg>
                                             </div>
                                         </div>
-                                        <button type="button" class="btn btn-primary" id="btn-capture-photo" onclick="captureSelfie()"><span class="material-symbols-outlined">photo_camera</span> Take Photo</button>
+                                        <button type="button" class="btn btn-primary opacity-50 cursor-not-allowed" id="btn-capture-photo" onclick="captureSelfie()" disabled><span class="material-symbols-outlined">photo_camera</span> Take Photo</button>
                                         <button type="button" class="btn btn-secondary" onclick="stopKycCamera()">Cancel</button>
                                     </div>
 
@@ -1441,12 +1444,12 @@
                 <div style="flex:1; height:100%; background:rgba(0,0,0,0.6);"></div>
                 
                 <!-- The Guide Frame cutout (1.58 Aspect Ratio for ID cards) -->
-                <div id="doc-guide-frame" style="width:85vw; max-width:400px; aspect-ratio:1.58; border:3px dashed #10b981; border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,0.6); position:relative; box-sizing:border-box;">
+                <div id="doc-guide-frame" style="width:85vw; max-width:400px; aspect-ratio:1.58; border:3px dashed #FACC15; border-radius:16px; box-shadow:0 0 0 9999px rgba(0,0,0,0.6); position:relative; box-sizing:border-box; transition:border 0.3s ease;">
                     <!-- Corner brackets for visual accents -->
-                    <div style="position:absolute; top:-3px; left:-3px; width:20px; height:20px; border-top:5px solid #10b981; border-left:5px solid #10b981; border-top-left-radius:14px;"></div>
-                    <div style="position:absolute; top:-3px; right:-3px; width:20px; height:20px; border-top:5px solid #10b981; border-right:5px solid #10b981; border-top-right-radius:14px;"></div>
-                    <div style="position:absolute; bottom:-3px; left:-3px; width:20px; height:20px; border-bottom:5px solid #10b981; border-left:5px solid #10b981; border-bottom-left-radius:14px;"></div>
-                    <div style="position:absolute; bottom:-3px; right:-3px; width:20px; height:20px; border-bottom:5px solid #10b981; border-right:5px solid #10b981; border-bottom-right-radius:14px;"></div>
+                    <div class="doc-corner-bracket" style="position:absolute; top:-3px; left:-3px; width:20px; height:20px; border-top:5px solid #FACC15; border-left:5px solid #FACC15; border-top-left-radius:14px; transition:border-color 0.3s;"></div>
+                    <div class="doc-corner-bracket" style="position:absolute; top:-3px; right:-3px; width:20px; height:20px; border-top:5px solid #FACC15; border-right:5px solid #FACC15; border-top-right-radius:14px; transition:border-color 0.3s;"></div>
+                    <div class="doc-corner-bracket" style="position:absolute; bottom:-3px; left:-3px; width:20px; height:20px; border-bottom:5px solid #FACC15; border-left:5px solid #FACC15; border-bottom-left-radius:14px; transition:border-color 0.3s;"></div>
+                    <div class="doc-corner-bracket" style="position:absolute; bottom:-3px; right:-3px; width:20px; height:20px; border-bottom:5px solid #FACC15; border-right:5px solid #FACC15; border-bottom-right-radius:14px; transition:border-color 0.3s;"></div>
                 </div>
                 
                 <!-- Dimmed right backdrop -->
@@ -1466,8 +1469,8 @@
         <!-- Live View Bottom controls -->
         <div style="position:absolute; bottom:0; left:0; width:100%; z-index:3; display:flex; flex-direction:column; align-items:center; padding:30px 20px; background:linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0)); pointer-events:none;">
             <!-- Large Shutter Capture Button -->
-            <button id="btn-doc-camera-capture" style="pointer-events:auto; width:76px; height:76px; border-radius:50%; border:5px solid #fff; background:rgba(255,255,255,0.3); padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer; outline:none; transition:transform 0.15s ease;">
-                <div style="width:54px; height:54px; border-radius:50%; background:#fff; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"></div>
+            <button id="btn-doc-camera-capture" disabled style="pointer-events:none; opacity:0.4; width:76px; height:76px; border-radius:50%; border:5px solid rgba(255,255,255,0.4); background:rgba(255,255,255,0.1); padding:0; display:flex; align-items:center; justify-content:center; cursor:not-allowed; outline:none; transition:all 0.25s ease;">
+                <div id="btn-doc-camera-shutter-inner" style="width:54px; height:54px; border-radius:50%; background:rgba(255,255,255,0.5); box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition:all 0.25s ease;"></div>
             </button>
         </div>
     </div>

@@ -1556,7 +1556,7 @@ window.triggerFileSelect = function(type) {
     };
     
     if (labels[type]) {
-        window.openDocumentCamera(labels[type])
+        window.openDocumentCamera(labels[type], type)
             .then((blob) => {
                 // Wrap blob as a File object
                 const filename = `kyc_${type}_${Date.now()}.jpg`;
@@ -5923,8 +5923,126 @@ async function verifyHandoverOTP() {
     }
 }
 
-// ─── LIVE SELFIE CAMERA CAPTURE ───────────────────────────────────────────
+// ─── LIVE SELFIE CAMERA CAPTURE & FACE DETECTION ─────────────────────────
 let cameraStream = null;
+let selfieDetectionTimer = null;
+let isFaceProbeBusy = false;
+
+function setSelfieVisualState(state, message) {
+    const pill = document.getElementById('selfie-status-pill');
+    const oval = document.getElementById('selfie-oval-stroke');
+    const btn = document.getElementById('btn-capture-photo');
+    if (!pill || !oval || !btn) return;
+
+    pill.textContent = message;
+    if (state === 'green') {
+        pill.className = 'text-xs font-bold px-3 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500 text-emerald-400 text-center shadow-lg shadow-emerald-500/20';
+        oval.setAttribute('stroke', '#10B981');
+        oval.removeAttribute('stroke-dasharray');
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.classList.add('shadow-lg', 'shadow-emerald-500/25');
+    } else if (state === 'red') {
+        pill.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-red-950/80 border border-red-500/40 text-red-400 text-center';
+        oval.setAttribute('stroke', '#EF4444');
+        oval.setAttribute('stroke-dasharray', '4 4');
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.classList.remove('shadow-lg', 'shadow-emerald-500/25');
+    } else {
+        // Amber searching
+        pill.className = 'text-xs font-semibold px-3 py-1.5 rounded-full bg-zinc-800 border border-yellow-500/30 text-yellow-400 text-center';
+        oval.setAttribute('stroke', '#FACC15');
+        oval.setAttribute('stroke-dasharray', '4 4');
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.classList.remove('shadow-lg', 'shadow-emerald-500/25');
+    }
+}
+
+async function probeSelfieFrame() {
+    if (isFaceProbeBusy) return;
+    const video = document.getElementById('camera-preview');
+    if (!video || !cameraStream || video.readyState < 2) return;
+
+    const plugins = window.Capacitor && window.Capacitor.Plugins;
+    const FaceDetection = plugins && plugins.FaceDetection;
+    const Filesystem = plugins && plugins.Filesystem;
+    if (!FaceDetection || !Filesystem) {
+        // Fallback: If plugin is unavailable, enable button directly
+        setSelfieVisualState('green', 'Ready to capture');
+        return;
+    }
+
+    isFaceProbeBusy = true;
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 360;
+        canvas.height = 360;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 360, 360);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const base64Data = dataUrl.split(',')[1];
+
+        const fileResult = await Filesystem.writeFile({
+            path: 'face_probe.jpg',
+            data: base64Data,
+            directory: 'CACHE'
+        });
+
+        const result = await FaceDetection.processImage({
+            path: fileResult.uri,
+            performanceMode: 1, // Fast
+            classificationMode: 2, // Eyes & smile
+            landmarkMode: 1
+        });
+
+        // Post-await cancellation guard
+        const camContainer = document.getElementById('camera-container');
+        if (!cameraStream || !camContainer || camContainer.classList.contains('hidden') || camContainer.style.display === 'none') {
+            return;
+        }
+
+        const faces = result?.faces || [];
+        if (faces.length === 0) {
+            setSelfieVisualState('amber', 'Position your face inside the oval');
+        } else if (faces.length > 1) {
+            setSelfieVisualState('red', 'Multiple faces detected — only 1 person allowed');
+        } else {
+            const face = faces[0];
+            const bounds = face.bounds;
+            const faceW = bounds.right - bounds.left;
+            const faceH = bounds.bottom - bounds.top;
+            const centerX = (bounds.left + bounds.right) / 2;
+            const centerY = (bounds.top + bounds.bottom) / 2;
+
+            const isTilted = Math.abs(face.headEulerAngleY || 0) > 14 || Math.abs(face.headEulerAngleX || 0) > 14;
+            const eyesClosed = (face.leftEyeOpenProbability !== undefined && face.leftEyeOpenProbability < 0.35) ||
+                               (face.rightEyeOpenProbability !== undefined && face.rightEyeOpenProbability < 0.35);
+            const isTooSmall = faceW < 360 * 0.30;
+            const isTooLarge = faceW > 360 * 0.82;
+            const isOffCenter = Math.abs(centerX - 180) > 60 || Math.abs(centerY - 180) > 60;
+
+            if (isTooSmall) {
+                setSelfieVisualState('red', 'Move a little closer');
+            } else if (isTooLarge) {
+                setSelfieVisualState('red', 'Move a little back');
+            } else if (isOffCenter) {
+                setSelfieVisualState('red', 'Center your face in the oval');
+            } else if (isTilted) {
+                setSelfieVisualState('red', 'Look straight at the camera');
+            } else if (eyesClosed) {
+                setSelfieVisualState('red', 'Keep both eyes open');
+            } else {
+                setSelfieVisualState('green', '✓ Face Verified — Ready to Capture');
+            }
+        }
+    } catch (e) {
+        if (cameraStream) console.warn('[FACE_PROBE] Error:', e);
+    } finally {
+        isFaceProbeBusy = false;
+    }
+}
 
 async function startKycCamera() {
     try {
@@ -5955,6 +6073,12 @@ async function startKycCamera() {
             previewContainer.classList.add('hidden');
             previewContainer.style.display = 'none';
         }
+
+        // Start live face detection probe
+        if (selfieDetectionTimer) clearInterval(selfieDetectionTimer);
+        setSelfieVisualState('amber', 'Position your face inside the oval');
+        selfieDetectionTimer = setInterval(probeSelfieFrame, 700);
+
     } catch (err) {
         console.error("Camera error:", err);
         const errMsg = err?.message || String(err);
@@ -5967,6 +6091,10 @@ async function startKycCamera() {
 }
 
 function stopKycCamera() {
+    if (selfieDetectionTimer) {
+        clearInterval(selfieDetectionTimer);
+        selfieDetectionTimer = null;
+    }
     if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
         cameraStream = null;
@@ -5975,6 +6103,7 @@ function stopKycCamera() {
     if (videoEl) {
         videoEl.srcObject = null;
     }
+    setSelfieVisualState('amber', 'Position your face inside the oval');
     const camContainer = document.getElementById('camera-container');
     if (camContainer) {
         camContainer.classList.add('hidden');
@@ -6140,10 +6269,155 @@ window.cancelSelfie = function() {
     }
 };
 
-// ─── DOCUMENT IN-APP CAMERA CONTROLLER ────────────────────────────────────
+// ─── DOCUMENT IN-APP CAMERA CONTROLLER & LIVE OCR DETECTION ──────────────
 let docCameraStream = null;
 let currentDocResolve = null;
 let currentDocReject = null;
+let docDetectionTimer = null;
+let isDocProbeBusy = false;
+let currentDocTypeKey = null;
+let currentDocTypeLabel = '';
+
+function setDocVisualState(state, message) {
+    const instruction = document.getElementById('doc-camera-instruction');
+    const guideFrame = document.getElementById('doc-guide-frame');
+    const brackets = document.querySelectorAll('.doc-corner-bracket');
+    const captureBtn = document.getElementById('btn-doc-camera-capture');
+    const shutterInner = document.getElementById('btn-doc-camera-shutter-inner');
+    if (!instruction || !guideFrame || !captureBtn) return;
+
+    instruction.textContent = message;
+    if (state === 'green') {
+        instruction.style.borderColor = '#10B981';
+        instruction.style.color = '#34D399';
+        guideFrame.style.borderColor = '#10B981';
+        brackets.forEach(b => { b.style.borderColor = '#10B981'; });
+        captureBtn.disabled = false;
+        captureBtn.style.pointerEvents = 'auto';
+        captureBtn.style.opacity = '1';
+        captureBtn.style.cursor = 'pointer';
+        captureBtn.style.border = '5px solid #10B981';
+        if (shutterInner) {
+            shutterInner.style.background = '#10B981';
+            shutterInner.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.6)';
+        }
+    } else if (state === 'red') {
+        instruction.style.borderColor = '#EF4444';
+        instruction.style.color = '#F87171';
+        guideFrame.style.borderColor = '#EF4444';
+        brackets.forEach(b => { b.style.borderColor = '#EF4444'; });
+        captureBtn.disabled = true;
+        captureBtn.style.pointerEvents = 'none';
+        captureBtn.style.opacity = '0.4';
+        captureBtn.style.cursor = 'not-allowed';
+        captureBtn.style.border = '5px solid rgba(255,255,255,0.4)';
+        if (shutterInner) {
+            shutterInner.style.background = 'rgba(255,255,255,0.5)';
+            shutterInner.style.boxShadow = 'none';
+        }
+    } else {
+        // Amber searching
+        instruction.style.borderColor = 'rgba(255,255,255,0.1)';
+        instruction.style.color = '#fff';
+        guideFrame.style.borderColor = '#FACC15';
+        brackets.forEach(b => { b.style.borderColor = '#FACC15'; });
+        captureBtn.disabled = true;
+        captureBtn.style.pointerEvents = 'none';
+        captureBtn.style.opacity = '0.4';
+        captureBtn.style.cursor = 'not-allowed';
+        captureBtn.style.border = '5px solid rgba(255,255,255,0.4)';
+        if (shutterInner) {
+            shutterInner.style.background = 'rgba(255,255,255,0.5)';
+            shutterInner.style.boxShadow = 'none';
+        }
+    }
+}
+
+async function probeDocFrame() {
+    if (isDocProbeBusy) return;
+    const video = document.getElementById('doc-camera-preview');
+    if (!video || !docCameraStream || video.readyState < 2) return;
+
+    const plugins = window.Capacitor && window.Capacitor.Plugins;
+    const ocrPlugin = plugins && (plugins.CapacitorOcr || plugins.Ocr);
+    if (!ocrPlugin) {
+        setDocVisualState('green', 'Align Card & Tap Shutter');
+        return;
+    }
+
+    isDocProbeBusy = true;
+    try {
+        const vWidth = video.videoWidth || 1280;
+        const vHeight = video.videoHeight || 720;
+        const viewWidth = video.clientWidth || window.innerWidth;
+        const viewHeight = video.clientHeight || window.innerHeight;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 480;
+        canvas.height = 304; // 1.58 ratio
+        const ctx = canvas.getContext('2d');
+
+        const guideFrame = document.getElementById('doc-guide-frame');
+        if (guideFrame && viewWidth > 0 && viewHeight > 0) {
+            const frameRect = guideFrame.getBoundingClientRect();
+            const scale = Math.max(viewWidth / vWidth, viewHeight / vHeight);
+            const offsetX = (vWidth * scale - viewWidth) / 2;
+            const offsetY = (vHeight * scale - viewHeight) / 2;
+            const cropX = Math.max(0, (frameRect.left + offsetX) / scale);
+            const cropY = Math.max(0, (frameRect.top + offsetY) / scale);
+            const cropW = Math.min(vWidth - cropX, frameRect.width / scale);
+            const cropH = Math.min(vHeight - cropY, frameRect.height / scale);
+
+            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 480, 304);
+        } else {
+            ctx.drawImage(video, 0, 0, 480, 304);
+        }
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        const base64Data = dataUrl.split(',')[1];
+        const res = await ocrPlugin.detectText({ base64: base64Data });
+
+        // Post-await cancellation guard
+        const modal = document.getElementById('document-camera-modal');
+        if (!docCameraStream || !modal || modal.style.display === 'none') {
+            return;
+        }
+
+        const rawText = (res?.text || (res?.lines ? res.lines.map(l => l.text).join(' ') : '')).toUpperCase();
+        const charCount = rawText.replace(/\s+/g, '').length;
+
+        // Slot-specific validation rules
+        let isValid = false;
+        const type = currentDocTypeKey || '';
+
+        if (type.includes('pan')) {
+            const hasPanKeyword = rawText.includes('INCOME') || rawText.includes('TAX') || rawText.includes('GOVT') || rawText.includes('INDIA') || rawText.includes('ACCOUNT');
+            const hasPanRegex = /[A-Z]{5}[0-9]{4}[A-Z]/.test(rawText);
+            isValid = (hasPanKeyword || hasPanRegex || charCount >= 20);
+        } else if (type.includes('aadhaar')) {
+            const hasAadhaarKeyword = rawText.includes('GOVERNMENT') || rawText.includes('INDIA') || rawText.includes('AADHAAR') || rawText.includes('DOB') || rawText.includes('YEAR') || rawText.includes('MALE') || rawText.includes('FEMALE') || rawText.includes('ADDRESS');
+            const has12Digits = /\d{4}\s?\d{4}\s?\d{4}/.test(rawText);
+            isValid = (hasAadhaarKeyword || has12Digits || charCount >= 22);
+        } else if (type.includes('dl')) {
+            const hasDlKeyword = rawText.includes('DRIVING') || rawText.includes('LICENCE') || rawText.includes('LICENSE') || rawText.includes('UNION') || rawText.includes('INDIA') || rawText.includes('TRANSPORT') || rawText.includes('AUTHORITY');
+            isValid = (hasDlKeyword || charCount >= 20);
+        } else {
+            isValid = charCount >= 18;
+        }
+
+        if (isValid) {
+            setDocVisualState('green', '✓ Card In Focus — Ready to Capture');
+        } else if (charCount > 5) {
+            setDocVisualState('red', 'Hold still — ensure text is sharp & inside box');
+        } else {
+            setDocVisualState('amber', `Align ${currentDocTypeLabel || 'Card'} Inside Frame`);
+        }
+    } catch (e) {
+        if (docCameraStream) console.warn('[DOC_PROBE] Error:', e);
+    } finally {
+        isDocProbeBusy = false;
+    }
+}
 
 function bindDocCameraEvents() {
     if (window.isDocCameraBound) return;
@@ -6162,17 +6436,13 @@ function bindDocCameraEvents() {
     if (confirmBtn) confirmBtn.onclick = window.confirmDocumentPhoto;
 }
 
-window.openDocumentCamera = function(docTypeLabel) {
+window.openDocumentCamera = function(docTypeLabel, docTypeKey) {
     const modalTest = document.getElementById('document-camera-modal');
     console.log('[DOC_CAMERA] openDocumentCamera called. Modal exists in DOM:', !!modalTest, 'Modal Element:', modalTest);
-    console.log('[DOC_CAMERA] Opening camera for:', docTypeLabel);
+    console.log('[DOC_CAMERA] Opening camera for:', docTypeLabel, 'Key:', docTypeKey);
     bindDocCameraEvents();
-    
-    // Set instruction text
-    const instructionEl = document.getElementById('doc-camera-instruction');
-    if (instructionEl) {
-        instructionEl.textContent = `Align ${docTypeLabel} Inside Frame`;
-    }
+    currentDocTypeKey = docTypeKey || '';
+    currentDocTypeLabel = docTypeLabel || '';
     
     // Reset view visibility
     document.getElementById('doc-camera-live-view').style.display = 'flex';
@@ -6189,7 +6459,17 @@ window.openDocumentCamera = function(docTypeLabel) {
             const videoEl = document.getElementById('doc-camera-preview');
             if (videoEl) {
                 videoEl.srcObject = docCameraStream;
+                videoEl.muted = true;
+                videoEl.setAttribute('playsinline', '');
+                videoEl.setAttribute('autoplay', '');
+                await videoEl.play().catch(e => console.warn("docVideo.play caught:", e));
             }
+
+            // Start live OCR detection probe
+            if (docDetectionTimer) clearInterval(docDetectionTimer);
+            setDocVisualState('amber', `Align ${docTypeLabel} Inside Frame`);
+            docDetectionTimer = setInterval(probeDocFrame, 1100);
+
         } catch (err) {
             console.error('[DOC_CAMERA] Access failed:', err);
             const errMsg = err?.message || String(err);
@@ -6206,6 +6486,10 @@ window.openDocumentCamera = function(docTypeLabel) {
 
 function closeDocCamera() {
     console.log('[DOC_CAMERA] Closing camera...');
+    if (docDetectionTimer) {
+        clearInterval(docDetectionTimer);
+        docDetectionTimer = null;
+    }
     if (docCameraStream) {
         docCameraStream.getTracks().forEach(track => track.stop());
         docCameraStream = null;
@@ -6220,6 +6504,7 @@ function closeDocCamera() {
         capturedImg.src = '';
     }
     
+    setDocVisualState('amber', 'Align Card Inside Frame');
     document.getElementById('document-camera-modal').style.display = 'none';
     
     currentDocResolve = null;
