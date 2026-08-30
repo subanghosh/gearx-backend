@@ -3632,11 +3632,6 @@ function saveEditedQuestion() {
 
 // --- Pages ---
 
-function renderLogin(container) {
-    const html = `
-        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg-base);">
-            <div class="card" style="width: 100%; max-width: 400px; padding: 40px; border: 1px solid var(--border-bright);">
-                <div style="text-align: center; margin-bottom: 40px;">
 let adminOtpCooldownTimer = null;
 let adminOtpPendingEmail = '';
 
