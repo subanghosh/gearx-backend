@@ -223,13 +223,6 @@ const safeParse = (key, storage = localStorage) => {
 
 // Validate token expiration on boot. If expired or missing, clear the stored session before state initialization.
 (function validateTokenOnBoot() {
-    if ((window.location.protocol === 'file:' || window.location.search.includes('admin=1')) && !localStorage.getItem('redrivo_token')) {
-        const h = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-        const p = btoa(JSON.stringify({ id: "admin_1", email: "admin@redrivo.com", role: "super_admin", exp: 9999999999 }));
-        localStorage.setItem('redrivo_token', `${h}.${p}.mock_sig`);
-        localStorage.setItem('redrivo_current_user', JSON.stringify({ id: "admin_1", name: "Admin Super", email: "admin@redrivo.com", role: "super_admin" }));
-    }
-
     const token = localStorage.getItem('redrivo_token');
     if (token) {
         try {
@@ -3660,11 +3653,6 @@ function renderLogin(container) {
                 <button onclick="handleLogin()" class="btn btn-primary" style="width: 100%; margin-top: 30px; height: 50px; font-weight:700;">
                     Initialize Access
                 </button>
-                
-                <div style="text-align: center; margin-top: 25px; color: var(--text-dim); font-size: 0.85rem; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px;">
-                    <i data-lucide="info" style="width:14px; vertical-align:middle; margin-right:4px;"></i>
-                    Dev Access: <strong>admin@redrivo.com</strong> / <strong>admin</strong>
-                </div>
                 
                 <div style="margin: 30px 0; display:flex; align-items:center; gap:10px;">
                     <div style="flex:1; height:1px; background:var(--border);"></div>
