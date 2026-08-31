@@ -7087,6 +7087,18 @@ app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/mars
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
+// Public Downloads (APKs & App Distribution)
+app.use('/downloads', express.static(path.join(__dirname, 'public/downloads'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.apk')) {
+            res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+            const filename = path.basename(filePath);
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        }
+    }
+}));
+
+
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File too large. Max 5MB allowed.' });
