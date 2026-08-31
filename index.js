@@ -72,6 +72,10 @@ app.use(helmet({
 }));
 
 const allowedOrigins = [
+    'https://redrivo.com',
+    'https://www.redrivo.com',
+    'https://redrivo.in',
+    'https://www.redrivo.in',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:5500',
@@ -83,10 +87,26 @@ app.use(cors({
     origin: (origin, cb) => {
         // Allow requests with no origin (mobile apps, curl, Postman) or string 'null' (file:// URL)
         if (!origin || origin === 'null') return cb(null, true);
+        
         // Allow any localhost / 127.0.0.1 / capacitor origins (supporting http/https protocols)
-        if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.startsWith('capacitor://')) return cb(null, true);
-        // If FRONTEND_URL is set, check against whitelist; otherwise allow all
-        if (!process.env.FRONTEND_URL || allowedOrigins.includes(origin)) return cb(null, true);
+        if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.startsWith('capacitor://')) {
+            return cb(null, true);
+        }
+
+        // Strict domain boundary validation for redrivo.com and redrivo.in
+        if (
+            origin === 'https://redrivo.com' ||
+            origin.endsWith('.redrivo.com') ||
+            origin === 'https://redrivo.in' ||
+            origin.endsWith('.redrivo.in') ||
+            allowedOrigins.includes(origin)
+        ) {
+            return cb(null, true);
+        }
+
+        // If FRONTEND_URL is not set, allow in development; otherwise enforce whitelist
+        if (!process.env.FRONTEND_URL) return cb(null, true);
+        
         cb(new Error('CORS: Origin not allowed'));
     },
     credentials: true
