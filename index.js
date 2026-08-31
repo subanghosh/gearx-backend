@@ -2194,10 +2194,19 @@ apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (
 function isTestAccountIdentifier({ email, phone, name } = {}) {
     if (email) {
         const e = String(email).trim().toLowerCase();
+        // Suffix / domain patterns
         if (
-            e.endsWith('@test.com') ||
+            e.endsWith('@test.redrivo.com') ||
+            e.endsWith('@redrivo-test.local') ||
             e.endsWith('@example.com') ||
-            e.endsWith('@dummy.com') ||
+            e.endsWith('@test.com') ||
+            e.endsWith('@dummy.com')
+        ) {
+            return true;
+        }
+        // Sub-addressing (+test) or prefix patterns
+        if (
+            e.includes('+test') ||
             e.includes('.test.') ||
             e.startsWith('test.') ||
             e.startsWith('test_') ||
@@ -2211,16 +2220,28 @@ function isTestAccountIdentifier({ email, phone, name } = {}) {
     }
     if (phone) {
         const p = String(phone).replace(/[\s\-+]/g, '');
+        // Reserved test blocks: +9199999xxxxx, +91900000xxxx, +910000xxxxxx, +91910000xxxx, +91987650xxxx
         if (
             /^(91)?(0000000000|9999999999|7777777777|8888888888|9111222333|90000000\d{2}|91000000\d{2}|98765000\d{2})$/.test(p) ||
             /^(0000000000|9999999999|7777777777|8888888888|9111222333|9999968154|8888868154|7777768154)$/.test(p)
         ) {
             return true;
         }
+        // 5+ repeated identical digits (e.g. 00000, 11111, 77777, 88888, 99999)
+        if (/(.)\1{4,}/.test(p)) {
+            return true;
+        }
     }
     if (name) {
         const n = String(name).trim().toLowerCase();
-        if (n.startsWith('test ') || n === 'test' || n.includes('test driver') || n.includes('customer attacker') || n.includes('customer owner')) {
+        if (
+            n.startsWith('[test]') ||
+            n.startsWith('test ') ||
+            n === 'test' ||
+            n.includes('test driver') ||
+            n.includes('customer attacker') ||
+            n.includes('customer owner')
+        ) {
             return true;
         }
     }
