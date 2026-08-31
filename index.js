@@ -2187,6 +2187,46 @@ apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (
     }
 });
 
+/**
+ * Test Account Auto-Detection Helper
+ * Automatically tags synthetic/dev accounts so test data never pollutes live investor metrics
+ */
+function isTestAccountIdentifier({ email, phone, name } = {}) {
+    if (email) {
+        const e = String(email).trim().toLowerCase();
+        if (
+            e.endsWith('@test.com') ||
+            e.endsWith('@example.com') ||
+            e.endsWith('@dummy.com') ||
+            e.includes('.test.') ||
+            e.startsWith('test.') ||
+            e.startsWith('test_') ||
+            e.includes('garage.test.') ||
+            e.includes('csta_') ||
+            e.includes('cstb_') ||
+            e.includes('adm_mail_')
+        ) {
+            return true;
+        }
+    }
+    if (phone) {
+        const p = String(phone).replace(/[\s\-+]/g, '');
+        if (
+            /^(91)?(0000000000|9999999999|7777777777|8888888888|9111222333|90000000\d{2}|91000000\d{2}|98765000\d{2})$/.test(p) ||
+            /^(0000000000|9999999999|7777777777|8888888888|9111222333|9999968154|8888868154|7777768154)$/.test(p)
+        ) {
+            return true;
+        }
+    }
+    if (name) {
+        const n = String(name).trim().toLowerCase();
+        if (n.startsWith('test ') || n === 'test' || n.includes('test driver') || n.includes('customer attacker') || n.includes('customer owner')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     const { email, phone, role } = req.body;
     if (!phone && !email)
