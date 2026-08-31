@@ -154,6 +154,20 @@ async function authMiddleware(req, res, next) {
         const token = header.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
         
+        // Investor Token Live Status Check
+        if (decoded.role === 'investor') {
+            const invResult = await pool.query("SELECT id, email, status FROM investor_access_requests WHERE id = $1 AND status = 'approved'", [decoded.id]);
+            const liveInv = invResult.rows[0];
+            if (!liveInv) {
+                return res.status(401).json({ error: 'Investor access expired or revoked' });
+            }
+            req.user = {
+                ...decoded,
+                role: 'investor'
+            };
+            return next();
+        }
+
         // Live revocation and status verification
         const result = await pool.query('SELECT token_version, status, role, garageid FROM users WHERE id = $1', [decoded.id]);
         const liveUser = result.rows[0];
@@ -852,7 +866,27 @@ async function ensureKycColumns() {
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS serviceCenterType TEXT DEFAULT \'local\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedCarBrands TEXT DEFAULT \'\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedBikeBrands TEXT DEFAULT \'\'').catch(() => {});
-        console.log('Postgres columns ensured.');
+        
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS investor_access_requests (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(255),
+                email VARCHAR(255) NOT NULL,
+                organization VARCHAR(255),
+                scheduling_link_or_note TEXT,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                decided_at TIMESTAMPTZ,
+                decided_by VARCHAR(64),
+                rejection_reason TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_investor_req_email ON investor_access_requests (LOWER(email));
+            CREATE INDEX IF NOT EXISTS idx_investor_req_status ON investor_access_requests (status);
+        `).catch(e => console.warn('investor_access_requests table ensure failed:', e.message));
+
+        console.log('Postgres columns and investor tables ensured.');
     } catch(e) {
         console.warn('Postgres columns ensure failed:', e.message);
     }
@@ -2261,6 +2295,27 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         }
     }
 
+    if (role === 'investor') {
+        const reqEmail = (email || '').trim().toLowerCase();
+        if (!reqEmail || !reqEmail.includes('@')) {
+            return res.status(400).json({ error: 'Valid investor email address is required.' });
+        }
+        const accessRes = await pool.query(
+            "SELECT status FROM investor_access_requests WHERE LOWER(email) = $1 ORDER BY requested_at DESC LIMIT 1",
+            [reqEmail]
+        );
+        if (accessRes.rows.length === 0) {
+            return res.status(403).json({ error: 'No access request found for this email. Please submit a request on our investors page first.', accessStatus: 'not_found' });
+        }
+        const reqStatus = accessRes.rows[0].status;
+        if (reqStatus === 'pending') {
+            return res.status(403).json({ error: 'Your access request is currently pending administrative review.', accessStatus: 'pending' });
+        }
+        if (reqStatus === 'rejected') {
+            return res.status(403).json({ error: 'Your access request was declined.', accessStatus: 'rejected' });
+        }
+    }
+
     // Clean expired OTPs (housekeeping)
     pool.query("DELETE FROM otp_verifications WHERE expiresat < NOW()").catch(() => {});
 
@@ -2379,6 +2434,43 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 isNewAdmin = true;
             }
             return await buildResponse(adminUser, isNewAdmin);
+        }
+
+        // Investor Authentication: (1) Approved Check, (2) Signed 7-Day JWT
+        if (role === 'investor') {
+            if (!finalEmail) {
+                return res.status(400).json({ error: 'Email required for investor verification' });
+            }
+            const accessRes = await pool.query(
+                "SELECT * FROM investor_access_requests WHERE LOWER(email) = $1 AND status = 'approved' ORDER BY requested_at DESC LIMIT 1",
+                [finalEmail]
+            );
+            if (accessRes.rows.length === 0) {
+                return res.status(403).json({ error: 'Access unauthorized: Investor access not approved or pending review.' });
+            }
+            const inv = accessRes.rows[0];
+            const investorToken = jwt.sign(
+                {
+                    id: inv.id,
+                    email: finalEmail,
+                    role: 'investor',
+                    name: inv.name || 'Investor',
+                    tokenVersion: 1
+                },
+                JWT_SECRET,
+                { expiresIn: '7d' }
+            );
+            return res.json({
+                verified: true,
+                token: investorToken,
+                user: {
+                    id: inv.id,
+                    email: finalEmail,
+                    name: inv.name || 'Investor',
+                    organization: inv.organization || null,
+                    role: 'investor'
+                }
+            });
         }
 
         // Step 1: Check users table
@@ -6731,6 +6823,230 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api/upload-kyc', uploadLimiter);
 
 // --- STATIC ROUTES ---
+
+// ============================================================================
+// INVESTOR ACCESS & TRACTION PLATFORM ENDPOINTS
+// ============================================================================
+
+const investorRequestLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: { error: 'Too many access requests from this IP. Please try again in an hour.' }
+});
+
+/**
+ * POST /api/investor-access/request
+ * Public endpoint to submit a pending investor access request
+ */
+apiRouter.post('/investor-access/request', investorRequestLimiter, async (req, res) => {
+    const { name, email, organization, note } = req.body;
+    if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: 'Valid institutional email is required.' });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = (name || '').trim();
+    const cleanOrg = (organization || '').trim();
+    const cleanNote = (note || '').trim();
+
+    try {
+        const id = 'inv_req_' + Date.now();
+        await pool.query(`
+            INSERT INTO investor_access_requests (id, name, email, organization, scheduling_link_or_note, status, requested_at)
+            VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+            ON CONFLICT (id) DO NOTHING
+        `, [id, cleanName, cleanEmail, cleanOrg, cleanNote]);
+
+        res.json({
+            success: true,
+            message: 'Your access request has been submitted for administrative approval.',
+            status: 'pending',
+            id
+        });
+    } catch (err) {
+        console.error('investor-access request error:', err.message);
+        res.status(500).json({ error: 'Failed to record access request.' });
+    }
+});
+
+/**
+ * GET /api/admin/investor-requests
+ * Admin endpoint to list all investor access requests
+ */
+apiRouter.get('/admin/investor-requests', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const { status } = req.query;
+        let query = 'SELECT * FROM investor_access_requests';
+        const params = [];
+        if (status && status !== 'all') {
+            query += ' WHERE status = $1';
+            params.push(status);
+        }
+        query += ' ORDER BY requested_at DESC';
+        const result = await pool.query(query, params);
+        res.json({ success: true, requests: result.rows });
+    } catch (err) {
+        console.error('GET /admin/investor-requests error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch access requests.' });
+    }
+});
+
+/**
+ * PATCH /api/admin/investor-requests/:id
+ * Admin mutation to approve or reject an access request
+ */
+apiRouter.patch('/admin/investor-requests/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+    const { id } = req.params;
+    const { status, rejectionReason } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be approved, rejected, or pending.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            UPDATE investor_access_requests
+            SET status = $1,
+                decided_at = NOW(),
+                decided_by = $2,
+                rejection_reason = $3,
+                updated_at = NOW()
+            WHERE id = $4
+            RETURNING *
+        `, [status, req.user.id, rejectionReason || null, id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Investor access request not found.' });
+        }
+
+        res.json({
+            success: true,
+            message: `Request marked as ${status}.`,
+            request: result.rows[0]
+        });
+    } catch (err) {
+        console.error('PATCH /admin/investor-requests/:id error:', err.message);
+        res.status(500).json({ error: 'Failed to update access request.' });
+    }
+});
+
+/**
+ * GET /api/traction/live-metrics
+ * Protected live metrics query endpoint for approved investors and administrators
+ */
+apiRouter.get('/traction/live-metrics', authMiddleware, requireRole('investor', 'admin'), async (req, res) => {
+    try {
+        // 1. Executive Aggregates (Completed Bookings & GMV)
+        const gmvRes = await pool.query(`
+            SELECT 
+                COUNT(*) as total_orders,
+                COUNT(*) FILTER (WHERE status = 'completed') as completed_orders,
+                COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled_orders,
+                COALESCE(SUM(totalcustomerprice) FILTER (WHERE status = 'completed'), 0) as completed_gmv,
+                COALESCE(SUM(marshal_commission) FILTER (WHERE status = 'completed'), 0) as driver_payouts
+            FROM service_requests
+            WHERE is_test = FALSE
+        `);
+
+        // 2. Subscription Revenue
+        const subRes = await pool.query(`
+            SELECT 
+                COALESCE(SUM(amount), 0) as subscription_gmv,
+                COUNT(*) FILTER (WHERE status IN ('active', 'captured', 'success')) as active_subscriptions
+            FROM subscription_payments
+            WHERE is_test = FALSE
+        `);
+
+        // 3. Vertical Breakdown
+        const verticalRes = await pool.query(`
+            SELECT 
+                COALESCE(service_category, 'unspecified') as vertical,
+                COUNT(*) as total_inquiries,
+                COUNT(*) FILTER (WHERE status = 'completed') as completed_count,
+                COALESCE(SUM(totalcustomerprice) FILTER (WHERE status = 'completed'), 0) as gmv
+            FROM service_requests
+            WHERE is_test = FALSE
+            GROUP BY service_category
+        `);
+
+        // 4. Active Supply Counts
+        const supplyRes = await pool.query(`
+            SELECT 
+                (SELECT COUNT(*) FROM users WHERE role IN ('marshal', 'driver') AND status = 'active' AND is_test = FALSE) as onboarded_drivers,
+                (SELECT COUNT(*) FROM users WHERE role IN ('marshal', 'driver') AND is_online = 1 AND is_test = FALSE) as online_drivers,
+                (SELECT COUNT(*) FROM garages WHERE status = 'active' AND is_test = FALSE) as certified_garages
+        `);
+
+        // 5. Repeat Customer Rate
+        const repeatRes = await pool.query(`
+            WITH cust_completed AS (
+                SELECT customerid, COUNT(*) as trip_count
+                FROM service_requests
+                WHERE status = 'completed' AND is_test = FALSE AND customerid IS NOT NULL
+                GROUP BY customerid
+            )
+            SELECT 
+                COUNT(*) as total_unique_customers,
+                COUNT(*) FILTER (WHERE trip_count >= 2) as repeat_customers
+            FROM cust_completed
+        `);
+
+        // 6. Geographic Distribution
+        const geoRes = await pool.query(`
+            SELECT 
+                COALESCE(NULLIF(pincode, ''), 'Kolkata Metro') as location,
+                COUNT(*) as total_orders,
+                COALESCE(SUM(totalcustomerprice) FILTER (WHERE status = 'completed'), 0) as gmv
+            FROM service_requests
+            WHERE is_test = FALSE
+            GROUP BY location
+        `);
+
+        const completedGmv = parseFloat(gmvRes.rows[0].completed_gmv || 0);
+        const subGmv = parseFloat(subRes.rows[0].subscription_gmv || 0);
+        const totalGmv = completedGmv + subGmv;
+        const totalOrders = parseInt(gmvRes.rows[0].total_orders || 0, 10);
+        const completedOrders = parseInt(gmvRes.rows[0].completed_orders || 0, 10);
+        const cancelledOrders = parseInt(gmvRes.rows[0].cancelled_orders || 0, 10);
+        const driverPayouts = parseFloat(gmvRes.rows[0].driver_payouts || 0);
+        const netRevenue = totalGmv - driverPayouts;
+        const takeRatePct = totalGmv > 0 ? ((netRevenue / totalGmv) * 100).toFixed(1) : '0.0';
+        const completionRatePct = totalOrders > 0 ? ((completedOrders / totalOrders) * 100).toFixed(1) : 'N/A';
+        const cancellationRatePct = totalOrders > 0 ? ((cancelledOrders / totalOrders) * 100).toFixed(1) : 'N/A';
+        const totalCust = parseInt(repeatRes.rows[0]?.total_unique_customers || 0, 10);
+        const repeatCust = parseInt(repeatRes.rows[0]?.repeat_customers || 0, 10);
+        const repeatRatePct = totalCust > 0 ? ((repeatCust / totalCust) * 100).toFixed(1) : '0.0';
+
+        res.json({
+            success: true,
+            asOf: new Date().toISOString(),
+            metrics: {
+                gmv: totalGmv,
+                bookingGmv: completedGmv,
+                subscriptionGmv: subGmv,
+                netRevenue,
+                takeRatePct,
+                totalOrders,
+                completedOrders,
+                cancelledOrders,
+                completionRatePct,
+                cancellationRatePct,
+                activeSubscriptions: parseInt(subRes.rows[0].active_subscriptions || 0, 10),
+                onboardedDrivers: parseInt(supplyRes.rows[0].onboarded_drivers || 0, 10),
+                onlineDrivers: parseInt(supplyRes.rows[0].online_drivers || 0, 10),
+                certifiedGarages: parseInt(supplyRes.rows[0].certified_garages || 0, 10),
+                uniqueCustomers: totalCust,
+                repeatCustomers: repeatCust,
+                repeatRatePct,
+                verticals: verticalRes.rows,
+                geoDistribution: geoRes.rows
+            }
+        });
+    } catch (err) {
+        console.error('Live metrics calculation error:', err.message);
+        res.status(500).json({ error: 'Failed to compute live traction metrics.' });
+    }
+});
+
+
 app.use('/api', apiRouter);
 app.use('/uploads', express.static(activeUploadsDir));
 
