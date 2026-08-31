@@ -642,6 +642,7 @@ const router = {
                 case 'disputes': renderDisputes(container); break;
                 case 'approvals': renderApprovalsCentral(container); break;
                 case 'rental-fleet': renderRentalFleet(container); break;
+                case 'traction': renderTractionSection(container); break;
             }
         } catch (err) {
             console.error('Render Error:', err);
@@ -7998,4 +7999,428 @@ window.submitRejectWithdrawal = async function(id) {
     } catch (err) {
         alert('Error: ' + err.message);
     }
+};
+
+
+// ============================================================================
+// INSTITUTIONAL TRACTION & INVESTOR ACCESS CONTROL
+// ============================================================================
+
+window._tractionTab = 'requests';
+window._investorRequestsFilter = 'all';
+
+window.renderTractionSection = async function(container) {
+    const activeTab = window._tractionTab || 'requests';
+    
+    let html = `
+        <div class="page-header" style="margin-bottom: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <h1 style="font-size:1.8rem; font-weight:800; color:#fff; display:flex; align-items:center; gap:10px;">
+                        <i data-lucide="trending-up" style="color:var(--primary); width:28px; height:28px;"></i>
+                        Institutional Traction & Access
+                    </h1>
+                    <p style="color:var(--text-muted); font-size:0.9rem; margin-top:4px;">
+                        Manage institutional investor access requests and monitor real-time platform KPIs.
+                    </p>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-secondary" onclick="renderTractionSection(document.getElementById('app'))" style="display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="refresh-cw" style="width:15px; height:15px;"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sub-Navigation Tabs -->
+            <div style="display:flex; gap:12px; margin-top:20px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                <button onclick="window._tractionTab='requests'; renderTractionSection(document.getElementById('app'))" 
+                    class="btn ${activeTab === 'requests' ? 'btn-primary' : 'btn-secondary'}" 
+                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="users" style="width:16px; height:16px;"></i> Access Requests
+                </button>
+                <button onclick="window._tractionTab='metrics'; renderTractionSection(document.getElementById('app'))" 
+                    class="btn ${activeTab === 'metrics' ? 'btn-primary' : 'btn-secondary'}" 
+                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="bar-chart-3" style="width:16px; height:16px;"></i> Live Platform Metrics
+                </button>
+            </div>
+        </div>
+
+        <div id="traction-tab-content">
+            <div style="text-align:center; padding:40px; color:var(--text-muted);">
+                <div class="loader-spin" style="margin:0 auto 12px;"></div>
+                Loading Traction Center...
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
+
+    const tabContainer = document.getElementById('traction-tab-content');
+    if (activeTab === 'requests') {
+        await renderTractionAccessRequests(tabContainer);
+    } else {
+        await renderTractionLiveMetrics(tabContainer);
+    }
+};
+
+window.renderTractionAccessRequests = async function(container) {
+    const currentFilter = window._investorRequestsFilter || 'all';
+    const token = localStorage.getItem('redrivo_token');
+    let requests = [];
+    
+    try {
+        const res = await fetch(`${API_URL}/admin/investor-requests`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const data = await res.json();
+        requests = data.requests || [];
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger">Failed to load investor requests: ${err.message}</div>`;
+        return;
+    }
+
+    const totalCount = requests.length;
+    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    const approvedCount = requests.filter(r => r.status === 'approved').length;
+    const rejectedCount = requests.filter(r => r.status === 'rejected').length;
+
+    let filtered = requests;
+    if (currentFilter !== 'all') {
+        filtered = filtered.filter(r => r.status === currentFilter);
+    }
+
+    let html = `
+        <!-- Filter Pills -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+            <div style="display:flex; gap:8px;">
+                <button onclick="window._investorRequestsFilter='all'; renderTractionAccessRequests(document.getElementById('traction-tab-content'))" 
+                    class="btn btn-sm ${currentFilter === 'all' ? 'btn-primary' : 'btn-secondary'}">
+                    All (${totalCount})
+                </button>
+                <button onclick="window._investorRequestsFilter='pending'; renderTractionAccessRequests(document.getElementById('traction-tab-content'))" 
+                    class="btn btn-sm ${currentFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}" style="${pendingCount > 0 ? 'border-color:var(--primary);' : ''}">
+                    Pending (${pendingCount})
+                </button>
+                <button onclick="window._investorRequestsFilter='approved'; renderTractionAccessRequests(document.getElementById('traction-tab-content'))" 
+                    class="btn btn-sm ${currentFilter === 'approved' ? 'btn-primary' : 'btn-secondary'}">
+                    Approved (${approvedCount})
+                </button>
+                <button onclick="window._investorRequestsFilter='rejected'; renderTractionAccessRequests(document.getElementById('traction-tab-content'))" 
+                    class="btn btn-sm ${currentFilter === 'rejected' ? 'btn-primary' : 'btn-secondary'}">
+                    Rejected (${rejectedCount})
+                </button>
+            </div>
+        </div>
+
+        <!-- Requests Table -->
+        <div class="card" style="padding:0; overflow:hidden; background:var(--bg-card); border:1px solid var(--border);">
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; text-align:left;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02); font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">
+                            <th style="padding:12px 16px;">Investor & Fund</th>
+                            <th style="padding:12px 16px;">Email</th>
+                            <th style="padding:12px 16px;">Requested Date</th>
+                            <th style="padding:12px 16px;">Note / Meeting Link</th>
+                            <th style="padding:12px 16px;">Status</th>
+                            <th style="padding:12px 16px; text-align:center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    if (filtered.length === 0) {
+        html += `
+            <tr>
+                <td colspan="6" style="padding:40px; text-align:center; color:var(--text-muted);">
+                    <i data-lucide="inbox" style="width:36px; height:36px; margin-bottom:8px; opacity:0.5;"></i>
+                    <div style="font-weight:600;">No access requests found in this view.</div>
+                </td>
+            </tr>
+        `;
+    } else {
+        filtered.forEach(req => {
+            let statusBadge = '';
+            if (req.status === 'pending') {
+                statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-weight:700;">PENDING REVIEW</span>';
+            } else if (req.status === 'approved') {
+                statusBadge = '<span class="badge" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-weight:700;">APPROVED</span>';
+            } else if (req.status === 'rejected') {
+                statusBadge = '<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:700;">DECLINED</span>';
+            }
+
+            const reqDate = new Date(req.requested_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+            let noteDisplay = '-';
+            if (req.scheduling_link_or_note) {
+                const isUrl = req.scheduling_link_or_note.startsWith('http://') || req.scheduling_link_or_note.startsWith('https://');
+                if (isUrl) {
+                    noteDisplay = `<a href="${req.scheduling_link_or_note}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:underline; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><i data-lucide="external-link" style="width:12px; height:12px;"></i> Meeting Link</a>`;
+                } else {
+                    noteDisplay = `<span style="font-size:0.8rem; color:var(--text-muted);" title="${req.scheduling_link_or_note}">${req.scheduling_link_or_note.length > 50 ? req.scheduling_link_or_note.substring(0, 50) + '...' : req.scheduling_link_or_note}</span>`;
+                }
+            }
+
+            html += `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;">
+                    <td style="padding:12px 16px;">
+                        <div style="font-weight:700; color:#fff;">${req.name || 'Investor'}</div>
+                        <div style="font-size:0.75rem; color:var(--primary); font-weight:600;">${req.organization || 'Individual / Angel'}</div>
+                    </td>
+                    <td style="padding:12px 16px;">
+                        <div style="font-family:monospace; color:#e4e4e7;">${req.email}</div>
+                    </td>
+                    <td style="padding:12px 16px; color:var(--text-muted); font-size:0.8rem;">
+                        ${reqDate}
+                    </td>
+                    <td style="padding:12px 16px;">
+                        ${noteDisplay}
+                    </td>
+                    <td style="padding:12px 16px;">
+                        ${statusBadge}
+                    </td>
+                    <td style="padding:12px 16px; text-align:center;">
+                        <div style="display:flex; gap:6px; justify-content:center;">
+                            ${req.status !== 'approved' ? `
+                                <button class="btn btn-sm" onclick="approveInvestorAccess('${req.id}')" style="background:var(--success); color:#fff; border:none; padding:4px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                    <i data-lucide="check" style="width:13px; height:13px; vertical-align:middle;"></i> Approve
+                                </button>
+                            ` : ''}
+                            ${req.status !== 'rejected' ? `
+                                <button class="btn btn-danger btn-sm" onclick="rejectInvestorAccess('${req.id}')" style="padding:4px 10px; border-radius:6px; font-weight:700; cursor:pointer;">
+                                    <i data-lucide="x" style="width:13px; height:13px; vertical-align:middle;"></i> Reject
+                                </button>
+                            ` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
+};
+
+window.approveInvestorAccess = async function(id) {
+    const token = localStorage.getItem('redrivo_token');
+    try {
+        const res = await fetch(`${API_URL}/admin/investor-requests/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'approved' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            window.showToast('Investor access granted successfully.', 'success');
+            renderTractionAccessRequests(document.getElementById('traction-tab-content'));
+        } else {
+            alert(data.error || 'Failed to approve access request.');
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+};
+
+window.rejectInvestorAccess = async function(id) {
+    if (!confirm('Are you sure you want to decline this investor access request?')) return;
+    const token = localStorage.getItem('redrivo_token');
+    try {
+        const res = await fetch(`${API_URL}/admin/investor-requests/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: 'rejected' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            window.showToast('Investor access request rejected.', 'success');
+            renderTractionAccessRequests(document.getElementById('traction-tab-content'));
+        } else {
+            alert(data.error || 'Failed to reject access request.');
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+};
+
+window.renderTractionLiveMetrics = async function(container) {
+    const token = localStorage.getItem('redrivo_token');
+    let metricsData = null;
+    try {
+        const res = await fetch(`${API_URL}/traction/live-metrics`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const data = await res.json();
+        metricsData = data.metrics;
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger">Failed to compute live traction metrics: ${err.message}</div>`;
+        return;
+    }
+
+    const m = metricsData || {};
+    const asOfTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    let verticalsHtml = '';
+    if (m.verticals && m.verticals.length > 0) {
+        verticalsHtml = `
+            <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">
+                        <th style="padding:8px 0;">Vertical</th>
+                        <th style="padding:8px 0; text-align:center;">Inquiries</th>
+                        <th style="padding:8px 0; text-align:center;">Completed</th>
+                        <th style="padding:8px 0; text-align:right;">GMV</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${m.verticals.map(v => `
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px 0; font-weight:700; color:#fff;">${v.vertical === 'driver_hire' ? 'Driver Hire (On-Demand / B2B)' : (v.vertical === 'maintenance' ? 'Garage Maintenance' : v.vertical)}</td>
+                            <td style="padding:10px 0; text-align:center; color:var(--text-muted);">${v.total_inquiries || 0}</td>
+                            <td style="padding:10px 0; text-align:center; color:#22c55e; font-weight:700;">${v.completed_count || 0}</td>
+                            <td style="padding:10px 0; text-align:right; font-weight:800; color:var(--primary);">₹${parseFloat(v.gmv || 0).toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } else {
+        verticalsHtml = `
+            <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+                <i data-lucide="layers" style="width:24px; height:24px; margin-bottom:6px; opacity:0.5;"></i>
+                <div>No live vertical booking activity recorded yet.</div>
+            </div>
+        `;
+    }
+
+    let geoHtml = '';
+    if (m.geoDistribution && m.geoDistribution.length > 0) {
+        geoHtml = `
+            <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">
+                        <th style="padding:8px 0;">Cluster / Area</th>
+                        <th style="padding:8px 0; text-align:center;">Orders</th>
+                        <th style="padding:8px 0; text-align:right;">Completed GMV</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${m.geoDistribution.map(g => `
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px 0; font-weight:600; color:#fff;">${g.location}</td>
+                            <td style="padding:10px 0; text-align:center; color:var(--text-muted);">${g.total_orders || 0}</td>
+                            <td style="padding:10px 0; text-align:right; font-weight:800; color:var(--primary);">₹${parseFloat(g.gmv || 0).toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } else {
+        geoHtml = `
+            <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+                <i data-lucide="map-pin" style="width:24px; height:24px; margin-bottom:6px; opacity:0.5;"></i>
+                <div>No live geographic order distribution recorded yet.</div>
+                <div style="font-size:0.75rem; color:var(--text-dim); margin-top:4px;">Primary Target Hub: Kolkata Metro</div>
+            </div>
+        `;
+    }
+
+    let html = `
+        <div style="background:rgba(250,204,21,0.05); border:1px solid rgba(250,204,21,0.2); border-radius:10px; padding:12px 16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:#FACC15; font-weight:700;">
+                <i data-lucide="shield-check" style="width:18px; height:18px;"></i>
+                Kolkata Soft-Launch Production Baseline (is_test = FALSE strictly enforced)
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">
+                Live Query As Of: ${asOfTime}
+            </div>
+        </div>
+
+        <!-- KPI Stat Grid -->
+        <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
+            <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <div style="font-size:0.78rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Gross Merchandise Value</div>
+                <div style="font-size:1.8rem; font-weight:800; color:var(--primary); margin:8px 0 4px;">₹${(m.gmv || 0).toLocaleString()}</div>
+                <div style="font-size:0.75rem; color:var(--text-dim);">Bookings: ₹${(m.bookingGmv || 0).toLocaleString()} • Subs: ₹${(m.subscriptionGmv || 0).toLocaleString()}</div>
+            </div>
+
+            <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <div style="font-size:0.78rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Platform Net Revenue</div>
+                <div style="font-size:1.8rem; font-weight:800; color:#22c55e; margin:8px 0 4px;">₹${(m.netRevenue || 0).toLocaleString()}</div>
+                <div style="font-size:0.75rem; color:var(--text-dim);">Effective Take Rate: ${m.takeRatePct || '0.0'}%</div>
+            </div>
+
+            <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <div style="font-size:0.78rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Order Fulfillment</div>
+                <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:8px 0 4px;">${m.completedOrders || 0} / ${m.totalOrders || 0}</div>
+                <div style="font-size:0.75rem; color:var(--text-dim);">Fulfillment Rate: ${m.completionRatePct || 'N/A'}%</div>
+            </div>
+
+            <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <div style="font-size:0.78rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Active Supply Density</div>
+                <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:8px 0 4px;">${m.certifiedGarages || 0} Garages</div>
+                <div style="font-size:0.75rem; color:var(--text-dim);">${m.onboardedDrivers || 0} Drivers (${m.onlineDrivers || 0} Online)</div>
+            </div>
+        </div>
+
+        <!-- Secondary Metrics & Breakdown -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+            <!-- Retention & Quality -->
+            <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <h3 style="font-size:1rem; font-weight:700; color:#fff; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="repeat" style="color:var(--primary); width:18px; height:18px;"></i> Customer Retention & Quality
+                </h3>
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span style="color:var(--text-muted); font-size:0.85rem;">Unique Transacting Customers</span>
+                    <span style="font-weight:700; color:#fff;">${m.uniqueCustomers || 0}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span style="color:var(--text-muted); font-size:0.85rem;">Repeat Customers (>= 2 Trips)</span>
+                    <span style="font-weight:700; color:var(--primary);">${m.repeatCustomers || 0} (${m.repeatRatePct || '0.0'}%)</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:10px 0;">
+                    <span style="color:var(--text-muted); font-size:0.85rem;">Active Driver Subscriptions</span>
+                    <span style="font-weight:700; color:#22c55e;">${m.activeSubscriptions || 0} Plans</span>
+                </div>
+            </div>
+
+            <!-- Vertical Breakdown -->
+            <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <h3 style="font-size:1rem; font-weight:700; color:#fff; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="layers" style="color:var(--primary); width:18px; height:18px;"></i> Vertical Performance
+                </h3>
+                ${verticalsHtml}
+            </div>
+
+            <!-- Geographic Concentration -->
+            <div class="card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px;">
+                <h3 style="font-size:1rem; font-weight:700; color:#fff; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="map-pin" style="color:var(--primary); width:18px; height:18px;"></i> Geographic Concentration
+                </h3>
+                ${geoHtml}
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
 };
