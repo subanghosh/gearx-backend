@@ -2126,7 +2126,8 @@ async function sendFast2SmsOtp(phone, otp) {
         return;
     }
     try {
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
+        const message = `Your ReDrivo verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`;
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
         const res = await fetch(url);
         const data = await res.json().catch(() => null);
         if (data && data.return === false) {
@@ -2154,7 +2155,8 @@ apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), asyn
     }
 
     try {
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
+        const message = `Your ReDrivo verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`;
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
         const start = Date.now();
         const apiRes = await fetch(url);
         const rawText = await apiRes.text();
@@ -2169,6 +2171,7 @@ apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), asyn
             latencyMs: Date.now() - start,
             fast2smsResponse: jsonData || rawText
         });
+
     } catch (err) {
         res.status(500).json({
             configured: true,
