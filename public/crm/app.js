@@ -3654,7 +3654,7 @@ function renderLogin(container) {
                 <div id="admin-email-section">
                     <div class="form-group">
                         <label class="label" style="font-size: 0.75rem; letter-spacing: 1px; color: var(--text-dim);">ADMINISTRATOR EMAIL</label>
-                        <input type="email" id="login-email" class="input" placeholder="subanghosh7@gmail.com" style="margin-top: 6px; height: 50px; font-size: 0.95rem;" onkeydown="if(event.key==='Enter') handleSendAdminOTP()">
+                        <input type="email" id="login-email" class="input" placeholder="admin@redrivo.com" autocomplete="email" style="margin-top: 6px; height: 50px; font-size: 0.95rem;" onkeydown="if(event.key==='Enter') handleSendAdminOTP()">
                     </div>
                     
                     <button id="btn-send-admin-otp" onclick="handleSendAdminOTP()" class="btn btn-primary" style="width: 100%; margin-top: 24px; height: 50px; font-weight:700; font-size: 0.95rem;">
