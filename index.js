@@ -2540,6 +2540,16 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
         );
         if (userResult.rows[0]) {
             const user = userResult.rows[0];
+            if (user.role === 'customer') {
+                const cleanCustId = user.id.replace('_user', '');
+                await pool.query(`
+                    INSERT INTO customers (id, name, phone, email, status)
+                    VALUES ($1, $2, $3, $4, 'active')
+                    ON CONFLICT (id) DO UPDATE SET
+                        phone = COALESCE(EXCLUDED.phone, customers.phone),
+                        email = COALESCE(EXCLUDED.email, customers.email)
+                `, [cleanCustId, user.name || 'New Customer', user.phone || finalPhone, user.email || finalEmail]).catch(() => {});
+            }
             return await buildResponse({ 
                 id: user.id, 
                 name: user.name, 
@@ -2719,6 +2729,15 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
         );
         if (userResult.rows[0]) {
             const user = userResult.rows[0];
+            if (user.role === 'customer') {
+                const cleanCustId = user.id.replace('_user', '');
+                await pool.query(`
+                    INSERT INTO customers (id, name, phone, email, status)
+                    VALUES ($1, $2, $3, $4, 'active')
+                    ON CONFLICT (id) DO UPDATE SET
+                        email = COALESCE(EXCLUDED.email, customers.email)
+                `, [cleanCustId, user.name || displayName, user.phone || null, user.email || email]).catch(() => {});
+            }
             return await buildResponse({
                 id: user.id,
                 name: user.name,
@@ -5259,15 +5278,25 @@ apiRouter.post('/customers', authMiddleware, requireRole('admin'), (req, res) =>
         });
 });
 
+apiRouter.get('/vehicles/:id', (req, res) => {
+    db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Vehicle not found' });
+        res.json(row);
+    });
+});
+
 apiRouter.post('/vehicles', (req, res) => {
-    const { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body;
+    let { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body;
+    const cleanCustId = (customerId || '').replace('_user', '');
+    const vehId = id || `veh_${Date.now()}`;
     db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo, fuel, transmission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [id, customerId, make, model, type, plate, photo, fuel, transmission], (err) => {
+        [vehId, cleanCustId, make, model, type, plate, photo, fuel, transmission], (err) => {
             if (err) {
                 console.error("POST /vehicles DB error:", err.message);
                 return res.status(500).json({ error: err.message });
             }
-            res.json({ success: true, id });
+            res.json({ success: true, id: vehId });
         });
 });
 

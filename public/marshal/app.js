@@ -145,7 +145,7 @@ window.fetch = async function(resource, init) {
         const res = await nativeFetch(resource, init);
         const url = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
         const isBackendApi = url.includes('/api/') && !url.includes('/api/auth/') && !url.includes('marshal_test_blob');
-        if (isBackendApi && (res.status === 401 || res.status === 403)) {
+        if (isBackendApi && res.status === 401) {
             if (currentUser || localStorage.getItem('marshalUser')) {
                 const appView = document.getElementById('app-view');
                 const wasInsideApp = appView && appView.style.display !== 'none';

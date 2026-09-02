@@ -61,7 +61,7 @@ window.fetch = async function (input, init) {
                 headers: new Headers(nativeRes.headers)
             });
 
-            if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
+            if (res.status === 401 && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
                 if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
                     if (typeof forceLogout === 'function') {
                         forceLogout('Your session has expired, please log in again.');
@@ -81,8 +81,8 @@ window.fetch = async function (input, init) {
     // 4. Standard fetch fallback
     const res = await nativeFetch(input, init);
 
-    // 5. Session expiry guard
-    if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
+    // 5. Session expiry guard (401 only)
+    if (res.status === 401 && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
         if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
             if (typeof forceLogout === 'function') {
                 forceLogout('Your session has expired, please log in again.');
@@ -708,12 +708,23 @@ async function handleApiError(res) {
         errMsg = errJson.error || errJson.message || errMsg;
     } catch (e) { /* ignore */ }
     
-    if (res.status === 401 || res.status === 403 || errMsg.includes('foreign key constraint') || errMsg.includes('customer_not_found') || errMsg.includes('violates foreign key')) {
+    // 1. ONLY force-logout on genuine HTTP 401 (Unauthorized / Token expired or invalid)
+    if (res.status === 401) {
         forceLogout('Your session has expired, please log in again.');
         const authErr = new Error('AUTH_UNAUTHORIZED');
         authErr.isAuthError = true;
         throw authErr;
     }
+
+    // 2. On HTTP 403 (Forbidden: Access Denied / Insufficient permissions):
+    // Do NOT force-logout or wipe session. Throw a clear permission error.
+    if (res.status === 403) {
+        const permErr = new Error(errMsg || 'Access denied: You do not have permission for this action.');
+        permErr.isPermissionError = true;
+        throw permErr;
+    }
+
+    // 3. For any other status (400, 404, 409, 500), throw regular application error
     throw new Error(errMsg);
 }
 
@@ -4671,8 +4682,9 @@ async function saveVehicle() {
             }
         }
 
+        const cleanCustId = (currentUser.id || '').replace('_user', '');
         const payload = {
-            customerId: currentUser.id,
+            customerId: cleanCustId,
             plate, make, model, type, fuel, transmission, color, seats,
             makeModel: `${make} ${model}`,
         };
@@ -4701,7 +4713,9 @@ async function saveVehicle() {
         }
     } catch (err) {
         console.error("Save Vehicle Error:", err);
-        showToast(err.message || 'Failed to save vehicle', 'error');
+        if (!err.isAuthError && err.message !== 'AUTH_UNAUTHORIZED') {
+            showToast(err.message || 'Failed to save vehicle', 'error');
+        }
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
