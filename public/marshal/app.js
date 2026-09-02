@@ -147,18 +147,24 @@ window.fetch = async function(resource, init) {
         const isBackendApi = url.includes('/api/') && !url.includes('/api/auth/') && !url.includes('marshal_test_blob');
         if (isBackendApi && (res.status === 401 || res.status === 403)) {
             if (currentUser || localStorage.getItem('marshalUser')) {
+                const appView = document.getElementById('app-view');
+                const wasInsideApp = appView && appView.style.display !== 'none';
+
                 console.warn('Session expired or unauthorized. Logging out...');
                 currentUser = null;
                 localStorage.removeItem('marshalUser');
                 localStorage.removeItem('redrivo_token');
                 
-                if (typeof showToast === 'function') {
+                if (wasInsideApp && !window._isAppBooting && typeof showToast === 'function') {
                     showToast('Your session has expired, please log in again.', 'error');
                 }
-                setTimeout(() => {
-                    location.reload();
-                }, 1500);
-                throw new Error('Session expired. Redirecting to login...');
+                const loginScreen = document.getElementById('login-screen');
+                if (loginScreen) loginScreen.style.display = 'block';
+                if (appView) appView.style.display = 'none';
+
+                const authErr = new Error('AUTH_UNAUTHORIZED');
+                authErr.isAuthError = true;
+                throw authErr;
             }
         }
         return res;
@@ -874,6 +880,19 @@ async function handleLoginAction() {
 }
 
 async function handleGoogleSignIn() {
+    if (window._isGoogleSigningIn) {
+        console.log('[Google Sign-In] Already in progress, ignoring duplicate tap.');
+        return;
+    }
+    window._isGoogleSigningIn = true;
+
+    const btn = document.getElementById('btn-google-signin');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.pointerEvents = 'none';
+    }
+
     try {
         if (!window.Capacitor || !window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
             showToast('Google Sign-In is only available in the Android app build.', 'info');
@@ -881,6 +900,14 @@ async function handleGoogleSignIn() {
         }
 
         const { FirebaseAuthentication } = window.Capacitor.Plugins;
+
+        // Pre-emptively reset any previous stuck Google Play Services state
+        try {
+            await FirebaseAuthentication.signOut();
+        } catch (signOutErr) {
+            /* ignore */
+        }
+
         showToast('Connecting to Google...', 'info');
 
         const result = await FirebaseAuthentication.signInWithGoogle({
@@ -935,6 +962,16 @@ async function handleGoogleSignIn() {
             return;
         }
 
+        // Handle 12502 / in-progress gracefully
+        if (lower.includes('12502') || errCode === '12502' || lower.includes('sign_in_currently_in_progress')) {
+            console.warn('[Google Sign-In] In-progress state detected, resetting client.');
+            if (window.Capacitor && window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+                window.Capacitor.Plugins.FirebaseAuthentication.signOut().catch(() => {});
+            }
+            showToast('Google Sign-In was busy. Please tap once to continue.', 'info');
+            return;
+        }
+
         // User-friendly messages for genuine errors
         let userMessage = 'Google Sign-In failed. Please try again.';
         if (lower.includes('network') || lower.includes('failed to fetch')) {
@@ -946,6 +983,13 @@ async function handleGoogleSignIn() {
         }
 
         showToast(userMessage, 'error');
+    } finally {
+        window._isGoogleSigningIn = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+        }
     }
 }
 

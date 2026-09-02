@@ -1251,8 +1251,25 @@ apiRouter.get('/vehicles', (req, res) => {
     });
 });
 
-apiRouter.get('/requests', authMiddleware, requireRole('admin'), (req, res) => {
-    db.all("SELECT * FROM service_requests", (err, rows) => {
+apiRouter.get('/requests', authMiddleware, (req, res) => {
+    let query = "SELECT * FROM service_requests";
+    let params = [];
+
+    if (req.user && req.user.role === 'customer') {
+        const custId = req.user.id.replace('_user', '');
+        query += " WHERE customerId = ? OR customerId = ?";
+        params = [custId, `${custId}_user`];
+    } else if (req.user && req.user.role === 'marshal') {
+        const marshalId = req.user.id;
+        query += " WHERE workerId = ? OR status IN ('pending', 'scheduled', 'marshal_assigned', 'searching')";
+        params = [marshalId];
+    } else if (req.user && req.user.role === 'garage') {
+        const garageId = req.user.garageId || req.user.id;
+        query += " WHERE garageId = ?";
+        params = [garageId];
+    }
+
+    db.all(query, params, (err, rows) => {
         if (err) {
             console.error("GET /requests DB error:", err.message);
             return res.status(500).json({ error: err.message });
@@ -1469,7 +1486,7 @@ apiRouter.post('/settings/incentives', authMiddleware, requireRole('admin'), (re
     });
 });
 
-apiRouter.get('/settings/global', authMiddleware, requireRole('admin'), (req, res) => {
+apiRouter.get('/settings/global', (req, res) => {
     db.all("SELECT key, value FROM system_settings WHERE key IN ('five_star_bonus', 'payout_days')", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         const settings = { five_star_bonus: 50, payout_days: 3 }; // defaults
@@ -2046,8 +2063,8 @@ apiRouter.post('/users/:id/verify-update-otp', async (req, res) => {
     }
 });
 
-apiRouter.get('/trips', authMiddleware, requireRole('admin'), (req, res) => {
-    db.all(`
+apiRouter.get('/trips', authMiddleware, (req, res) => {
+    let query = `
         SELECT trips.*, 
                sr.customerId AS "customerId",
                sr.booking_flow AS "bookingFlow",
@@ -2062,8 +2079,28 @@ apiRouter.get('/trips', authMiddleware, requireRole('admin'), (req, res) => {
         FROM trips
         LEFT JOIN service_requests sr ON trips.serviceRequestId = sr.id
         LEFT JOIN users u ON trips.marshalId = u.id
-    `, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
+    `;
+    let params = [];
+
+    if (req.user && req.user.role === 'customer') {
+        const custId = req.user.id.replace('_user', '');
+        query += " WHERE sr.customerId = ? OR sr.customerId = ?";
+        params = [custId, `${custId}_user`];
+    } else if (req.user && req.user.role === 'marshal') {
+        const marshalId = req.user.id;
+        query += " WHERE trips.marshalId = ? OR trips.deliveryMarshalId = ? OR trips.status IN ('pending_pickup', 'assigned', 'pending_otp_1')";
+        params = [marshalId, marshalId];
+    } else if (req.user && req.user.role === 'garage') {
+        const garageId = req.user.garageId || req.user.id;
+        query += " WHERE sr.garageId = ?";
+        params = [garageId];
+    }
+
+    db.all(query, params, (err, rows) => {
+        if (err) {
+            console.error("GET /trips DB error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
         res.json(rows || []);
     });
 });

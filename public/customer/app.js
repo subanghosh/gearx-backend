@@ -61,15 +61,14 @@ window.fetch = async function (input, init) {
                 headers: new Headers(nativeRes.headers)
             });
 
-            if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp')) {
+            if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
                 if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
-                    console.warn('[AUTH] Session expired or revoked (401/403). Clearing session...');
-                    localStorage.removeItem('redrivo_token');
-                    localStorage.removeItem('redrivo_current_user');
-                    if (typeof showToast === 'function') {
-                        showToast('Session expired. Please log in again.', 'error');
+                    if (typeof forceLogout === 'function') {
+                        forceLogout('Your session has expired, please log in again.');
+                    } else {
+                        localStorage.removeItem('redrivo_token');
+                        localStorage.removeItem('redrivo_current_user');
                     }
-                    setTimeout(() => location.reload(), 1500);
                 }
             }
 
@@ -83,15 +82,14 @@ window.fetch = async function (input, init) {
     const res = await nativeFetch(input, init);
 
     // 5. Session expiry guard
-    if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp')) {
+    if ((res.status === 401 || res.status === 403) && typeof url === 'string' && !url.includes('/auth/login') && !url.includes('/auth/verify-otp') && !url.includes('/auth/send-otp') && !url.includes('/auth/google-signin')) {
         if (localStorage.getItem('redrivo_token') || localStorage.getItem('redrivo_current_user')) {
-            console.warn('[AUTH] Session expired or revoked (401/403). Clearing session...');
-            localStorage.removeItem('redrivo_token');
-            localStorage.removeItem('redrivo_current_user');
-            if (typeof showToast === 'function') {
-                showToast('Session expired. Please log in again.', 'error');
+            if (typeof forceLogout === 'function') {
+                forceLogout('Your session has expired, please log in again.');
+            } else {
+                localStorage.removeItem('redrivo_token');
+                localStorage.removeItem('redrivo_current_user');
             }
-            setTimeout(() => location.reload(), 1500);
         }
     }
 
@@ -661,15 +659,25 @@ function showToast(message, type = 'info') {
 }
 
 // --- API Helpers ---
-function forceLogout(message) {
+let _forceLogoutTimer = null;
+function forceLogout(message, silent = false) {
+    const appCont = document.getElementById('app-container');
+    const wasInsideApp = appCont && !appCont.classList.contains('hidden');
+
     currentUser = null;
     localStorage.removeItem('redrivo_current_user');
     localStorage.removeItem('redrivo_token');
     
     // Clear inputs and reset UI state of signup
-    document.getElementById('su-phone').value = '';
-    if (window.clearOtpBoxes) clearOtpBoxes('su-otp'); else document.getElementById('su-otp').value = '';
-    document.getElementById('su-otp-area').style.display = 'none';
+    const suPhone = document.getElementById('su-phone');
+    if (suPhone) suPhone.value = '';
+    if (window.clearOtpBoxes) clearOtpBoxes('su-otp');
+    else {
+        const suOtp = document.getElementById('su-otp');
+        if (suOtp) suOtp.value = '';
+    }
+    const suOtpArea = document.getElementById('su-otp-area');
+    if (suOtpArea) suOtpArea.style.display = 'none';
     const btn1 = document.getElementById('btn-signup-step1');
     if (btn1) {
         btn1.style.display = 'block';
@@ -680,11 +688,16 @@ function forceLogout(message) {
     if (btn2) btn2.style.display = 'none';
 
     // Toggle main app state immediately to the auth screen
-    document.getElementById('app-container').classList.add('hidden');
-    document.getElementById('login-container').classList.remove('hidden');
+    if (appCont) appCont.classList.add('hidden');
+    const loginCont = document.getElementById('login-container');
+    if (loginCont) loginCont.classList.remove('hidden');
 
-    if (message) {
-        showToast(message, 'error');
+    // ONLY show a toast if the user was actively logged in and working inside the app when session was revoked
+    if (message && !silent && wasInsideApp && !window._isAppBooting) {
+        if (!_forceLogoutTimer) {
+            showToast(message, 'error');
+            _forceLogoutTimer = setTimeout(() => { _forceLogoutTimer = null; }, 3000);
+        }
     }
 }
 
@@ -697,7 +710,9 @@ async function handleApiError(res) {
     
     if (res.status === 401 || res.status === 403 || errMsg.includes('foreign key constraint') || errMsg.includes('customer_not_found') || errMsg.includes('violates foreign key')) {
         forceLogout('Your session has expired, please log in again.');
-        throw new Error('Session expired. Redirecting to login...');
+        const authErr = new Error('AUTH_UNAUTHORIZED');
+        authErr.isAuthError = true;
+        throw authErr;
     }
     throw new Error(errMsg);
 }
@@ -1028,6 +1043,19 @@ async function handleSignupStep2() {
 }
 
 async function handleGoogleSignIn() {
+    if (window._isGoogleSigningIn) {
+        console.log('[Google Sign-In] Already in progress, ignoring duplicate tap.');
+        return;
+    }
+    window._isGoogleSigningIn = true;
+
+    const btn = document.getElementById('btn-google-signin');
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.pointerEvents = 'none';
+    }
+
     try {
         if (!window.Capacitor || !window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
             showToast('Google Sign-In is only available in the Android app build.', 'info');
@@ -1035,6 +1063,14 @@ async function handleGoogleSignIn() {
         }
 
         const { FirebaseAuthentication } = window.Capacitor.Plugins;
+
+        // Pre-emptively reset any previous stuck Google Play Services state
+        try {
+            await FirebaseAuthentication.signOut();
+        } catch (signOutErr) {
+            /* ignore */
+        }
+
         showToast('Connecting to Google...', 'info');
 
         const result = await FirebaseAuthentication.signInWithGoogle({
@@ -1101,6 +1137,16 @@ async function handleGoogleSignIn() {
             return;
         }
 
+        // Handle 12502 / in-progress gracefully
+        if (lower.includes('12502') || errCode === '12502' || lower.includes('sign_in_currently_in_progress')) {
+            console.warn('[Google Sign-In] In-progress state detected, resetting client.');
+            if (window.Capacitor && window.Capacitor.isPluginAvailable('FirebaseAuthentication')) {
+                window.Capacitor.Plugins.FirebaseAuthentication.signOut().catch(() => {});
+            }
+            showToast('Google Sign-In was busy. Please tap once to continue.', 'info');
+            return;
+        }
+
         // User-friendly messages for genuine errors
         let userMessage = 'Google Sign-In failed. Please try again.';
         if (lower.includes('network') || lower.includes('failed to fetch')) {
@@ -1112,6 +1158,13 @@ async function handleGoogleSignIn() {
         }
 
         showToast(userMessage, 'error');
+    } finally {
+        window._isGoogleSigningIn = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+        }
     }
 }
 
@@ -2017,6 +2070,9 @@ async function loadDashboard() {
     } catch (err) {
         console.error("Dashboard load failed:", err);
         console.log('[DEBUG-TRACKING] Dashboard load error details:', err);
+        if (err.isAuthError || err.message === 'AUTH_UNAUTHORIZED' || err.message?.includes('AUTH_')) {
+            return;
+        }
         if (typeof showToast === 'function') {
             showToast("Dashboard load error: " + err.message, "error");
         }
@@ -5822,7 +5878,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Validate token expiration on boot. If expired or missing, clear the stored session.
+    // Validate token expiration on boot. If expired or missing, clear the stored session silently.
+    window._isAppBooting = true;
+    setTimeout(() => { window._isAppBooting = false; }, 3000);
+
     (function validateTokenOnBoot() {
         const token = localStorage.getItem('redrivo_token');
         if (token) {
@@ -5831,7 +5890,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (payload && payload.exp) {
                     const nowSec = Math.floor(Date.now() / 1000);
                     if (payload.exp < nowSec) {
-                        console.warn("Session expired on boot. Clearing storage credentials.");
+                        console.warn("Session expired on boot. Silently clearing storage credentials.");
                         localStorage.removeItem('redrivo_current_user');
                         localStorage.removeItem('redrivo_token');
                     }
