@@ -2537,7 +2537,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
 
         // Step 1: Check users table
         const userResult = await pool.query(
-            `SELECT * FROM users WHERE phone IN ($1, $2) OR email = $3 ORDER BY CASE WHEN role = $4 THEN 0 ELSE 1 END LIMIT 1`,
+            `SELECT * FROM users WHERE phone IN ($1, $2) OR email = $3 ORDER BY CASE WHEN role = $4 THEN 0 WHEN role = 'admin' THEN 1 ELSE 2 END LIMIT 1`,
             [cleanVal, prefixedVal, val, role || 'customer']
         );
         if (userResult.rows[0]) {
@@ -2751,7 +2751,7 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
 
         // Step 1: Check users table
         const userResult = await pool.query(
-            `SELECT * FROM users WHERE email = $1 ORDER BY CASE WHEN role = $2 THEN 0 ELSE 1 END LIMIT 1`,
+            `SELECT * FROM users WHERE email = $1 ORDER BY CASE WHEN role = $2 THEN 0 WHEN role = 'admin' THEN 1 ELSE 2 END LIMIT 1`,
             [email, targetRole]
         );
         if (userResult.rows[0]) {
