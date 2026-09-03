@@ -6477,7 +6477,8 @@ async function probeDocFrame() {
             isValid = (hasAadhaarKeyword || has12Digits || charCount >= 22);
         } else if (type.includes('dl')) {
             const hasDlKeyword = rawText.includes('DRIVING') || rawText.includes('LICENCE') || rawText.includes('LICENSE') || rawText.includes('UNION') || rawText.includes('INDIA') || rawText.includes('TRANSPORT') || rawText.includes('AUTHORITY');
-            isValid = (hasDlKeyword || charCount >= 20);
+            const hasDlPattern = /\b([A-Z0-9]{2})[-/\s]?\d{2}[-/\s]?(?:19|20)\d{2}[-/\s]?\d{7}\b/i.test(rawText);
+            isValid = (hasDlKeyword || hasDlPattern || charCount >= 20);
         } else {
             isValid = charCount >= 18;
         }
@@ -6496,6 +6497,155 @@ async function probeDocFrame() {
     }
 }
 
+// ─── VALID INDIAN STATE / UT DL CODES & OCR CONFUSION CORRECTION ────────────
+const VALID_DL_STATES = new Set([
+    'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN',
+    'GA', 'GJ', 'HP', 'HR', 'JH', 'JK', 'KA', 'KL', 'LA', 'LD',
+    'MH', 'ML', 'MN', 'MP', 'MZ', 'NL', 'OD', 'PB', 'PY', 'RJ',
+    'SK', 'TN', 'TR', 'TS', 'UK', 'UP', 'WB',
+    'OR', 'UA'
+]);
+
+const CONFUSION_MAP = {
+    'S': ['B', '8', '5'],
+    'B': ['8', 'S', 'E'],
+    'O': ['0', 'D', 'Q'],
+    '0': ['O', 'D'],
+    '1': ['I', 'L', 'J'],
+    'I': ['1', 'L', 'T', 'J'],
+    'L': ['I', '1'],
+    'Z': ['2'],
+    '2': ['Z'],
+    'G': ['6', 'C', 'Q'],
+    '6': ['G'],
+    '8': ['B', 'S'],
+    '5': ['S'],
+    'W': ['M', 'V'],
+    'M': ['W', 'N'],
+    'V': ['U', 'W'],
+    'U': ['V'],
+    'C': ['G', 'O'],
+    'D': ['0', 'O', 'B']
+};
+
+function normalizeDlStateCode(rawPrefix) {
+    if (!rawPrefix || rawPrefix.length !== 2) return rawPrefix;
+    const upper = rawPrefix.toUpperCase();
+    if (VALID_DL_STATES.has(upper)) return upper;
+
+    const c0 = upper[0];
+    const c1 = upper[1];
+    const c0Alts = [c0, ...(CONFUSION_MAP[c0] || [])];
+    const c1Alts = [c1, ...(CONFUSION_MAP[c1] || [])];
+
+    for (const a0 of c0Alts) {
+        for (const a1 of c1Alts) {
+            const candidate = a0 + a1;
+            if (VALID_DL_STATES.has(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    return upper;
+}
+
+// ─── HIGH-RESOLUTION & CONTINUOUS AUTOFOCUS STREAM CREATOR ─────────────────
+async function getDocumentCameraStream() {
+    const attempts = [
+        {
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
+                advanced: [
+                    { focusMode: 'continuous' },
+                    { exposureMode: 'continuous' },
+                    { whiteBalanceMode: 'continuous' }
+                ]
+            },
+            audio: false
+        },
+        {
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                advanced: [{ focusMode: 'continuous' }]
+            },
+            audio: false
+        },
+        {
+            video: {
+                facingMode: { ideal: 'environment' },
+                advanced: [{ focusMode: 'continuous' }]
+            },
+            audio: false
+        },
+        {
+            video: { facingMode: 'environment' },
+            audio: false
+        },
+        {
+            video: true,
+            audio: false
+        }
+    ];
+
+    let lastError = null;
+    for (const constraints of attempts) {
+        try {
+            console.log('[DOC_CAMERA] Attempting getUserMedia with constraints:', JSON.stringify(constraints));
+            return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            console.warn('[DOC_CAMERA] Constraint attempt failed:', err);
+            lastError = err;
+        }
+    }
+    throw lastError || new Error("No camera devices accessible for document scanning.");
+}
+
+// ─── TAP-TO-FOCUS HANDLER & VISUAL RETICLE ─────────────────────────────────
+function triggerDocTapToFocus(e) {
+    if (!docCameraStream) return;
+    const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : window.innerWidth / 2);
+    const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : window.innerHeight / 2);
+
+    const reticle = document.getElementById('doc-focus-reticle');
+    if (reticle) {
+        reticle.style.left = `${clientX}px`;
+        reticle.style.top = `${clientY}px`;
+        reticle.style.display = 'block';
+        reticle.style.borderColor = '#FACC15';
+        reticle.style.transform = 'translate(-50%, -50%) scale(1.25)';
+        
+        setTimeout(() => {
+            if (reticle) {
+                reticle.style.transform = 'translate(-50%, -50%) scale(1.0)';
+                reticle.style.borderColor = '#10B981'; // Green on lock
+            }
+        }, 250);
+
+        setTimeout(() => {
+            if (reticle) reticle.style.display = 'none';
+        }, 900);
+    }
+
+    const track = docCameraStream.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        console.log('[DOC_CAMERA] Tap-to-focus capabilities:', caps);
+        const modes = caps.focusMode || [];
+        const chosenMode = modes.includes('continuous') ? 'continuous' : (modes.includes('single-shot') ? 'single-shot' : 'continuous');
+        track.applyConstraints({
+            advanced: [{ focusMode: chosenMode }]
+        }).then(() => {
+            console.log(`[DOC_CAMERA] Tap-to-focus applied mode: ${chosenMode}`);
+        }).catch(err => {
+            console.warn('[DOC_CAMERA] Tap-to-focus constraint error:', err);
+        });
+    }
+}
+
 function bindDocCameraEvents() {
     if (window.isDocCameraBound) return;
     window.isDocCameraBound = true;
@@ -6511,6 +6661,16 @@ function bindDocCameraEvents() {
     
     const confirmBtn = document.getElementById('btn-doc-camera-confirm');
     if (confirmBtn) confirmBtn.onclick = window.confirmDocumentPhoto;
+
+    // Attach Tap-to-Focus to Live View
+    const liveView = document.getElementById('doc-camera-live-view');
+    if (liveView && !liveView._hasTapFocus) {
+        liveView._hasTapFocus = true;
+        liveView.addEventListener('click', (e) => {
+            if (e.target.closest('#btn-doc-camera-close') || e.target.closest('#btn-doc-camera-capture')) return;
+            triggerDocTapToFocus(e);
+        });
+    }
 }
 
 window.openDocumentCamera = function(docTypeLabel, docTypeKey) {
@@ -6531,8 +6691,8 @@ window.openDocumentCamera = function(docTypeLabel, docTypeKey) {
         currentDocReject = reject;
         
         try {
-            // Request rear camera with video fallback attempts
-            docCameraStream = await getMediaStreamWithFallback('environment', false);
+            // Request 1080p continuous autofocus camera stream
+            docCameraStream = await getDocumentCameraStream();
             const videoEl = document.getElementById('doc-camera-preview');
             if (videoEl) {
                 videoEl.srcObject = docCameraStream;
@@ -6541,6 +6701,23 @@ window.openDocumentCamera = function(docTypeLabel, docTypeKey) {
                 videoEl.setAttribute('autoplay', '');
                 await videoEl.play().catch(e => console.warn("docVideo.play caught:", e));
             }
+
+            // Explicitly re-apply continuous autofocus constraint on active video track
+            const track = docCameraStream.getVideoTracks()[0];
+            if (track && track.applyConstraints) {
+                try {
+                    await track.applyConstraints({
+                        advanced: [{ focusMode: 'continuous' }]
+                    });
+                    console.log('[DOC_CAMERA] Applied continuous autofocus constraint to video track.');
+                } catch (e) {
+                    console.warn('[DOC_CAMERA] Failed to apply continuous focus constraint:', e);
+                }
+            }
+
+            // 1200ms hardware sensor stabilization window to let AF & AE converge
+            setDocVisualState('amber', `Focusing camera on ${docTypeLabel}...`);
+            await new Promise(r => setTimeout(r, 1200));
 
             // Start live OCR detection probe
             if (docDetectionTimer) clearInterval(docDetectionTimer);
@@ -6590,6 +6767,31 @@ function closeDocCamera() {
 
 window.captureDocumentPhoto = function() {
     console.log('[DOC_CAMERA] Capturing frame...');
+    const video = document.getElementById('doc-camera-preview');
+    if (!video) return;
+
+    const captureBtn = document.getElementById('btn-doc-camera-capture');
+    if (captureBtn) {
+        if (captureBtn._isCapturing) return;
+        captureBtn._isCapturing = true;
+        captureBtn.style.opacity = '0.5';
+        captureBtn.style.pointerEvents = 'none';
+    }
+
+    // 250ms stabilization delay before snapping frame to allow hand vibration from tapping shutter to dampen
+    setTimeout(() => {
+        try {
+            executeDocPhotoCapture();
+        } finally {
+            if (captureBtn) {
+                captureBtn._isCapturing = false;
+                captureBtn.style.pointerEvents = 'auto';
+            }
+        }
+    }, 250);
+};
+
+function executeDocPhotoCapture() {
     const video = document.getElementById('doc-camera-preview');
     if (!video) return;
     
@@ -6658,12 +6860,12 @@ window.captureDocumentPhoto = function() {
             
             // Save captured blob globally for confirm to use
             window.lastCapturedDocBlob = blob;
-        }, 'image/jpeg', 0.88);
+        }, 'image/jpeg', 0.90);
     } catch (err) {
         console.error('[DOC_CAMERA] Capture error:', err);
         showToast("Error capturing photo: " + err.message, "error");
     }
-};
+}
 
 
 window.retakeDocumentPhoto = function() {
@@ -8231,17 +8433,24 @@ window.performDocumentOcr = async function(type, blob) {
         // 3. DL Number & Details Extraction
         if (type === 'dl' || type === 'dlback') {
             let dlNum = null;
-            const standardDlMatch = fullText.match(/\b([A-Z]{2})[\s\-\/]?([0-9]{2})[\s\-\/]?([0-9]{4})[\s\-\/]?([0-9]{7})\b/i);
+            const standardDlMatch = fullText.match(/\b([A-Z0-9]{2})[\s\-\/]?([0-9]{2})[\s\-\/]?([0-9]{4})[\s\-\/]?([0-9]{7})\b/i);
             if (standardDlMatch) {
-                dlNum = `${standardDlMatch[1]}${standardDlMatch[2]} ${standardDlMatch[3]}${standardDlMatch[4]}`.toUpperCase();
+                const normState = normalizeDlStateCode(standardDlMatch[1]);
+                dlNum = `${normState}${standardDlMatch[2]} ${standardDlMatch[3]}${standardDlMatch[4]}`.toUpperCase();
             } else {
-                const labeledDlMatch = fullText.match(/(?:DL\s*(?:NO|NUM|NUMBER)?|LICENCE\s*NO|LICENSE\s*NO)\s*[:\-]?\s*([A-Z]{2}[\s\-\/]?[0-9]{2}[\s\-\/]?[0-9A-Z\/\-]{7,15})\b/i);
+                const labeledDlMatch = fullText.match(/(?:DL\s*(?:NO|NUM|NUMBER)?|LICENCE\s*NO|LICENSE\s*NO)\s*[:\-]?\s*([A-Z0-9]{2}[\s\-\/]?[0-9]{2}[\s\-\/]?[0-9A-Z\/\-]{7,15})\b/i);
                 if (labeledDlMatch) {
-                    dlNum = labeledDlMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                    let cleanDl = labeledDlMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                    const prefix = cleanDl.substring(0, 2);
+                    const normState = normalizeDlStateCode(prefix);
+                    dlNum = normState + cleanDl.substring(2);
                 } else {
-                    const genericMatch = fullText.match(/\b([A-Z]{2}[0-9]{2}[\s\-\/][0-9A-Z\/\-\s]{8,14})\b/i);
+                    const genericMatch = fullText.match(/\b([A-Z0-9]{2}[0-9]{2}[\s\-\/][0-9A-Z\/\-\s]{8,14})\b/i);
                     if (genericMatch) {
-                        dlNum = genericMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                        let cleanDl = genericMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                        const prefix = cleanDl.substring(0, 2);
+                        const normState = normalizeDlStateCode(prefix);
+                        dlNum = normState + cleanDl.substring(2);
                     }
                 }
             }

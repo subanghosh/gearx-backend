@@ -1445,7 +1445,10 @@
 <div id="document-camera-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#000; z-index:20000; flex-direction:column; overflow:hidden; font-family:system-ui, -apple-system, sans-serif;">
     <!-- Live Preview View -->
     <div id="doc-camera-live-view" style="position:relative; width:100%; height:100%; display:flex; flex-direction:column; justify-content:space-between;">
-        <video id="doc-camera-preview" autoplay playsinline style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1;"></video>
+        <video id="doc-camera-preview" autoplay playsinline style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1; cursor:crosshair;"></video>
+        
+        <!-- Animated Tap-to-Focus Reticle -->
+        <div id="doc-focus-reticle" style="display:none; position:absolute; pointer-events:none; border:2px solid #FACC15; border-radius:8px; width:64px; height:64px; transform:translate(-50%, -50%); z-index:10; box-shadow:0 0 12px rgba(250,204,21,0.6); transition:border-color 0.2s ease, transform 0.2s ease;"></div>
         
         <!-- Guide Frame Overlay -->
         <div style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
