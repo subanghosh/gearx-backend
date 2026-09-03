@@ -3951,6 +3951,7 @@ apiRouter.get('/payout-rates', authMiddleware, requireRole('admin', 'marshal'), 
             subscription_daily_price: 99.00,
             subscription_weekly_price: 499.00,
             subscription_monthly_price: 1499.00,
+            subscription_quarterly_price: 3999.00,
             subscription_annual_price: 14999.00,
             demand_search_weight: 1.0,
             demand_booking_weight: 3.0
@@ -3962,7 +3963,9 @@ apiRouter.get('/payout-rates', authMiddleware, requireRole('admin', 'marshal'), 
                 subscriptionDailyPrice: parseFloat(rates.subscription_daily_price !== undefined ? rates.subscription_daily_price : 99.00),
                 subscriptionWeeklyPrice: parseFloat(rates.subscription_weekly_price !== undefined ? rates.subscription_weekly_price : 499.00),
                 subscriptionMonthlyPrice: parseFloat(rates.subscription_monthly_price !== undefined ? rates.subscription_monthly_price : 1499.00),
+                subscriptionQuarterlyPrice: parseFloat(rates.subscription_quarterly_price !== undefined ? rates.subscription_quarterly_price : 3999.00),
                 subscriptionAnnualPrice: parseFloat(rates.subscription_annual_price !== undefined ? rates.subscription_annual_price : 14999.00),
+                subscriptionYearlyPrice: parseFloat(rates.subscription_annual_price !== undefined ? rates.subscription_annual_price : 14999.00),
                 demandSearchWeight: parseFloat(rates.demand_search_weight !== undefined ? rates.demand_search_weight : 1.0),
                 demandBookingWeight: parseFloat(rates.demand_booking_weight !== undefined ? rates.demand_booking_weight : 3.0),
                 updatedAt: rates.updated_at
@@ -3981,7 +3984,9 @@ apiRouter.put('/admin/payout-rates', authMiddleware, requireRole('admin'), async
             subscriptionDailyPrice,
             subscriptionWeeklyPrice,
             subscriptionMonthlyPrice,
+            subscriptionQuarterlyPrice,
             subscriptionAnnualPrice,
+            subscriptionYearlyPrice,
             demandSearchWeight,
             demandBookingWeight
         } = req.body;
@@ -3991,12 +3996,13 @@ apiRouter.put('/admin/payout-rates', authMiddleware, requireRole('admin'), async
             return res.status(400).json({ error: 'Commission rate must be between 0% and 100%.' });
         }
 
-        const daily = parseFloat(subscriptionDailyPrice);
+        const daily = parseFloat(subscriptionDailyPrice !== undefined ? subscriptionDailyPrice : 99.00);
         const weekly = parseFloat(subscriptionWeeklyPrice);
         const monthly = parseFloat(subscriptionMonthlyPrice);
-        const annual = parseFloat(subscriptionAnnualPrice);
+        const quarterly = parseFloat(subscriptionQuarterlyPrice !== undefined ? subscriptionQuarterlyPrice : 3999.00);
+        const annual = parseFloat(subscriptionYearlyPrice !== undefined ? subscriptionYearlyPrice : (subscriptionAnnualPrice !== undefined ? subscriptionAnnualPrice : 14999.00));
 
-        if ([daily, weekly, monthly, annual].some(p => isNaN(p) || p < 0)) {
+        if ([weekly, monthly, quarterly, annual].some(p => isNaN(p) || p < 0)) {
             return res.status(400).json({ error: 'Subscription prices must be non-negative numbers.' });
         }
 
@@ -4014,21 +4020,24 @@ apiRouter.put('/admin/payout-rates', authMiddleware, requireRole('admin'), async
                 subscription_weekly_price = $3,
                 subscription_monthly_price = $4,
                 subscription_annual_price = $5,
-                demand_search_weight = $6,
-                demand_booking_weight = $7,
+                subscription_quarterly_price = $6,
+                demand_search_weight = $7,
+                demand_booking_weight = $8,
                 updated_at = NOW()
             WHERE id = 'current_rates'
-        `, [comm, daily, weekly, monthly, annual, searchW, bookingW]);
+        `, [comm, isNaN(daily) ? 99.00 : daily, weekly, monthly, annual, quarterly, searchW, bookingW]);
 
         res.json({
             success: true,
             message: 'Payout model rates & demand weights updated successfully.',
             rates: {
                 commissionRatePercent: comm,
-                subscriptionDailyPrice: daily,
+                subscriptionDailyPrice: isNaN(daily) ? 99.00 : daily,
                 subscriptionWeeklyPrice: weekly,
                 subscriptionMonthlyPrice: monthly,
+                subscriptionQuarterlyPrice: quarterly,
                 subscriptionAnnualPrice: annual,
+                subscriptionYearlyPrice: annual,
                 demandSearchWeight: searchW,
                 demandBookingWeight: bookingW
             }
@@ -4055,7 +4064,7 @@ apiRouter.put('/workers/:id/payout-plan', async (req, res) => {
         if (!['commission', 'subscription'].includes(requestedModel)) {
             return res.status(400).json({ error: 'Invalid payout model requested.' });
         }
-        if (requestedModel === 'subscription' && !['daily', 'weekly', 'monthly', 'annually'].includes(requestedCycle)) {
+        if (requestedModel === 'subscription' && !['weekly', 'monthly', 'quarterly', 'yearly', 'annually', 'daily'].includes(requestedCycle)) {
             return res.status(400).json({ error: 'Invalid subscription cycle requested.' });
         }
 
@@ -4140,9 +4149,11 @@ function getRazorpayClient() {
 
 function getCycleDurationDays(cycle) {
     switch (cycle) {
-        case 'daily': return 1;
+        case 'daily': return 1; // legacy fallback
         case 'weekly': return 7;
         case 'monthly': return 30;
+        case 'quarterly': return 90;
+        case 'yearly':
         case 'annually': return 365;
         default: return 30;
     }
@@ -4153,7 +4164,7 @@ apiRouter.post('/driver/subscription/create-order', async (req, res) => {
     try {
         const { driverId, cycle } = req.body;
         if (!driverId) return res.status(400).json({ error: 'Driver ID is required.' });
-        if (!['daily', 'weekly', 'monthly', 'annually'].includes(cycle)) {
+        if (!['weekly', 'monthly', 'quarterly', 'yearly', 'annually', 'daily'].includes(cycle)) {
             return res.status(400).json({ error: 'Invalid subscription cycle.' });
         }
 
@@ -4169,7 +4180,8 @@ apiRouter.post('/driver/subscription/create-order', async (req, res) => {
         if (cycle === 'daily') rateInRupees = parseFloat(rates.subscription_daily_price || 99.00);
         else if (cycle === 'weekly') rateInRupees = parseFloat(rates.subscription_weekly_price || 499.00);
         else if (cycle === 'monthly') rateInRupees = parseFloat(rates.subscription_monthly_price || 1499.00);
-        else if (cycle === 'annually') rateInRupees = parseFloat(rates.subscription_annual_price || 14999.00);
+        else if (cycle === 'quarterly') rateInRupees = parseFloat(rates.subscription_quarterly_price || 3999.00);
+        else if (cycle === 'annually' || cycle === 'yearly') rateInRupees = parseFloat(rates.subscription_annual_price || 14999.00);
 
         const amountPaise = Math.round(rateInRupees * 100);
         const receiptId = `rcpt_${Date.now().toString().slice(-8)}_${driverId.slice(-4)}`;

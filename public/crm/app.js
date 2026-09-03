@@ -7331,7 +7331,9 @@ async function renderIncentives(container) {
                 subscriptionDailyPrice: 99.00,
                 subscriptionWeeklyPrice: 499.00,
                 subscriptionMonthlyPrice: 1499.00,
+                subscriptionQuarterlyPrice: 3999.00,
                 subscriptionAnnualPrice: 14999.00,
+                subscriptionYearlyPrice: 14999.00,
                 demandSearchWeight: 1.0,
                 demandBookingWeight: 3.0
             };
@@ -7663,12 +7665,6 @@ async function renderIncentives(container) {
                         </div>
 
                         <div>
-                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Daily Pass (₹)</label>
-                            <input type="number" step="1" id="crm-rate-daily" value="${window._payoutRates.subscriptionDailyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
-                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">24-hour unlimited pass</span>
-                        </div>
-
-                        <div>
                             <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Weekly Pass (₹)</label>
                             <input type="number" step="1" id="crm-rate-weekly" value="${window._payoutRates.subscriptionWeeklyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">7-day unlimited pass</span>
@@ -7681,8 +7677,14 @@ async function renderIncentives(container) {
                         </div>
 
                         <div>
-                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Annual Pass (₹)</label>
-                            <input type="number" step="1" id="crm-rate-annual" value="${window._payoutRates.subscriptionAnnualPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Quarterly Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-quarterly" value="${window._payoutRates.subscriptionQuarterlyPrice !== undefined ? window._payoutRates.subscriptionQuarterlyPrice : 3999}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">90-day calendar pass</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Yearly Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-yearly" value="${window._payoutRates.subscriptionYearlyPrice !== undefined ? window._payoutRates.subscriptionYearlyPrice : (window._payoutRates.subscriptionAnnualPrice !== undefined ? window._payoutRates.subscriptionAnnualPrice : 14999)}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">365-day full pass</span>
                         </div>
 
@@ -7716,10 +7718,10 @@ async function renderIncentives(container) {
 
         window.savePayoutRates = async function() {
             const commission = document.getElementById('crm-rate-commission').value;
-            const daily = document.getElementById('crm-rate-daily').value;
             const weekly = document.getElementById('crm-rate-weekly').value;
             const monthly = document.getElementById('crm-rate-monthly').value;
-            const annual = document.getElementById('crm-rate-annual').value;
+            const quarterly = document.getElementById('crm-rate-quarterly').value;
+            const yearly = document.getElementById('crm-rate-yearly')?.value || document.getElementById('crm-rate-annual')?.value;
             const searchWeight = document.getElementById('crm-rate-search-weight')?.value || 1.0;
             const bookingWeight = document.getElementById('crm-rate-booking-weight')?.value || 3.0;
 
@@ -7729,10 +7731,11 @@ async function renderIncentives(container) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         commissionRatePercent: commission,
-                        subscriptionDailyPrice: daily,
                         subscriptionWeeklyPrice: weekly,
                         subscriptionMonthlyPrice: monthly,
-                        subscriptionAnnualPrice: annual,
+                        subscriptionQuarterlyPrice: quarterly,
+                        subscriptionYearlyPrice: yearly,
+                        subscriptionAnnualPrice: yearly,
                         demandSearchWeight: searchWeight,
                         demandBookingWeight: bookingWeight
                     })

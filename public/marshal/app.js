@@ -4774,9 +4774,10 @@ window.fetchPayoutRates = async function() {
     }
     return {
         commissionRatePercent: 20.0,
-        subscriptionDailyPrice: 99.00,
         subscriptionWeeklyPrice: 499.00,
         subscriptionMonthlyPrice: 1499.00,
+        subscriptionQuarterlyPrice: 3999.00,
+        subscriptionYearlyPrice: 14999.00,
         subscriptionAnnualPrice: 14999.00
     };
 };
@@ -4856,14 +4857,14 @@ window.openPayoutPlanModal = async function() {
     const commRateEl = document.getElementById('plan-commission-rate-display');
     if (commRateEl) commRateEl.textContent = `${rates.commissionRatePercent}% Cut / Trip`;
 
-    const pDaily = document.getElementById('price-daily-display');
-    if (pDaily) pDaily.textContent = `₹${rates.subscriptionDailyPrice}`;
     const pWeekly = document.getElementById('price-weekly-display');
     if (pWeekly) pWeekly.textContent = `₹${rates.subscriptionWeeklyPrice}`;
     const pMonthly = document.getElementById('price-monthly-display');
     if (pMonthly) pMonthly.textContent = `₹${rates.subscriptionMonthlyPrice}`;
-    const pAnnual = document.getElementById('price-annual-display');
-    if (pAnnual) pAnnual.textContent = `₹${rates.subscriptionAnnualPrice}`;
+    const pQuarterly = document.getElementById('price-quarterly-display');
+    if (pQuarterly) pQuarterly.textContent = `₹${rates.subscriptionQuarterlyPrice || 3999}`;
+    const pYearly = document.getElementById('price-yearly-display') || document.getElementById('price-annual-display');
+    if (pYearly) pYearly.textContent = `₹${rates.subscriptionYearlyPrice || rates.subscriptionAnnualPrice || 14999}`;
 
     const model = (currentUser && (currentUser.payoutModel || currentUser.payout_model)) || 'commission';
     const lastSwitched = currentUser && (currentUser.payoutModelLastSwitchedAt || currentUser.payout_model_last_switched_at);
