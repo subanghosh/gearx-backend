@@ -2533,6 +2533,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             });
         }
 
+        const isCustomerApp = (!role || role === 'customer');
+
         // Step 1: Check users table
         const userResult = await pool.query(
             `SELECT * FROM users WHERE phone IN ($1, $2) OR email = $3 ORDER BY CASE WHEN role = $4 THEN 0 ELSE 1 END LIMIT 1`,
@@ -2540,7 +2542,18 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
         );
         if (userResult.rows[0]) {
             const user = userResult.rows[0];
-            if (user.role === 'customer') {
+
+            // Customer App Role Guards
+            if (isCustomerApp) {
+                if (user.role === 'marshal') {
+                    return res.status(403).json({ error: 'This account is registered as a driver partner. Please use the Driver app instead.' });
+                }
+                if (user.role === 'garage') {
+                    return res.status(403).json({ error: 'This account is registered as a garage partner. Please use the Garage portal instead.' });
+                }
+            }
+
+            if (user.role === 'customer' || (isCustomerApp && user.role === 'admin')) {
                 const cleanCustId = user.id.replace('_user', '');
                 await pool.query(`
                     INSERT INTO customers (id, name, phone, email, status)
@@ -2553,7 +2566,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             return await buildResponse({ 
                 id: user.id, 
                 name: user.name, 
-                role: user.role, 
+                role: (isCustomerApp && user.role === 'admin') ? 'customer' : user.role, 
                 garageId: user.garageId || user.garageid, 
                 status: user.status, 
                 kycStatus: user.kycStatus || user.kycstatus,
@@ -2561,6 +2574,18 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 email: user.email,
                 token_version: user.token_version || user.tokenversion || 1
             });
+        }
+
+        // If this is the Customer App, check if phone/email belongs to a garage partner before attempting registration
+        if (isCustomerApp) {
+            const workerCheck = await pool.query(`SELECT id FROM garage_workers WHERE phone IN ($1, $2) LIMIT 1`, [cleanVal, prefixedVal]);
+            if (workerCheck.rows[0]) {
+                return res.status(403).json({ error: 'This account is registered as a garage partner. Please use the Garage portal instead.' });
+            }
+            const garageCheck = await pool.query(`SELECT id FROM garages WHERE contact IN ($1, $2) OR email = $3 LIMIT 1`, [cleanVal, prefixedVal, val]);
+            if (garageCheck.rows[0]) {
+                return res.status(403).json({ error: 'This account is registered as a garage partner. Please use the Garage portal instead.' });
+            }
         }
 
         // Step 2: Garage worker
@@ -2722,6 +2747,8 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
             return res.json({ verified: true, isNewUser, token, user: userObj });
         };
 
+        const isCustomerApp = (!role || role === 'customer');
+
         // Step 1: Check users table
         const userResult = await pool.query(
             `SELECT * FROM users WHERE email = $1 ORDER BY CASE WHEN role = $2 THEN 0 ELSE 1 END LIMIT 1`,
@@ -2729,7 +2756,18 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
         );
         if (userResult.rows[0]) {
             const user = userResult.rows[0];
-            if (user.role === 'customer') {
+
+            // Customer App Role Guards
+            if (isCustomerApp) {
+                if (user.role === 'marshal') {
+                    return res.status(403).json({ error: 'This account is registered as a driver partner. Please use the Driver app instead.' });
+                }
+                if (user.role === 'garage') {
+                    return res.status(403).json({ error: 'This account is registered as a garage partner. Please use the Garage portal instead.' });
+                }
+            }
+
+            if (user.role === 'customer' || (isCustomerApp && user.role === 'admin')) {
                 const cleanCustId = user.id.replace('_user', '');
                 await pool.query(`
                     INSERT INTO customers (id, name, phone, email, status)
@@ -2741,7 +2779,7 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
             return await buildResponse({
                 id: user.id,
                 name: user.name,
-                role: user.role,
+                role: (isCustomerApp && user.role === 'admin') ? 'customer' : user.role,
                 garageId: user.garageId || user.garageid,
                 status: user.status,
                 kycStatus: user.kycStatus || user.kycstatus,
@@ -2752,6 +2790,12 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
         }
 
         // Step 2: Garage owner check
+        if (isCustomerApp) {
+            const garageCheck = await pool.query(`SELECT id FROM garages WHERE email = $1 LIMIT 1`, [email]);
+            if (garageCheck.rows[0]) {
+                return res.status(403).json({ error: 'This account is registered as a garage partner. Please use the Garage portal instead.' });
+            }
+        }
         const garageResult = await pool.query(
             `SELECT * FROM garages WHERE email = $1 LIMIT 1`,
             [email]
