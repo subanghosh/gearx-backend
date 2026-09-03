@@ -7282,7 +7282,7 @@ async function renderIncentives(container) {
                 fetch(`${API_URL}/system-settings`).catch(() => null),
                 fetch(`${API_URL}/settings/incentives`).catch(() => null),
                 fetch(`${API_URL}/settings/global`).catch(() => null),
-                fetch(`${API_URL}/payout-model-rates`).catch(() => null)
+                fetch(`${API_URL}/payout-rates`).catch(() => null)
             ]);
 
             if (wRes && wRes.ok) {
@@ -7309,10 +7309,17 @@ async function renderIncentives(container) {
             }
             if (ratesRes && ratesRes.ok) {
                 const ratesData = await ratesRes.json();
-                if (ratesData && ratesData.rates) window._payoutRates = ratesData.rates;
+                if (ratesData && ratesData.rates) {
+                    window._payoutRates = ratesData.rates;
+                    window._payoutRatesLoadFailed = false;
+                }
+            } else {
+                console.warn("Failed to load live payout rates from server:", ratesRes ? ratesRes.status : 'network error');
+                window._payoutRatesLoadFailed = true;
             }
         } catch (eWdr) {
             console.error("Failed to load settings/withdrawals in renderIncentives:", eWdr);
+            window._payoutRatesLoadFailed = true;
         }
 
         if (!window._currentSlabs) {
@@ -7326,14 +7333,14 @@ async function renderIncentives(container) {
             window._globalSettings = { five_star_bonus: 50, payout_days: 3 };
         }
         if (!window._payoutRates) {
+            window._payoutRatesLoadFailed = true;
             window._payoutRates = {
-                commissionRatePercent: 20.0,
-                subscriptionDailyPrice: 99.00,
-                subscriptionWeeklyPrice: 499.00,
-                subscriptionMonthlyPrice: 1499.00,
-                subscriptionQuarterlyPrice: 3999.00,
-                subscriptionAnnualPrice: 14999.00,
-                subscriptionYearlyPrice: 14999.00,
+                commissionRatePercent: 0,
+                subscriptionWeeklyPrice: 0,
+                subscriptionMonthlyPrice: 0,
+                subscriptionQuarterlyPrice: 0,
+                subscriptionYearlyPrice: 0,
+                subscriptionAnnualPrice: 0,
                 demandSearchWeight: 1.0,
                 demandBookingWeight: 3.0
             };
@@ -7646,7 +7653,7 @@ async function renderIncentives(container) {
 
             // TAB 4: COMMISSION & SUBSCRIPTIONS
             else if (window._driverOpsTab === 'pricing_model') {
-                const disabledPayout = window._payoutRatesEditMode ? '' : 'disabled';
+                const disabledPayout = (window._payoutRatesEditMode && !window._payoutRatesLoadFailed) ? '' : 'disabled';
                 html += `
                 <div class="card" style="margin-top:0;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -7656,6 +7663,18 @@ async function renderIncentives(container) {
                         </div>
                         <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Driver Monetization</span>
                     </div>
+
+                    ${window._payoutRatesLoadFailed ? `
+                    <div style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:12px 16px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; color:#FCA5A5;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <i data-lucide="alert-triangle" style="width:20px; height:20px; color:#EF4444; flex-shrink:0;"></i>
+                            <div>
+                                <strong style="color:#fff;">Failed to load live rates from server.</strong> Displayed values may be outdated. Editing is disabled until connection is restored.
+                            </div>
+                        </div>
+                        <button onclick="renderIncentives(document.getElementById('app'))" class="btn btn-secondary btn-sm" style="padding:4px 12px; font-size:0.75rem; white-space:nowrap;">Retry Load</button>
+                    </div>
+                    ` : ''}
 
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:18px; margin-bottom:24px;">
                         <div>
@@ -7702,11 +7721,13 @@ async function renderIncentives(container) {
                     </div>
 
                     <div>
-                        ${window._payoutRatesEditMode ? `
+                        ${window._payoutRatesLoadFailed ? `
+                            <button disabled class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; opacity:0.5; cursor:not-allowed;">Live Rates Offline (Editing Disabled)</button>
+                        ` : (window._payoutRatesEditMode ? `
                             <button onclick="savePayoutRates()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Payout Rates</button>
                         ` : `
                             <button onclick="window._payoutRatesEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rates</button>
-                        `}
+                        `)}
                     </div>
                 </div>
                 `;
