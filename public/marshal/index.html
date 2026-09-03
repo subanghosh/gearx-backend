@@ -561,6 +561,15 @@
                             <div id="wizard-substep-confirm" class="wizard-substep-section hidden">
                                 <p class="text-slate-400 text-sm mb-4">We've auto-filled your details from your documents. Please review and make any corrections.</p>
 
+                                <!-- Cross-Document Consistency Warning Banner -->
+                                <div id="cross-doc-warning-banner" class="hidden mb-4 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-300">
+                                    <span class="material-symbols-outlined text-amber-400 text-xl mt-0.5">warning</span>
+                                    <div class="flex-1 text-xs">
+                                        <div class="font-bold text-amber-200 mb-0.5">Document Details Mismatch Detected</div>
+                                        <div id="cross-doc-warning-text" class="leading-relaxed text-amber-300/90"></div>
+                                    </div>
+                                </div>
+
                                 <!-- Full Name Input -->
                                 <div class="form-group mb-4">
                                     <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">Full Name <span style="color:#ef4444">*</span></label>

@@ -1263,6 +1263,9 @@ function checkOnboarding() {
 }
 
 function skipOnboarding() {
+    if (typeof window.saveKycDraftState === 'function') {
+        window.saveKycDraftState();
+    }
     sessionStorage.setItem('skipKYC', 'true');
     const kycScreen = document.getElementById('kyc-screen');
     if (kycScreen) kycScreen.classList.add('hidden');
@@ -1279,8 +1282,17 @@ window.openOnboarding = function() {
         kycScreen.classList.remove('hidden');
         initKycValidationListeners();
         populateOnboardingFields();
-        goToKycStep(1);
-        updateKycButtonsState();
+        if (typeof window.restoreKycDraftState === 'function') {
+            window.restoreKycDraftState().then(restored => {
+                if (!restored) {
+                    goToKycStep(1);
+                }
+                updateKycButtonsState();
+            });
+        } else {
+            goToKycStep(1);
+            updateKycButtonsState();
+        }
     }
 };
 
@@ -1441,12 +1453,12 @@ function validateStep2() {
 }
 
 
-window.goToKycStep = function(stepNum) {
-    let currentStep = 1;
+window.goToKycStep = function(stepNum, skipValidation = false) {
+    let currentStep = window.currentKycStep || 1;
     if (document.getElementById('kyc-step-2') && document.getElementById('kyc-step-2').style.display === 'block') currentStep = 2;
 
     // If moving forward, validate Step 1
-    if (stepNum > currentStep) {
+    if (!skipValidation && stepNum > currentStep) {
         if (currentStep === 1) {
             if (!validateStep1()) {
                 showToast('Please enter a valid email address before proceeding.', 'error');
@@ -1462,6 +1474,7 @@ window.goToKycStep = function(stepNum) {
         }
     }
 
+    window.currentKycStep = stepNum;
     document.querySelectorAll('.kyc-step-container').forEach(el => {
         el.style.display = 'none';
     });
@@ -1470,7 +1483,7 @@ window.goToKycStep = function(stepNum) {
         target.style.display = 'block';
     }
     
-    if (stepNum === 2) {
+    if (stepNum === 2 && !skipValidation) {
         window.currentKycSubStepIndex = 0;
         if (window.updateWizardView) {
             window.updateWizardView();
@@ -1526,8 +1539,14 @@ function initKycValidationListeners() {
     
     const inputs = kycScreen.querySelectorAll('input, select, textarea');
     inputs.forEach(input => {
-        input.addEventListener('input', updateKycButtonsState);
-        input.addEventListener('change', updateKycButtonsState);
+        input.addEventListener('input', () => {
+            updateKycButtonsState();
+            if (typeof window.saveKycDraftState === 'function') window.saveKycDraftState();
+        });
+        input.addEventListener('change', () => {
+            updateKycButtonsState();
+            if (typeof window.saveKycDraftState === 'function') window.saveKycDraftState();
+        });
     });
 }
 
@@ -1629,6 +1648,14 @@ window.triggerFileSelect = function(type) {
                 // Run automatic OCR extraction on captured image
                 if (typeof window.performDocumentOcr === 'function') {
                     window.performDocumentOcr(type, blob);
+                }
+
+                // Persist photo to IndexedDB
+                if (typeof window.saveKycPhotoDraft === 'function') {
+                    window.saveKycPhotoDraft(type, file, file.name);
+                }
+                if (typeof window.saveKycDraftState === 'function') {
+                    window.saveKycDraftState();
                 }
                 
                 if (window.checkWizardState) window.checkWizardState();
@@ -2325,6 +2352,10 @@ async function submitOnboarding() {
 
         const resData = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(resData.error || 'Document Upload failed');
+
+        if (typeof window.clearKycDraft === 'function') {
+            await window.clearKycDraft();
+        }
 
         showToast('KYC Documents submitted successfully! They will now be reviewed for approval.', 'success');
 
@@ -7664,9 +7695,219 @@ function blobToBase64(blob) {
 window.extractedOcrData = {
     pan: { number: null, name: null },
     aadhaar: { number: null, name: null, dob: null, gender: null },
-    dl: { number: null, name: null }
+    dl: { number: null, name: null, dob: null, validity: null }
 };
 
+// ─── INDEXEDDB & LOCALSTORAGE KYC DRAFT PERSISTENCE ─────────────────────────
+const KYC_DB_NAME = 'redrivo_kyc_draft_db';
+const KYC_STORE_NAME = 'kyc_photos';
+const KYC_DB_VERSION = 1;
+
+function openKycDb() {
+    return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+            console.warn('[KYC_DRAFT_DB] IndexedDB not supported on this device/webview.');
+            return resolve(null);
+        }
+        const req = indexedDB.open(KYC_DB_NAME, KYC_DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(KYC_STORE_NAME)) {
+                db.createObjectStore(KYC_STORE_NAME, { keyPath: 'docType' });
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => {
+            console.warn('[KYC_DRAFT_DB] Error opening database:', req.error);
+            resolve(null);
+        };
+    });
+}
+
+window.saveKycPhotoDraft = async function(docType, fileOrBlob, fileName) {
+    try {
+        const db = await openKycDb();
+        if (!db) return;
+        return new Promise((resolve) => {
+            const tx = db.transaction(KYC_STORE_NAME, 'readwrite');
+            const store = tx.objectStore(KYC_STORE_NAME);
+            const record = {
+                docType: docType,
+                blob: fileOrBlob,
+                fileName: fileName || `${docType}_${Date.now()}.jpg`,
+                mimeType: fileOrBlob.type || 'image/jpeg',
+                fileSize: fileOrBlob.size,
+                updatedAt: Date.now()
+            };
+            store.put(record);
+            tx.oncomplete = () => {
+                db.close();
+                resolve(true);
+            };
+            tx.onerror = () => {
+                db.close();
+                resolve(false);
+            };
+        });
+    } catch (err) {
+        console.warn('[KYC_DRAFT_DB] Failed to save photo draft:', err);
+    }
+};
+
+window.getAllKycPhotoDrafts = async function() {
+    try {
+        const db = await openKycDb();
+        if (!db) return [];
+        return new Promise((resolve) => {
+            const tx = db.transaction(KYC_STORE_NAME, 'readonly');
+            const store = tx.objectStore(KYC_STORE_NAME);
+            const req = store.getAll();
+            req.onsuccess = () => {
+                db.close();
+                resolve(req.result || []);
+            };
+            req.onerror = () => {
+                db.close();
+                resolve([]);
+            };
+        });
+    } catch (err) {
+        console.warn('[KYC_DRAFT_DB] Failed to get photo drafts:', err);
+        return [];
+    }
+};
+
+window.saveKycDraftState = function() {
+    try {
+        const fieldIds = ['on-email', 'on-name', 'on-dob', 'on-gender', 'on-city', 'on-aadhaar', 'on-pan', 'on-dl'];
+        const fields = {};
+        fieldIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.value) fields[id] = el.value.trim();
+        });
+
+        const draft = {
+            updatedAt: Date.now(),
+            currentStep: window.currentKycStep || 1,
+            currentSubStepIndex: window.currentKycSubStepIndex !== undefined ? window.currentKycSubStepIndex : 0,
+            selectedIdType: window.selectedKycIdType || 'aadhaar',
+            extractedOcrData: window.extractedOcrData || {},
+            fields: fields
+        };
+
+        localStorage.setItem('redrivo_kyc_draft_state', JSON.stringify(draft));
+    } catch (err) {
+        console.warn('[KYC_DRAFT] Error saving draft state:', err);
+    }
+};
+
+window.clearKycDraft = async function() {
+    try {
+        localStorage.removeItem('redrivo_kyc_draft_state');
+        sessionStorage.removeItem('skipKYC');
+
+        const db = await openKycDb();
+        if (db) {
+            await new Promise((resolve) => {
+                const tx = db.transaction(KYC_STORE_NAME, 'readwrite');
+                tx.objectStore(KYC_STORE_NAME).clear();
+                tx.oncomplete = () => { db.close(); resolve(); };
+                tx.onerror = () => { db.close(); resolve(); };
+            });
+        }
+
+        window.capturedKycFiles = {};
+        window.extractedOcrData = {
+            pan: { number: null, name: null },
+            aadhaar: { number: null, name: null, dob: null, gender: null },
+            dl: { number: null, name: null, dob: null, validity: null }
+        };
+        console.log('[KYC_DRAFT] Local draft purged successfully.');
+    } catch (err) {
+        console.warn('[KYC_DRAFT] Failed to clear draft:', err);
+    }
+};
+
+window.restoreKycDraftState = async function() {
+    try {
+        const raw = localStorage.getItem('redrivo_kyc_draft_state');
+        if (!raw) return false;
+
+        const draft = JSON.parse(raw);
+
+        // 30-day expiration check (30 * 24 * 60 * 60 * 1000 = 2592000000 ms)
+        if (Date.now() - (draft.updatedAt || 0) > 2592000000) {
+            console.log('[KYC_DRAFT] Draft expired (>30 days). Purging.');
+            await window.clearKycDraft();
+            return false;
+        }
+
+        // 1. Restore text input values
+        if (draft.fields) {
+            Object.entries(draft.fields).forEach(([id, val]) => {
+                const el = document.getElementById(id);
+                if (el && val) el.value = val;
+            });
+        }
+
+        // 2. Restore in-memory OCR object
+        if (draft.extractedOcrData) {
+            window.extractedOcrData = draft.extractedOcrData;
+        }
+
+        // 3. Restore selected ID choice
+        if (draft.selectedIdType && typeof window.selectWizardIdChoice === 'function') {
+            window.selectWizardIdChoice(draft.selectedIdType);
+        }
+
+        // 4. Restore photo files & preview images from IndexedDB
+        const storedPhotos = await window.getAllKycPhotoDrafts();
+        if (storedPhotos && storedPhotos.length > 0) {
+            window.capturedKycFiles = window.capturedKycFiles || {};
+            storedPhotos.forEach(item => {
+                const file = new File([item.blob], item.fileName, { type: item.mimeType, lastModified: item.updatedAt });
+                window.capturedKycFiles[item.docType] = file;
+
+                const previewImg = document.getElementById(`${item.docType}-photo-preview`);
+                if (previewImg) {
+                    previewImg.src = URL.createObjectURL(item.blob);
+                }
+                const previewContainer = document.getElementById(`${item.docType}-wizard-preview-container`);
+                const placeholder = document.getElementById(`${item.docType}-wizard-upload-placeholder`);
+                if (previewContainer) previewContainer.classList.remove('hidden');
+                if (placeholder) placeholder.classList.add('hidden');
+
+                // Special handling for selfie preview container
+                if (item.docType === 'face') {
+                    const capturedImg = document.getElementById('captured-photo');
+                    if (capturedImg) capturedImg.src = URL.createObjectURL(item.blob);
+                    const photoPrevContainer = document.getElementById('photo-preview-container');
+                    if (photoPrevContainer) {
+                        photoPrevContainer.classList.remove('hidden');
+                        photoPrevContainer.style.display = 'flex';
+                    }
+                }
+            });
+        }
+
+        // 5. Restore step position
+        if (draft.currentStep && draft.currentStep > 1) {
+            goToKycStep(draft.currentStep, true);
+            if (draft.currentSubStepIndex !== undefined) {
+                window.currentKycSubStepIndex = draft.currentSubStepIndex;
+                if (window.updateWizardView) window.updateWizardView();
+            }
+        }
+
+        if (window.checkWizardState) window.checkWizardState();
+        return true;
+    } catch (err) {
+        console.warn('[KYC_DRAFT] Error restoring draft state:', err);
+        return false;
+    }
+};
+
+// ─── UPGRADED DOCUMENT OCR ENGINE ───────────────────────────────────────────
 window.performDocumentOcr = async function(type, blob) {
     console.log(`[OCR] Starting OCR analysis for ${type}...`);
     try {
@@ -7699,6 +7940,9 @@ window.performDocumentOcr = async function(type, blob) {
         const fullText = allDetections.join(' ');
         console.log(`[OCR] Combined extracted text for ${type}:`, fullText);
 
+        const BOILERPLATE_LINE_REGEX = /(GOVERNMENT|GOVERMENT|GOVT|INDIA|BHARAT|SARKAR|UNIQUE IDENTIFICATION|AUTHORITY OF INDIA|UIDAI|AADHAAR|ADHAR|ENROLMENT|ENROLLMENT|HELP|DOWNLOAD|MERA AADHAAR|MERI PEHCHAN|UNION OF INDIA|STATE|DEPARTMENT|MOTOR VEHICLES|TRANSPORT|COMMISSIONERATE|FORM\s*\d+|DRIVING LICEN[CS]E)/i;
+        const BOILERPLATE_WORD_REGEX = /^(GOVERNMENT|GOVERMENT|GOVT|INDIA|BHARAT|SARKAR|UNIQUE|IDENTIFICATION|AUTHORITY|UIDAI|AADHAAR|ADHAR|ENROLMENT|ENROLLMENT|HELP|DOWNLOAD|MERA|MERI|PEHCHAN|ADDRESS|CARE|OF|C\/O|S\/O|D\/O|W\/O|FATHER|HUSBAND|SIGNATURE|MALE|FEMALE|TRANSGENDER|DOB|DATE|OF|BIRTH|YEAR|YOB|UNION|STATE|MOTOR|VEHICLES|TRANSPORT|DEPT|DEPARTMENT|COMMISSIONERATE|FORM|DRIVING|LICENCE|LICENSE|VALIDITY|VALID|TILL|UPTO|NON|TRANSPORT|NT|TR|COV|LMV|MCWG|MCWOG|HMV|HPMV)$/i;
+
         // 1. PAN Number & Name Extraction
         if (type === 'pan' || type === 'panback') {
             const panMatch = fullText.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
@@ -7714,24 +7958,24 @@ window.performDocumentOcr = async function(type, blob) {
                 }
             }
 
-            // Extract Name from PAN Front
             if (type === 'pan') {
-                let panNameExtracted = null;
-                for (let i = 0; i < allDetections.length; i++) {
-                    const line = allDetections[i].toUpperCase();
-                    if (line.includes('INCOME TAX') || line.includes('GOVT') || line.includes('INDIA')) continue;
-                    if (line.includes('PERMANENT') || line.includes('ACCOUNT') || line.includes('CARD')) continue;
-                    if (line.includes('FATHER') || line.includes('DATE OF BIRTH') || line.includes('DOB')) break;
-                    if (/^[A-Z\s]{3,30}$/.test(line) && !line.match(/[0-9]/) && !line.includes('SIGNATURE')) {
-                        panNameExtracted = line.trim();
-                        break;
+                let panCandidates = [];
+                for (const rawLine of allDetections) {
+                    if (/\d/.test(rawLine)) continue;
+                    if (/(INCOME TAX|PERMANENT|ACCOUNT|CARD|FATHER|DATE OF BIRTH|DOB|SIGNATURE)/i.test(rawLine)) continue;
+                    if (BOILERPLATE_LINE_REGEX.test(rawLine)) continue;
+                    const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (clean.length < 3 || clean.length > 35) continue;
+                    const words = clean.split(' ').filter(w => w.length > 1);
+                    if (words.length >= 1 && words.length <= 4 && words.every(w => !BOILERPLATE_WORD_REGEX.test(w.toUpperCase()))) {
+                        panCandidates.push(clean);
                     }
                 }
-                window.extractedOcrData.pan.name = panNameExtracted;
+                window.extractedOcrData.pan.name = panCandidates[0] || null;
             }
         }
 
-        // 2. Aadhaar Number & Name Extraction
+        // 2. Aadhaar Number & Details Extraction
         if (type === 'aadhaar' || type === 'aadhaarback') {
             const aadhaarMatch = fullText.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
             if (aadhaarMatch) {
@@ -7749,25 +7993,26 @@ window.performDocumentOcr = async function(type, blob) {
                 }
             }
 
-            // Extract Name from Aadhaar Front
             if (type === 'aadhaar') {
-                let aadhaarNameExtracted = null;
-                for (let i = 0; i < allDetections.length; i++) {
-                    const line = allDetections[i];
-                    const upper = line.toUpperCase();
-                    if (upper.includes('GOVERNMENT') || upper.includes('INDIA') || upper.includes('AADHAAR') || upper.includes('UNIQUE')) continue;
-                    if (upper.includes('DOB') || upper.includes('YEAR OF BIRTH') || upper.includes('MALE') || upper.includes('FEMALE')) break;
-                    if (/^[A-Za-z\s]{3,35}$/.test(line) && !line.match(/[0-9]/)) {
-                        aadhaarNameExtracted = line.trim();
-                        break;
+                // Name Extraction
+                let aadhaarCandidates = [];
+                for (const rawLine of allDetections) {
+                    if (/\d/.test(rawLine)) continue;
+                    if (/(DOB|DATE OF BIRTH|YEAR|YOB|MALE|FEMALE|GENDER|FATHER|HUSBAND|C\/O|S\/O|W\/O|D\/O)/i.test(rawLine)) continue;
+                    if (BOILERPLATE_LINE_REGEX.test(rawLine)) continue;
+                    const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (clean.length < 3 || clean.length > 35) continue;
+                    const words = clean.split(' ').filter(w => w.length > 1);
+                    if (words.length >= 1 && words.length <= 4 && words.every(w => !BOILERPLATE_WORD_REGEX.test(w.toUpperCase()))) {
+                        aadhaarCandidates.push(clean);
                     }
                 }
+                const aadhaarNameExtracted = aadhaarCandidates[0] || null;
                 window.extractedOcrData.aadhaar.name = aadhaarNameExtracted;
+
                 if (aadhaarNameExtracted) {
                     const nameInput = document.getElementById('on-name');
-                    if (nameInput) {
-                        nameInput.value = aadhaarNameExtracted;
-                    }
+                    if (nameInput) nameInput.value = aadhaarNameExtracted;
                     if (window.currentUser) {
                         window.currentUser.name = aadhaarNameExtracted;
                         safeSetLocalStorage('marshalUser', JSON.stringify(window.currentUser));
@@ -7775,10 +8020,24 @@ window.performDocumentOcr = async function(type, blob) {
                     showToast(`Name auto-filled from Aadhaar: ${aadhaarNameExtracted}`, 'success');
                 }
 
-                // Extract DOB from Aadhaar Front
-                const dobMatch = fullText.match(/(?:DOB|Date of Birth|DOB\s*[:\-]?)\s*(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i) || fullText.match(/\b\d{2}\/\d{2}\/\d{4}\b/);
-                if (dobMatch) {
-                    const dobVal = (dobMatch[1] || dobMatch[0]).replace(/-/g, '/');
+                // DOB Extraction
+                let dobVal = null;
+                const explicitDob = fullText.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|D0B|जन्म\s*तिथि|जन्म\s*तारीख)\s*[:\-]?\s*(\d{1,2})[\/\-\.\s](\d{1,2})[\/\-\.\s](\d{4})/i);
+                if (explicitDob) {
+                    dobVal = `${explicitDob[1].padStart(2, '0')}/${explicitDob[2].padStart(2, '0')}/${explicitDob[3]}`;
+                } else {
+                    const standaloneDate = fullText.match(/\b(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})\b/);
+                    if (standaloneDate && parseInt(standaloneDate[1], 10) <= 31 && parseInt(standaloneDate[2], 10) <= 12) {
+                        dobVal = `${standaloneDate[1]}/${standaloneDate[2]}/${standaloneDate[3]}`;
+                    } else {
+                        const yobMatch = fullText.match(/(?:Year\s*of\s*Birth|YOB|जन्म\s*वर्ष)\s*[:\-]?\s*(\d{4})/i);
+                        if (yobMatch && parseInt(yobMatch[1], 10) >= 1940 && parseInt(yobMatch[1], 10) <= 2015) {
+                            dobVal = `01/01/${yobMatch[1]}`;
+                        }
+                    }
+                }
+
+                if (dobVal) {
                     window.extractedOcrData.aadhaar.dob = dobVal;
                     const dobInput = document.getElementById('on-dob');
                     if (dobInput) dobInput.value = dobVal;
@@ -7787,25 +8046,19 @@ window.performDocumentOcr = async function(type, blob) {
                         safeSetLocalStorage('marshalUser', JSON.stringify(window.currentUser));
                     }
                     console.log(`[OCR] Extracted DOB: ${dobVal}`);
-                } else {
-                    const yobMatch = fullText.match(/(?:Year of Birth|YOB\s*[:\-]?)\s*(\d{4})/i);
-                    if (yobMatch) {
-                        const yobVal = `01/01/${yobMatch[1]}`;
-                        window.extractedOcrData.aadhaar.dob = yobVal;
-                        const dobInput = document.getElementById('on-dob');
-                        if (dobInput) dobInput.value = yobVal;
-                        if (window.currentUser) {
-                            window.currentUser.dob = yobVal;
-                            safeSetLocalStorage('marshalUser', JSON.stringify(window.currentUser));
-                        }
-                        console.log(`[OCR] Extracted DOB from YOB: ${yobVal}`);
-                    }
                 }
 
-                // Extract Gender from Aadhaar Front
-                const genderMatch = fullText.match(/\b(MALE|FEMALE|TRANSGENDER)\b/i);
-                if (genderMatch) {
-                    const genderVal = genderMatch[1].charAt(0).toUpperCase() + genderMatch[1].slice(1).toLowerCase();
+                // Gender Extraction
+                let genderVal = null;
+                if (/\b(FEMALE|FEMA\s*LE)\b/i.test(fullText) || fullText.includes('महिला') || fullText.includes('स्त्री')) {
+                    genderVal = 'Female';
+                } else if (/\b(MALE|MAL\s*E|MAIE)\b/i.test(fullText) || fullText.includes('पुरुष')) {
+                    genderVal = 'Male';
+                } else if (/\b(TRANSGENDER)\b/i.test(fullText) || fullText.includes('ट्रांसजेंडर')) {
+                    genderVal = 'Transgender';
+                }
+
+                if (genderVal) {
                     window.extractedOcrData.aadhaar.gender = genderVal;
                     const genderInput = document.getElementById('on-gender');
                     if (genderInput) genderInput.value = genderVal;
@@ -7818,11 +8071,25 @@ window.performDocumentOcr = async function(type, blob) {
             }
         }
 
-        // 3. DL Number & Name Extraction
+        // 3. DL Number & Details Extraction
         if (type === 'dl' || type === 'dlback') {
-            const dlMatch = fullText.match(/\b[A-Z]{2}[0-9]{2}[0-9A-Z\s]{7,15}\b/);
-            if (dlMatch) {
-                const dlNum = dlMatch[0].trim();
+            let dlNum = null;
+            const standardDlMatch = fullText.match(/\b([A-Z]{2})[\s\-\/]?([0-9]{2})[\s\-\/]?([0-9]{4})[\s\-\/]?([0-9]{7})\b/i);
+            if (standardDlMatch) {
+                dlNum = `${standardDlMatch[1]}${standardDlMatch[2]} ${standardDlMatch[3]}${standardDlMatch[4]}`.toUpperCase();
+            } else {
+                const labeledDlMatch = fullText.match(/(?:DL\s*(?:NO|NUM|NUMBER)?|LICENCE\s*NO|LICENSE\s*NO)\s*[:\-]?\s*([A-Z]{2}[\s\-\/]?[0-9]{2}[\s\-\/]?[0-9A-Z\/\-]{7,15})\b/i);
+                if (labeledDlMatch) {
+                    dlNum = labeledDlMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                } else {
+                    const genericMatch = fullText.match(/\b([A-Z]{2}[0-9]{2}[\s\-\/][0-9A-Z\/\-\s]{8,14})\b/i);
+                    if (genericMatch) {
+                        dlNum = genericMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+                    }
+                }
+            }
+
+            if (dlNum) {
                 window.extractedOcrData.dl.number = dlNum;
                 const dlInput = document.getElementById('on-dl');
                 if (dlInput) {
@@ -7834,29 +8101,45 @@ window.performDocumentOcr = async function(type, blob) {
             }
 
             if (type === 'dl') {
-                let dlNameExtracted = null;
-                for (let i = 0; i < allDetections.length; i++) {
-                    const line = allDetections[i];
-                    const upper = line.toUpperCase();
-                    if (upper.includes('DRIVING') || upper.includes('LICENCE') || upper.includes('LICENSE') || upper.includes('UNION') || upper.includes('STATE')) continue;
-                    if (upper.includes('DOB') || upper.includes('VALIDITY') || upper.includes('AUTHORIZATION') || upper.includes('COV')) break;
-                    if (upper.startsWith('NAME') || upper.startsWith('NAME:')) {
-                        const clean = line.replace(/name\s*[:\-]?\s*/i, '').trim();
-                        if (clean.length > 2) {
-                            dlNameExtracted = clean;
-                            break;
-                        }
-                    } else if (/^[A-Za-z\s]{3,35}$/.test(line) && !line.match(/[0-9]/)) {
-                        dlNameExtracted = line.trim();
-                        break;
+                const DL_IGNORE_REGEX = /(DRIVING\s*LICEN[CS]E|UNION\s*OF\s*INDIA|STATE|DEPARTMENT|MOTOR\s*VEHICLES|TRANSPORT|COMMISSIONERATE|FORM\s*\d+)/i;
+                let dlCandidates = [];
+                for (const rawLine of allDetections) {
+                    if (/^(?:NAME|CARDHOLDER'S\s*NAME)\s*[:\-]/i.test(rawLine)) {
+                        const clean = rawLine.replace(/^(?:NAME|CARDHOLDER'S\s*NAME)\s*[:\-]\s*/i, '').trim();
+                        if (clean.length >= 3) { dlCandidates.unshift(clean); break; }
+                    }
+                    if (/\d/.test(rawLine)) continue;
+                    if (/(DOB|VALIDITY|COV|AUTHORIZATION)/i.test(rawLine)) continue;
+                    if (DL_IGNORE_REGEX.test(rawLine)) continue;
+                    const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (clean.length >= 3 && clean.length <= 35 && !BOILERPLATE_WORD_REGEX.test(clean.toUpperCase())) {
+                        dlCandidates.push(clean);
                     }
                 }
+                const dlNameExtracted = dlCandidates[0] || null;
                 window.extractedOcrData.dl.name = dlNameExtracted;
+
+                // DL DOB
+                const dlDobMatch = fullText.match(/(?:DOB|Date\s*of\s*Birth)\s*[:\-]?\s*(\d{1,2})[\/\-\.\s](\d{1,2})[\/\-\.\s](\d{4})/i);
+                if (dlDobMatch) {
+                    window.extractedOcrData.dl.dob = `${dlDobMatch[1].padStart(2, '0')}/${dlDobMatch[2].padStart(2, '0')}/${dlDobMatch[3]}`;
+                }
+
+                // DL Validity
+                const validityMatch = fullText.match(/(?:Valid\s*(?:Till|Upto|To)|Validity(?:\s*\([A-Z]+\))?)\s*[:\-]?\s*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/i);
+                if (validityMatch) {
+                    window.extractedOcrData.dl.validity = `${validityMatch[1].padStart(2, '0')}/${validityMatch[2].padStart(2, '0')}/${validityMatch[3]}`;
+                }
             }
         }
 
-        // Cross-verify names across documents
+        // Cross-verify details across documents
         window.crossVerifyDocumentNames();
+
+        // Persist draft after OCR
+        if (typeof window.saveKycDraftState === 'function') {
+            window.saveKycDraftState();
+        }
 
         if (window.checkWizardState) window.checkWizardState();
     } catch (err) {
@@ -7864,48 +8147,82 @@ window.performDocumentOcr = async function(type, blob) {
     }
 };
 
-window.crossVerifyDocumentNames = function() {
-    const aadhaarName = (window.extractedOcrData.aadhaar.name || '').toUpperCase().trim();
-    const panName = (window.extractedOcrData.pan.name || '').toUpperCase().trim();
-    const dlName = (window.extractedOcrData.dl.name || '').toUpperCase().trim();
-    const hasAadhaarCaptured = !!window.capturedKycFiles['aadhaar'];
-    const hasPanCaptured = !!window.capturedKycFiles['pan'];
-    const hasDlCaptured = !!window.capturedKycFiles['dl'];
+// ─── CROSS-DOCUMENT CONSISTENCY CHECK ENGINE ────────────────────────────────
+window.evaluateCrossDocumentConsistency = function() {
+    const aadhaar = window.extractedOcrData.aadhaar || {};
+    const dl = window.extractedOcrData.dl || {};
+    const pan = window.extractedOcrData.pan || {};
 
-    const banner = document.getElementById('name-mismatch-banner');
-    const bannerText = document.getElementById('name-mismatch-text');
+    const banner = document.getElementById('cross-doc-warning-banner');
+    const bannerText = document.getElementById('cross-doc-warning-text');
     if (!banner || !bannerText) return;
 
-    let warningMsg = '';
+    const discrepancies = [];
 
-    const checkSimilarity = (name1, name2) => {
-        if (!name1 || !name2) return false;
-        const tokens1 = name1.split(/\s+/).filter(t => t.length > 1);
-        const tokens2 = name2.split(/\s+/).filter(t => t.length > 1);
-        const matches = tokens1.filter(t => tokens2.some(t2 => t2.includes(t) || t.includes(t2)));
-        return matches.length > 0;
-    };
-
-    const primaryIdName = aadhaarName || panName;
-    const primaryIdType = aadhaarName ? 'Aadhaar' : 'PAN';
-
-    if (hasAadhaarCaptured && !aadhaarName) {
-        warningMsg = "Couldn't auto-read name from Aadhaar card. Please verify/enter your name manually.";
-    } else if (hasPanCaptured && !panName) {
-        warningMsg = "Couldn't auto-read name from PAN card. Please check that PAN details match your documents.";
-    } else if (hasDlCaptured && !dlName) {
-        warningMsg = "Couldn't auto-read name from Driving License. Please check that DL details match your identity document.";
-    } else if (aadhaarName && panName && !checkSimilarity(aadhaarName, panName)) {
-        warningMsg = `Name on PAN (${panName}) does not match Aadhaar (${aadhaarName}). Please verify.`;
-    } else if (primaryIdName && dlName && !checkSimilarity(primaryIdName, dlName)) {
-        warningMsg = `Name on DL (${dlName}) does not match ${primaryIdType} (${primaryIdName}). Please verify.`;
+    // 1. Name Check (Aadhaar vs DL)
+    if (aadhaar.name && dl.name) {
+        const tokensA = aadhaar.name.toUpperCase().split(/\s+/).filter(w => w.length > 1);
+        const tokensD = dl.name.toUpperCase().split(/\s+/).filter(w => w.length > 1);
+        const hasMatch = tokensA.some(t => tokensD.some(t2 => t2.includes(t) || t.includes(t2)));
+        if (!hasMatch) {
+            discrepancies.push(`Name on Aadhaar ("${aadhaar.name}") differs from Driving License ("${dl.name}").`);
+        }
     }
 
-    if (warningMsg) {
-        bannerText.textContent = warningMsg;
+    // 2. Name Check (PAN vs Aadhaar)
+    if (pan.name && aadhaar.name) {
+        const tokensP = pan.name.toUpperCase().split(/\s+/).filter(w => w.length > 1);
+        const tokensA = aadhaar.name.toUpperCase().split(/\s+/).filter(w => w.length > 1);
+        const hasMatch = tokensP.some(t => tokensA.some(t2 => t2.includes(t) || t.includes(t2)));
+        if (!hasMatch) {
+            discrepancies.push(`Name on PAN ("${pan.name}") differs from Aadhaar ("${aadhaar.name}").`);
+        }
+    }
+
+    // 3. DOB Check (Aadhaar vs DL)
+    if (aadhaar.dob && dl.dob && aadhaar.dob !== dl.dob) {
+        discrepancies.push(`Date of Birth on Aadhaar (${aadhaar.dob}) differs from Driving License (${dl.dob}).`);
+    }
+
+    if (discrepancies.length > 0) {
+        bannerText.innerHTML = discrepancies.join('<br>');
         banner.classList.remove('hidden');
     } else {
         banner.classList.add('hidden');
+    }
+};
+
+window.crossVerifyDocumentNames = function() {
+    window.evaluateCrossDocumentConsistency();
+
+    // Top banner backwards compatibility
+    const topBanner = document.getElementById('name-mismatch-banner');
+    const topBannerText = document.getElementById('name-mismatch-text');
+    if (!topBanner || !topBannerText) return;
+
+    const aadhaarName = (window.extractedOcrData.aadhaar.name || '').toUpperCase().trim();
+    const panName = (window.extractedOcrData.pan.name || '').toUpperCase().trim();
+    const dlName = (window.extractedOcrData.dl.name || '').toUpperCase().trim();
+
+    let warningMsg = '';
+    const checkSimilarity = (name1, name2) => {
+        if (!name1 || !name2) return false;
+        const t1 = name1.split(/\s+/).filter(t => t.length > 1);
+        const t2 = name2.split(/\s+/).filter(t => t.length > 1);
+        return t1.some(t => t2.some(t2 => t2.includes(t) || t.includes(t2)));
+    };
+
+    if (aadhaarName && panName && !checkSimilarity(aadhaarName, panName)) {
+        warningMsg = `Name on PAN (${panName}) does not match Aadhaar (${aadhaarName}). Please verify.`;
+    } else if (aadhaarName && dlName && !checkSimilarity(aadhaarName, dlName)) {
+        warningMsg = `Name on DL (${dlName}) does not match Aadhaar (${aadhaarName}). Please verify.`;
+    }
+
+    if (warningMsg) {
+        topBannerText.textContent = warningMsg;
+        topBanner.classList.remove('hidden');
+    } else {
+        topBanner.classList.add('hidden');
     }
 };
 
@@ -8029,6 +8346,11 @@ window.updateWizardView = function() {
         }
     }
     
+    // Persist draft position & details
+    if (typeof window.saveKycDraftState === 'function') {
+        window.saveKycDraftState();
+    }
+
     // Run checks to enable/disable button
     window.checkWizardState();
 };
