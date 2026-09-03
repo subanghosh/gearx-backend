@@ -1372,7 +1372,9 @@ apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) =
                    kycStatus as "kycStatus", kycstatus,
                    is_online, pincode, address, city, state, rating,
                    profilePictureUrl as "profilePictureUrl", profilepictureurl,
-                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason
+                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason,
+                   pannumber, aadhaarnumber, dlnumber, vehicle_types,
+                   bankname, bankaccountname, bankaccountnumber, bankifsc
             FROM users
         `);
         res.json(result.rows || []);
@@ -1539,7 +1541,10 @@ apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
                    is_online, is_payment_on_hold as "is_payment_on_hold", is_payment_on_hold,
                    lat, lng, pincode, address, city, state, rating,
                    profilePictureUrl as "profilePictureUrl", profilepictureurl,
-                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason
+                   dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason,
+                   pannumber, aadhaarnumber, dlnumber, vehicle_types,
+                   bankname, bankaccountname, bankaccountnumber, bankifsc,
+                   panurl, panbackurl, aadhaarurl, aadhaarbackurl, dlurl, dlbackurl, facephotourl
             FROM users WHERE id = $1
         `, [id]);
         if (userRes.rows.length === 0) {

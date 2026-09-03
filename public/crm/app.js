@@ -3164,6 +3164,23 @@ async function reviewMarshalKYC(marshalId) {
         return alert('Driver data not found in local state. Please wait for sync.');
     }
 
+    // Lazy-load complete details (including full document base64 images) on-demand
+    try {
+        const res = await fetch(`${API_URL}/users/${marshalId}`);
+        if (res.ok) {
+            const fullDetails = await res.json();
+            if (fullDetails && fullDetails.id) {
+                Object.assign(m, fullDetails);
+                const userIdx = PROTOTYPE_STATE.users.findIndex(u => String(u.id) === String(marshalId));
+                if (userIdx !== -1) {
+                    Object.assign(PROTOTYPE_STATE.users[userIdx], fullDetails);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Could not lazy-load full user KYC details:', e);
+    }
+
     // Determine type for header
     const mType = PROTOTYPE_STATE.users.find(u => String(u.id) === String(marshalId)) ? 'Platform' : 'Garage';
     const gName = mType === 'Garage' ? (PROTOTYPE_STATE.garages.find(g => g.id === m.garageId)?.name || 'Unknown Garage') : null;
