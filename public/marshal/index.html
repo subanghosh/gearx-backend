@@ -254,7 +254,7 @@
                                 <button type="button" onclick="prevWizardSubStep()" class="wizard-header-btn" id="btn-wizard-back">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                                 </button>
-                                <span id="kyc-wizard-title" class="font-semibold text-lg text-white" style="font-family: 'Manrope', sans-serif;">Vehicle Type</span>
+                                <span id="kyc-wizard-title" class="font-semibold text-lg text-white cursor-pointer select-none" onclick="handleDebugOcrTap()" title="Triple-tap for Raw OCR JSON" style="font-family: 'Manrope', sans-serif;">Vehicle Type</span>
                                 <div class="flex gap-2">
                                     <button type="button" class="wizard-header-btn" onclick="showKycHelp()">
                                         <span class="material-symbols-outlined" style="font-size: 1.2rem;">help</span>
@@ -559,7 +559,7 @@
 
                             <!-- Sub-step 5: Review & Confirm Profile Details -->
                             <div id="wizard-substep-confirm" class="wizard-substep-section hidden">
-                                <p class="text-slate-400 text-sm mb-4">We've auto-filled your details from your documents. Please review and make any corrections.</p>
+                                <p class="text-slate-400 text-sm mb-4 cursor-pointer select-none" onclick="handleDebugOcrTap()" title="Triple-tap for Raw OCR JSON">We've auto-filled your details from your documents. Please review and make any corrections.</p>
 
                                 <!-- Cross-Document Consistency Warning Banner -->
                                 <div id="cross-doc-warning-banner" class="hidden mb-4 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-300">

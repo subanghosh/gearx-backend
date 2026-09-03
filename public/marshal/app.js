@@ -7907,6 +7907,114 @@ window.restoreKycDraftState = async function() {
     }
 };
 
+// ─── FUZZY LEVENSHTEIN BOILERPLATE MATCHER ─────────────────────────────────
+function getLevenshteinDistance(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+                dp[i - 1][j] + 1,
+                dp[i][j - 1] + 1,
+                dp[i - 1][j - 1] + cost
+            );
+        }
+    }
+    return dp[m][n];
+}
+
+function isBoilerplateFuzzy(rawText) {
+    if (!rawText) return false;
+    const compact = rawText.toUpperCase().replace(/[^A-Z]/g, '');
+    if (compact.length < 4) return false;
+
+    // Direct token containment for common corruptions
+    if (compact.includes('GOVENM') || compact.includes('GOVT') || compact.includes('OFINDIA') || compact.includes('SARKAR') || compact.includes('UIDAI')) {
+        return true;
+    }
+
+    const KNOWN_PHRASES = [
+        'GOVERNMENTOFINDIA',
+        'GOVERNMENT',
+        'BHARATSARKAR',
+        'UNIQUEIDENTIFICATIONAUTHORITYOFINDIA',
+        'UIDAI',
+        'MERAADHAARMERIPEHCHAN',
+        'ENROLMENT',
+        'HELP',
+        'UNIONOFINDIA',
+        'DRIVINGLICENCE',
+        'MOTORVEHICLES',
+        'TRANSPORTDEPARTMENT'
+    ];
+
+    for (const phrase of KNOWN_PHRASES) {
+        const dist = getLevenshteinDistance(compact, phrase);
+        const maxLen = Math.max(compact.length, phrase.length);
+        const similarity = 1 - (dist / maxLen);
+        if (similarity >= 0.58 || (dist <= 4 && compact.length >= 8)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ─── DEBUG OCR CLIPBOARD / MODAL HELPER ─────────────────────────────────────
+let titleTapCount = 0;
+let titleTapTimer = null;
+window.handleDebugOcrTap = function() {
+    titleTapCount++;
+    clearTimeout(titleTapTimer);
+    titleTapTimer = setTimeout(() => { titleTapCount = 0; }, 900);
+    if (titleTapCount >= 3) {
+        titleTapCount = 0;
+        const debugData = {
+            timestamp: new Date().toISOString(),
+            extractedOcrData: window.extractedOcrData || {},
+            lastRawOcrDetections: window.lastRawOcrDetections || {},
+            lastCombinedText: window.lastCombinedText || {}
+        };
+        const jsonStr = JSON.stringify(debugData, null, 2);
+        
+        const showModalFallback = () => {
+            const existing = document.getElementById('debug-ocr-modal');
+            if (existing) existing.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'debug-ocr-modal';
+            modal.className = 'fixed inset-0 bg-black/95 z-[99999] p-4 flex flex-col justify-between';
+            modal.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-amber-400 font-bold text-sm">Raw OCR Debug JSON</h4>
+                    <button class="text-white font-bold px-3 py-1 bg-white/10 rounded" onclick="this.closest('#debug-ocr-modal').remove()">Close</button>
+                </div>
+                <textarea readonly id="debug-ocr-textarea" class="w-full flex-1 bg-[#121212] text-green-400 text-xs font-mono p-3 rounded border border-white/10 select-all"></textarea>
+                <button class="mt-2 w-full py-3 bg-amber-500 text-black font-bold rounded" onclick="const ta=document.getElementById('debug-ocr-textarea'); ta.select(); document.execCommand('copy'); showToast('Copied to clipboard!', 'success');">Copy All</button>
+            `;
+            document.body.appendChild(modal);
+            const ta = modal.querySelector('textarea');
+            ta.value = jsonStr;
+            ta.focus();
+            ta.select();
+            showToast('Raw OCR debug view opened!', 'info');
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(jsonStr).then(() => {
+                showToast('Raw OCR debug JSON copied to clipboard!', 'success');
+            }).catch(() => {
+                showModalFallback();
+            });
+        } else {
+            showModalFallback();
+        }
+    }
+};
+
 // ─── UPGRADED DOCUMENT OCR ENGINE ───────────────────────────────────────────
 window.performDocumentOcr = async function(type, blob) {
     console.log(`[OCR] Starting OCR analysis for ${type}...`);
@@ -7940,6 +8048,12 @@ window.performDocumentOcr = async function(type, blob) {
         const fullText = allDetections.join(' ');
         console.log(`[OCR] Combined extracted text for ${type}:`, fullText);
 
+        // Store raw debug trace
+        window.lastRawOcrDetections = window.lastRawOcrDetections || {};
+        window.lastCombinedText = window.lastCombinedText || {};
+        window.lastRawOcrDetections[type] = allDetections;
+        window.lastCombinedText[type] = fullText;
+
         const BOILERPLATE_LINE_REGEX = /(GOVERNMENT|GOVERMENT|GOVT|INDIA|BHARAT|SARKAR|UNIQUE IDENTIFICATION|AUTHORITY OF INDIA|UIDAI|AADHAAR|ADHAR|ENROLMENT|ENROLLMENT|HELP|DOWNLOAD|MERA AADHAAR|MERI PEHCHAN|UNION OF INDIA|STATE|DEPARTMENT|MOTOR VEHICLES|TRANSPORT|COMMISSIONERATE|FORM\s*\d+|DRIVING LICEN[CS]E)/i;
         const BOILERPLATE_WORD_REGEX = /^(GOVERNMENT|GOVERMENT|GOVT|INDIA|BHARAT|SARKAR|UNIQUE|IDENTIFICATION|AUTHORITY|UIDAI|AADHAAR|ADHAR|ENROLMENT|ENROLLMENT|HELP|DOWNLOAD|MERA|MERI|PEHCHAN|ADDRESS|CARE|OF|C\/O|S\/O|D\/O|W\/O|FATHER|HUSBAND|SIGNATURE|MALE|FEMALE|TRANSGENDER|DOB|DATE|OF|BIRTH|YEAR|YOB|UNION|STATE|MOTOR|VEHICLES|TRANSPORT|DEPT|DEPARTMENT|COMMISSIONERATE|FORM|DRIVING|LICENCE|LICENSE|VALIDITY|VALID|TILL|UPTO|NON|TRANSPORT|NT|TR|COV|LMV|MCWG|MCWOG|HMV|HPMV)$/i;
 
@@ -7963,10 +8077,11 @@ window.performDocumentOcr = async function(type, blob) {
                 for (const rawLine of allDetections) {
                     if (/\d/.test(rawLine)) continue;
                     if (/(INCOME TAX|PERMANENT|ACCOUNT|CARD|FATHER|DATE OF BIRTH|DOB|SIGNATURE)/i.test(rawLine)) continue;
-                    if (BOILERPLATE_LINE_REGEX.test(rawLine)) continue;
+                    if (BOILERPLATE_LINE_REGEX.test(rawLine) || isBoilerplateFuzzy(rawLine)) continue;
                     const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
                     if (clean.length < 3 || clean.length > 35) continue;
                     const words = clean.split(' ').filter(w => w.length > 1);
+                    if (words.length === 1 && clean.length > 8) continue;
                     if (words.length >= 1 && words.length <= 4 && words.every(w => !BOILERPLATE_WORD_REGEX.test(w.toUpperCase()))) {
                         panCandidates.push(clean);
                     }
@@ -7994,20 +8109,62 @@ window.performDocumentOcr = async function(type, blob) {
             }
 
             if (type === 'aadhaar') {
-                // Name Extraction
-                let aadhaarCandidates = [];
-                for (const rawLine of allDetections) {
-                    if (/\d/.test(rawLine)) continue;
-                    if (/(DOB|DATE OF BIRTH|YEAR|YOB|MALE|FEMALE|GENDER|FATHER|HUSBAND|C\/O|S\/O|W\/O|D\/O)/i.test(rawLine)) continue;
-                    if (BOILERPLATE_LINE_REGEX.test(rawLine)) continue;
-                    const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
-                    if (clean.length < 3 || clean.length > 35) continue;
-                    const words = clean.split(' ').filter(w => w.length > 1);
-                    if (words.length >= 1 && words.length <= 4 && words.every(w => !BOILERPLATE_WORD_REGEX.test(w.toUpperCase()))) {
-                        aadhaarCandidates.push(clean);
+                // Name Extraction with Fuzzy Boilerplate Rejection & DOB Anchor Precedence
+                let dobLineIdx = -1;
+                for (let i = 0; i < allDetections.length; i++) {
+                    const line = allDetections[i];
+                    if (/(?:DOB|Date\s*of\s*Birth|D\.O\.B|जन्म\s*तिथि|\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}\b)/i.test(line)) {
+                        dobLineIdx = i;
+                        break;
                     }
                 }
-                const aadhaarNameExtracted = aadhaarCandidates[0] || null;
+
+                const isValidNameCandidate = (rawLine) => {
+                    if (/\d/.test(rawLine)) return false;
+                    if (/(DOB|DATE OF BIRTH|YEAR|YOB|MALE|FEMALE|GENDER|FATHER|HUSBAND|C\/O|S\/O|W\/O|D\/O)/i.test(rawLine)) return false;
+                    if (BOILERPLATE_LINE_REGEX.test(rawLine)) return false;
+                    if (isBoilerplateFuzzy(rawLine)) return false;
+
+                    const clean = rawLine.replace(/[^A-Za-z\s\.]/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (clean.length < 3 || clean.length > 35) return false;
+
+                    const words = clean.split(' ').filter(w => w.length > 1);
+                    // Single long word without spaces (>8 chars) is likely garbled header/code
+                    if (words.length === 1 && clean.length > 8) return false;
+                    if (words.length < 1 || words.length > 4) return false;
+                    if (words.some(w => BOILERPLATE_WORD_REGEX.test(w.toUpperCase()))) return false;
+
+                    return clean;
+                };
+
+                let aadhaarNameExtracted = null;
+
+                // Priority 1: DOB Anchor - inspect lines immediately above the DOB
+                if (dobLineIdx > 0) {
+                    for (let i = dobLineIdx - 1; i >= Math.max(0, dobLineIdx - 3); i--) {
+                        const verified = isValidNameCandidate(allDetections[i]);
+                        if (verified) {
+                            aadhaarNameExtracted = verified;
+                            console.log(`[OCR] Name found via DOB anchor precedence at index ${i}: "${verified}"`);
+                            break;
+                        }
+                    }
+                }
+
+                // Priority 2: General scan if DOB anchor scan found nothing
+                if (!aadhaarNameExtracted) {
+                    let candidates = [];
+                    // If >= 4 lines detected, skip the top line (header zone)
+                    const startIdx = allDetections.length >= 4 ? 1 : 0;
+                    for (let i = startIdx; i < allDetections.length; i++) {
+                        const verified = isValidNameCandidate(allDetections[i]);
+                        if (verified) {
+                            candidates.push(verified);
+                        }
+                    }
+                    aadhaarNameExtracted = candidates[0] || null;
+                }
+
                 window.extractedOcrData.aadhaar.name = aadhaarNameExtracted;
 
                 if (aadhaarNameExtracted) {
