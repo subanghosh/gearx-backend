@@ -6378,6 +6378,7 @@ function setDocVisualState(state, message) {
 }
 
 async function probeDocFrame() {
+    window.probeDocFrame = probeDocFrame;
     if (isDocProbeBusy) return;
     const video = document.getElementById('doc-camera-preview');
     if (!video || !docCameraStream || video.readyState < 2) return;
@@ -6397,8 +6398,8 @@ async function probeDocFrame() {
         const viewHeight = video.clientHeight || window.innerHeight;
 
         const canvas = document.createElement('canvas');
-        canvas.width = 480;
-        canvas.height = 304; // 1.58 ratio
+        canvas.width = 720;
+        canvas.height = 456; // 1.58 ratio at high-res for crisp ML Kit detection
         const ctx = canvas.getContext('2d');
 
         const guideFrame = document.getElementById('doc-guide-frame');
@@ -6412,12 +6413,12 @@ async function probeDocFrame() {
             const cropW = Math.min(vWidth - cropX, frameRect.width / scale);
             const cropH = Math.min(vHeight - cropY, frameRect.height / scale);
 
-            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 480, 304);
+            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 720, 456);
         } else {
-            ctx.drawImage(video, 0, 0, 480, 304);
+            ctx.drawImage(video, 0, 0, 720, 456);
         }
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         const base64Data = dataUrl.split(',')[1];
         const res = await ocrPlugin.detectText({ base64: base64Data });
 
@@ -6427,7 +6428,8 @@ async function probeDocFrame() {
             return;
         }
 
-        const rawText = (res?.text || (res?.lines ? res.lines.map(l => l.text).join(' ') : '')).toUpperCase();
+        const detections = res?.textDetections ? res.textDetections.map(d => (d.text || '').trim()).filter(Boolean).join(' ') : '';
+        const rawText = (res?.text || (res?.lines ? res.lines.map(l => l.text).join(' ') : '') || detections).toUpperCase();
         const charCount = rawText.replace(/\s+/g, '').length;
 
         // Slot-specific validation rules
