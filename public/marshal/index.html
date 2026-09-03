@@ -483,9 +483,16 @@
                                     </div>
 
                                     <div id="photo-preview-container" class="hidden flex-col items-center gap-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5 mb-6">
-                                        <img id="captured-photo" class="w-full max-w-[280px] rounded-2xl border-2 border-white/10" />
-                                        <button type="button" id="btn-submit-selfie" class="btn btn-primary" onclick="uploadSingleKycFile('face')" style="background:#D4AF37; color:#000; font-weight:bold; border:none;">Submit Selfie</button>
-                                        <button type="button" class="btn btn-secondary" onclick="retakeSelfie()">Retake</button>
+                                        <div class="relative w-full max-w-[280px] rounded-2xl overflow-hidden border-2 border-emerald-500/40">
+                                            <img id="captured-photo" class="w-full object-cover" />
+                                            <div class="absolute bottom-2 left-2 right-2 bg-black/75 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center justify-center gap-1 text-[11px] text-emerald-400 font-semibold">
+                                                <span class="material-symbols-outlined text-sm">check_circle</span> Selfie Captured
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2 w-full max-w-[280px]">
+                                            <button type="button" class="btn btn-secondary flex-1" onclick="retakeSelfie()" style="margin:0; font-size:0.8rem; padding:10px;">Retake</button>
+                                            <button type="button" class="btn btn-primary flex-1" onclick="nextWizardSubStep()" style="margin:0; font-size:0.8rem; padding:10px; background:#D4AF37; color:#000; font-weight:bold; border:none;">Continue</button>
+                                        </div>
                                     </div>
 
                                     <button type="button" id="btn-start-camera" class="btn btn-secondary" onclick="startKycCamera()" style="border: 1px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.01); padding: 16px;">

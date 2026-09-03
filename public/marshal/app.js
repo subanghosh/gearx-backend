@@ -1355,7 +1355,7 @@ function validateStep2() {
     const panBackFile = window.capturedKycFiles['panback'];
     const aadhaarFile = window.capturedKycFiles['aadhaar'];
     const aadhaarBackFile = window.capturedKycFiles['aadhaarback'];
-    const faceFile = document.getElementById('on-face-file') ? document.getElementById('on-face-file').files[0] : null;
+    const faceFile = (window.capturedKycFiles && window.capturedKycFiles['face']) || (document.getElementById('on-face-file') ? document.getElementById('on-face-file').files[0] : null);
     const dlFile = window.capturedKycFiles['dl'];
     const dlBackFile = window.capturedKycFiles['dlback'];
 
@@ -2284,7 +2284,7 @@ async function submitOnboarding() {
     const panBackFile = window.capturedKycFiles['panback'];
     const aadhaarFile = window.capturedKycFiles['aadhaar'];
     const aadhaarBackFile = window.capturedKycFiles['aadhaarback'];
-    const faceFile = document.getElementById('on-face-file') ? document.getElementById('on-face-file').files[0] : null;
+    const faceFile = (window.capturedKycFiles && window.capturedKycFiles['face']) || (document.getElementById('on-face-file') ? document.getElementById('on-face-file').files[0] : null);
     const dlFile = window.capturedKycFiles['dl'];
     const dlBackFile = window.capturedKycFiles['dlback'];
 
@@ -6270,27 +6270,59 @@ window.captureSelfie = function() {
         }
 
         // Convert canvas to a file
-        canvas.toBlob((blob) => {
+        canvas.toBlob(async (blob) => {
             if (!blob) {
                 showToast("Failed to capture image. Blob is null.", "error");
                 return;
             }
             const file = new File([blob], "live_selfie_" + Date.now() + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
             
+            // Store in memory
+            window.capturedKycFiles = window.capturedKycFiles || {};
+            window.capturedKycFiles['face'] = file;
+
             // Put file in the hidden input using DataTransfer
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-            document.getElementById('on-face-file').files = dataTransfer.files;
+            try {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                const faceInput = document.getElementById('on-face-file');
+                if (faceInput) faceInput.files = dataTransfer.files;
+            } catch(e) {
+                console.warn('DataTransfer not available:', e);
+            }
+
+            // Persist to IndexedDB immediately
+            if (typeof window.saveKycPhotoDraft === 'function') {
+                await window.saveKycPhotoDraft('face', file, file.name);
+            }
+            if (typeof window.saveKycDraftState === 'function') {
+                window.saveKycDraftState();
+            }
 
             // Display the captured photo
             const imgUrl = URL.createObjectURL(blob);
             const capturedImg = document.getElementById('captured-photo');
             if (capturedImg) capturedImg.src = imgUrl;
+
+            // Hide start camera button
+            const btnStart = document.getElementById('btn-start-camera');
+            if (btnStart) btnStart.classList.add('hidden');
+
             const previewContainer = document.getElementById('photo-preview-container');
             if (previewContainer) {
                 previewContainer.classList.remove('hidden');
                 previewContainer.style.display = 'flex';
             }
+
+            // Enable bottom Continue button
+            const nextBtn = document.getElementById('btn-selfie-next');
+            if (nextBtn) {
+                nextBtn.disabled = false;
+                nextBtn.style.opacity = '1';
+            }
+
+            if (window.checkWizardState) window.checkWizardState();
+            showToast('Selfie captured & saved!', 'success');
         }, 'image/jpeg', 0.85);
     } catch (err) {
         console.error("Error in captureSelfie:", err);
@@ -6307,11 +6339,26 @@ window.retakeSelfie = function() {
     const capturedImg = document.getElementById('captured-photo');
     if (capturedImg) capturedImg.src = '';
     
+    if (window.capturedKycFiles) {
+        delete window.capturedKycFiles['face'];
+    }
+
     // Clear file input
-    const dt = new DataTransfer();
-    const faceFileInput = document.getElementById('on-face-file');
-    if (faceFileInput) faceFileInput.files = dt.files;
+    try {
+        const dt = new DataTransfer();
+        const faceFileInput = document.getElementById('on-face-file');
+        if (faceFileInput) faceFileInput.files = dt.files;
+    } catch(e) {}
     
+    const nextBtn = document.getElementById('btn-selfie-next');
+    if (nextBtn) {
+        nextBtn.disabled = true;
+        nextBtn.style.opacity = '0.5';
+    }
+
+    const btnStart = document.getElementById('btn-start-camera');
+    if (btnStart) btnStart.classList.remove('hidden');
+
     // Restart camera
     if (typeof startKycCamera === 'function') {
         startKycCamera();
@@ -6327,10 +6374,15 @@ window.cancelSelfie = function() {
     const capturedImg = document.getElementById('captured-photo');
     if (capturedImg) capturedImg.src = '';
     
-    // Clear file input
-    const dt = new DataTransfer();
-    const faceFileInput = document.getElementById('on-face-file');
-    if (faceFileInput) faceFileInput.files = dt.files;
+    if (window.capturedKycFiles) {
+        delete window.capturedKycFiles['face'];
+    }
+
+    try {
+        const dt = new DataTransfer();
+        const faceFileInput = document.getElementById('on-face-file');
+        if (faceFileInput) faceFileInput.files = dt.files;
+    } catch(e) {}
     
     const camContainer = document.getElementById('camera-container');
     if (camContainer) {
@@ -6341,6 +6393,9 @@ window.cancelSelfie = function() {
     if (btnStart) {
         btnStart.classList.remove('hidden');
         btnStart.style.display = 'inline-block';
+    }
+    if (typeof stopKycCamera === 'function') {
+        stopKycCamera();
     }
 };
 
@@ -6473,11 +6528,11 @@ async function probeDocFrame() {
             isValid = (hasPanKeyword || hasPanRegex || charCount >= 20);
         } else if (type.includes('aadhaar')) {
             const hasAadhaarKeyword = rawText.includes('GOVERNMENT') || rawText.includes('INDIA') || rawText.includes('AADHAAR') || rawText.includes('DOB') || rawText.includes('YEAR') || rawText.includes('MALE') || rawText.includes('FEMALE') || rawText.includes('ADDRESS');
-            const has12Digits = /\d{4}\s?\d{4}\s?\d{4}/.test(rawText);
+            const has12Digits = /[0-9OIl|!BSZGbDQ]{4}[\s\-\.]*[0-9OIl|!BSZGbDQ]{4}[\s\-\.]*[0-9OIl|!BSZGbDQ]{4}/i.test(rawText);
             isValid = (hasAadhaarKeyword || has12Digits || charCount >= 22);
         } else if (type.includes('dl')) {
             const hasDlKeyword = rawText.includes('DRIVING') || rawText.includes('LICENCE') || rawText.includes('LICENSE') || rawText.includes('UNION') || rawText.includes('INDIA') || rawText.includes('TRANSPORT') || rawText.includes('AUTHORITY');
-            const hasDlPattern = /\b([A-Z0-9]{2})[-/\s]?\d{2}[-/\s]?(?:19|20)\d{2}[-/\s]?\d{7}\b/i.test(rawText);
+            const hasDlPattern = /\b([A-Z0-9]{2})[-/\s]?[0-9OIlS]{2}[-/\s]?(?:19|2[0ODQo])[0-9OIlS]{2}[-/\s]?[0-9OIlS]{4,7}\b/i.test(rawText);
             isValid = (hasDlKeyword || hasDlPattern || charCount >= 20);
         } else {
             isValid = charCount >= 18;
@@ -6547,6 +6602,24 @@ function normalizeDlStateCode(rawPrefix) {
         }
     }
     return upper;
+}
+
+const DL_DIGIT_CONFUSION = {
+    'O': '0', 'o': '0', 'D': '0', 'Q': '0',
+    'I': '1', 'l': '1', '|': '1', '!': '1', '/': '1',
+    'Z': '2', 'z': '2',
+    'S': '5', 's': '5',
+    'G': '6', 'b': '6',
+    'B': '8'
+};
+
+function normalizeDlDigits(str) {
+    if (!str || typeof str !== 'string') return '';
+    let res = '';
+    for (let ch of str) {
+        res += DL_DIGIT_CONFUSION[ch] || ch;
+    }
+    return res;
 }
 
 // ─── HIGH-RESOLUTION & CONTINUOUS AUTOFOCUS STREAM CREATOR ─────────────────
@@ -8081,12 +8154,28 @@ window.restoreKycDraftState = async function() {
 
                 // Special handling for selfie preview container
                 if (item.docType === 'face') {
+                    window.capturedKycFiles = window.capturedKycFiles || {};
+                    window.capturedKycFiles['face'] = file;
+                    try {
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        const faceInput = document.getElementById('on-face-file');
+                        if (faceInput) faceInput.files = dt.files;
+                    } catch(e) {}
+
                     const capturedImg = document.getElementById('captured-photo');
                     if (capturedImg) capturedImg.src = URL.createObjectURL(item.blob);
                     const photoPrevContainer = document.getElementById('photo-preview-container');
                     if (photoPrevContainer) {
                         photoPrevContainer.classList.remove('hidden');
                         photoPrevContainer.style.display = 'flex';
+                    }
+                    const btnStart = document.getElementById('btn-start-camera');
+                    if (btnStart) btnStart.classList.add('hidden');
+                    const nextBtn = document.getElementById('btn-selfie-next');
+                    if (nextBtn) {
+                        nextBtn.disabled = false;
+                        nextBtn.style.opacity = '1';
                     }
                 }
             });
@@ -8217,6 +8306,52 @@ window.handleDebugOcrTap = function() {
     }
 };
 
+// ─── VERHOEFF CHECKSUM ALGORITHM & AADHAAR OCR NORMALIZATION ────────────────
+const VERHOEFF_D = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+    [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+    [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+    [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+    [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+    [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+    [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+    [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+    [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+];
+
+const VERHOEFF_P = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+    [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+    [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+    [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+    [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+    [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+    [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]
+];
+
+function validateVerhoeff(numStr) {
+    if (!numStr || typeof numStr !== 'string') return false;
+    const clean = numStr.replace(/\D/g, '');
+    if (clean.length !== 12) return false;
+    let c = 0;
+    const reversed = clean.split('').reverse().map(Number);
+    for (let i = 0; i < reversed.length; i++) {
+        c = VERHOEFF_D[c][VERHOEFF_P[i % 8][reversed[i]]];
+    }
+    return c === 0;
+}
+
+const AADHAAR_DIGIT_CONFUSION = {
+    'O': '0', 'o': '0', 'D': '0', 'Q': '0',
+    'I': '1', 'l': '1', '|': '1', '!': '1', '/': '1', ']': '1',
+    'Z': '2', 'z': '2',
+    'S': '5', 's': '5',
+    'G': '6', 'b': '6',
+    'B': '8'
+};
+
 // ─── UPGRADED DOCUMENT OCR ENGINE ───────────────────────────────────────────
 window.performDocumentOcr = async function(type, blob) {
     console.log(`[OCR] Starting OCR analysis for ${type}...`);
@@ -8294,19 +8429,70 @@ window.performDocumentOcr = async function(type, blob) {
 
         // 2. Aadhaar Number & Details Extraction
         if (type === 'aadhaar' || type === 'aadhaarback') {
-            const aadhaarMatch = fullText.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
-            if (aadhaarMatch) {
-                const rawNum = aadhaarMatch[0].replace(/\s/g, '');
-                if (rawNum.length === 12) {
-                    const formatted = rawNum.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
-                    window.extractedOcrData.aadhaar.number = formatted;
-                    const aadhaarInput = document.getElementById('on-aadhaar');
-                    if (aadhaarInput) {
-                        aadhaarInput.value = formatted;
-                        const badge = document.getElementById('aadhaar-ocr-badge');
-                        if (badge) badge.classList.remove('hidden');
-                        showToast(`Aadhaar Number auto-captured: ${formatted}`, 'success');
+            let detectedAadhaar = null;
+
+            // Search pool: fullText, single lines, and 2-line sliding window
+            const aadhaarSearchPool = [fullText];
+            for (let l of allDetections) aadhaarSearchPool.push(l);
+            for (let i = 0; i < allDetections.length - 1; i++) {
+                aadhaarSearchPool.push(`${allDetections[i]} ${allDetections[i+1]}`);
+            }
+
+            const candidateRegex = /(?:^|[^\w])([0-9OIl|!BSZGbDQ]{4})[\s\-\.]*([0-9OIl|!BSZGbDQ]{4})[\s\-\.]*([0-9OIl|!BSZGbDQ]{4})(?:[^\w]|$)/gi;
+
+            for (const textItem of aadhaarSearchPool) {
+                if (detectedAadhaar) break;
+                candidateRegex.lastIndex = 0;
+                let match;
+                while ((match = candidateRegex.exec(textItem)) !== null) {
+                    const rawPart1 = match[1];
+                    const rawPart2 = match[2];
+                    const rawPart3 = match[3];
+                    const rawCombined = rawPart1 + rawPart2 + rawPart3;
+
+                    // Step 1: Pure digits check against Verhoeff
+                    if (/^\d{12}$/.test(rawCombined)) {
+                        if (validateVerhoeff(rawCombined)) {
+                            detectedAadhaar = `${rawPart1} ${rawPart2} ${rawPart3}`;
+                            console.log(`[OCR] Aadhaar validated via Verhoeff (pure digits): ${detectedAadhaar}`);
+                            break;
+                        }
                     }
+
+                    // Step 2: Targeted confusion normalization
+                    let normalized = '';
+                    for (let ch of rawCombined) {
+                        normalized += AADHAAR_DIGIT_CONFUSION[ch] || ch;
+                    }
+
+                    // Step 3: Verhoeff validation check on normalized number
+                    if (/^\d{12}$/.test(normalized) && validateVerhoeff(normalized)) {
+                        detectedAadhaar = normalized.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+                        console.log(`[OCR] Aadhaar normalized & validated via Verhoeff: ${detectedAadhaar} (raw: ${rawCombined})`);
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: If no Verhoeff check passed (e.g. card wear or edge case), accept clean 12 digits
+            if (!detectedAadhaar) {
+                const pureDigitsMatch = fullText.match(/\b\d{4}\s?\d{4}\s?\d{4}\b/);
+                if (pureDigitsMatch) {
+                    const cleanNum = pureDigitsMatch[0].replace(/\s/g, '');
+                    if (cleanNum.length === 12) {
+                        detectedAadhaar = cleanNum.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+                    }
+                }
+            }
+
+            if (detectedAadhaar) {
+                window.extractedOcrData.aadhaar.number = detectedAadhaar;
+                const aadhaarInput = document.getElementById('on-aadhaar');
+                if (aadhaarInput) {
+                    aadhaarInput.value = detectedAadhaar;
+                    const badge = document.getElementById('aadhaar-ocr-badge');
+                    if (badge) badge.classList.remove('hidden');
+                    showToast(`Aadhaar Number auto-captured: ${detectedAadhaar}`, 'success');
                 }
             }
 
@@ -8433,25 +8619,53 @@ window.performDocumentOcr = async function(type, blob) {
         // 3. DL Number & Details Extraction
         if (type === 'dl' || type === 'dlback') {
             let dlNum = null;
-            const standardDlMatch = fullText.match(/\b([A-Z0-9]{2})[\s\-\/]?([0-9]{2})[\s\-\/]?([0-9]{4})[\s\-\/]?([0-9]{7})\b/i);
-            if (standardDlMatch) {
-                const normState = normalizeDlStateCode(standardDlMatch[1]);
-                dlNum = `${normState}${standardDlMatch[2]} ${standardDlMatch[3]}${standardDlMatch[4]}`.toUpperCase();
-            } else {
-                const labeledDlMatch = fullText.match(/(?:DL\s*(?:NO|NUM|NUMBER)?|LICENCE\s*NO|LICENSE\s*NO)\s*[:\-]?\s*([A-Z0-9]{2}[\s\-\/]?[0-9]{2}[\s\-\/]?[0-9A-Z\/\-]{7,15})\b/i);
+
+            // Search pool: fullText, single lines, 2-line sliding window, and 3-line sliding window
+            const dlSearchPool = [fullText];
+            for (let l of allDetections) dlSearchPool.push(l);
+            for (let i = 0; i < allDetections.length - 1; i++) {
+                dlSearchPool.push(`${allDetections[i]} ${allDetections[i+1]}`);
+            }
+            for (let i = 0; i < allDetections.length - 2; i++) {
+                dlSearchPool.push(`${allDetections[i]} ${allDetections[i+1]} ${allDetections[i+2]}`);
+            }
+
+            for (const cand of dlSearchPool) {
+                if (dlNum) break;
+
+                // Standard relaxed: State(2), RTO(2), Year(4), Serial(4-7)
+                const stdMatch = cand.match(/\b([A-Z0-9]{2})[\s\-\/]?([0-9OIlS]{2})[\s\-\/]?((?:19|2[0ODQo])[0-9OIlS]{2})[\s\-\/]?([0-9OIlS]{4,7})\b/i);
+                if (stdMatch) {
+                    const state = normalizeDlStateCode(stdMatch[1]);
+                    const rto = normalizeDlDigits(stdMatch[2]);
+                    const year = normalizeDlDigits(stdMatch[3]);
+                    const serial = normalizeDlDigits(stdMatch[4]); // UNPADDED per user instructions
+                    dlNum = `${state}${rto} ${year}${serial}`.toUpperCase();
+                    console.log(`[OCR] Standard DL matched: ${dlNum} (raw: "${stdMatch[0]}")`);
+                    break;
+                }
+
+                // Legacy WB format: State(2), RTO(2), Serial(4-7), Year(4)
+                const legacyMatch = cand.match(/\b([A-Z0-9]{2})[\s\-\/]?([0-9OIlS]{2})[\s\-\/]?([0-9OIlS]{4,7})[\s\-\/]((?:19|2[0ODQo])[0-9OIlS]{2})\b/i);
+                if (legacyMatch) {
+                    const state = normalizeDlStateCode(legacyMatch[1]);
+                    const rto = normalizeDlDigits(legacyMatch[2]);
+                    const serial = normalizeDlDigits(legacyMatch[3]); // UNPADDED per user instructions
+                    const year = normalizeDlDigits(legacyMatch[4]);
+                    dlNum = `${state}${rto} ${year}${serial}`.toUpperCase();
+                    console.log(`[OCR] Legacy WB DL matched: ${dlNum} (raw: "${legacyMatch[0]}")`);
+                    break;
+                }
+
+                // Labeled fallback: DL NO: WB41...
+                const labeledDlMatch = cand.match(/(?:DL\s*(?:NO|NUM|NUMBER)?|LICENCE\s*NO|LICENSE\s*NO)\s*[:\-]?\s*([A-Z0-9]{2}[\s\-\/]?[0-9OIlS]{2}[\s\-\/]?[0-9A-Z\/\-]{4,15})\b/i);
                 if (labeledDlMatch) {
                     let cleanDl = labeledDlMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
                     const prefix = cleanDl.substring(0, 2);
                     const normState = normalizeDlStateCode(prefix);
                     dlNum = normState + cleanDl.substring(2);
-                } else {
-                    const genericMatch = fullText.match(/\b([A-Z0-9]{2}[0-9]{2}[\s\-\/][0-9A-Z\/\-\s]{8,14})\b/i);
-                    if (genericMatch) {
-                        let cleanDl = genericMatch[1].replace(/[\/\-]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
-                        const prefix = cleanDl.substring(0, 2);
-                        const normState = normalizeDlStateCode(prefix);
-                        dlNum = normState + cleanDl.substring(2);
-                    }
+                    console.log(`[OCR] Labeled DL fallback matched: ${dlNum}`);
+                    break;
                 }
             }
 
@@ -8845,9 +9059,14 @@ window.checkWizardState = function() {
             nextBtn.style.opacity = ok ? '1' : '0.5';
         }
     } else if (activeStepId === 'selfie') {
-        const previewImg = document.getElementById('face-photo-preview');
-        const previewContainer = document.getElementById('face-photo-preview-container');
-        const ok = !!(previewImg && previewImg.src && !previewImg.src.endsWith('/')) || (previewContainer && previewContainer.style.display !== 'none');
+        const hasFile = !!(window.capturedKycFiles && window.capturedKycFiles['face']);
+        const faceInput = document.getElementById('on-face-file');
+        const hasInput = !!(faceInput && faceInput.files && faceInput.files[0]);
+        const previewImg = document.getElementById('face-photo-preview') || document.getElementById('captured-photo');
+        const hasPreview = !!(previewImg && previewImg.src && !previewImg.src.endsWith('/') && previewImg.src !== window.location.href);
+        const photoPrevContainer = document.getElementById('photo-preview-container');
+        const hasPhotoContainer = !!(photoPrevContainer && !photoPrevContainer.classList.contains('hidden') && photoPrevContainer.style.display !== 'none');
+        const ok = hasFile || hasInput || hasPreview || hasPhotoContainer || !!(currentUser && (currentUser.facePhotoUrl || currentUser.facephotourl));
         const nextBtn = document.getElementById('btn-selfie-next');
         if (nextBtn) {
             nextBtn.disabled = !ok;
