@@ -6022,9 +6022,9 @@ async function probeSelfieFrame() {
     try {
         const canvas = document.createElement('canvas');
         canvas.width = 360;
-        canvas.height = 360;
+        canvas.height = 480; // 3:4 aspect ratio matching preview container
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, 360, 360);
+        ctx.drawImage(video, 0, 0, 360, 480);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         const base64Data = dataUrl.split(',')[1];
 
@@ -6063,9 +6063,9 @@ async function probeSelfieFrame() {
             const isTilted = Math.abs(face.headEulerAngleY || 0) > 14 || Math.abs(face.headEulerAngleX || 0) > 14;
             const eyesClosed = (face.leftEyeOpenProbability !== undefined && face.leftEyeOpenProbability < 0.35) ||
                                (face.rightEyeOpenProbability !== undefined && face.rightEyeOpenProbability < 0.35);
-            const isTooSmall = faceW < 360 * 0.30;
-            const isTooLarge = faceW > 360 * 0.82;
-            const isOffCenter = Math.abs(centerX - 180) > 60 || Math.abs(centerY - 180) > 60;
+            const isTooSmall = faceW < 360 * 0.35; // < 126px on 360 width
+            const isTooLarge = faceW > 360 * 0.78; // > 280px on 360 width
+            const isOffCenter = Math.abs(centerX - 180) > 55 || Math.abs(centerY - 240) > 65;
 
             if (isTooSmall) {
                 setSelfieVisualState('red', 'Move a little closer');
