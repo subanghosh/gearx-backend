@@ -772,6 +772,20 @@ function initializeDatabase() {
             FOREIGN KEY(garageId) REFERENCES garages(id)
         )`);
 
+        db.run(`CREATE TABLE IF NOT EXISTS garage_applications (
+            id TEXT PRIMARY KEY,
+            garage_name TEXT NOT NULL,
+            owner_name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            city TEXT,
+            pincode TEXT,
+            service_bays TEXT,
+            services_offered TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         // Sessions table (JWT refresh tokens)
         db.run(`CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -961,9 +975,25 @@ async function ensureKycColumns() {
             );
             CREATE INDEX IF NOT EXISTS idx_investor_req_email ON investor_access_requests (LOWER(email));
             CREATE INDEX IF NOT EXISTS idx_investor_req_status ON investor_access_requests (status);
-        `).catch(e => console.warn('investor_access_requests table ensure failed:', e.message));
 
-        console.log('Postgres columns and investor tables ensured.');
+            CREATE TABLE IF NOT EXISTS garage_applications (
+                id VARCHAR(64) PRIMARY KEY,
+                garage_name VARCHAR(255) NOT NULL,
+                owner_name VARCHAR(255) NOT NULL,
+                phone VARCHAR(32) NOT NULL,
+                city VARCHAR(128),
+                pincode VARCHAR(32),
+                service_bays VARCHAR(32),
+                services_offered TEXT,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_garage_app_phone ON garage_applications (phone);
+            CREATE INDEX IF NOT EXISTS idx_garage_app_status ON garage_applications (status);
+        `).catch(e => console.warn('investor/garage tables ensure failed:', e.message));
+
+        console.log('Postgres columns, investor, and garage application tables ensured.');
     } catch(e) {
         console.warn('Postgres columns ensure failed:', e.message);
     }
@@ -7260,6 +7290,93 @@ apiRouter.patch('/admin/investor-requests/:id', authMiddleware, requireRole('adm
     } catch (err) {
         console.error('PATCH /admin/investor-requests/:id error:', err.message);
         res.status(500).json({ error: 'Failed to update access request.' });
+    }
+});
+
+// ============================================================================
+// GARAGE PARTNER APPLICATION ENDPOINTS
+// ============================================================================
+
+const garageApplicationLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10,
+    message: { error: 'Too many application submissions from this IP. Please try again in an hour.' }
+});
+
+/**
+ * POST /api/garage-applications
+ * Public lead-capture endpoint for garage partner applications
+ */
+apiRouter.post('/garage-applications', garageApplicationLimiter, async (req, res) => {
+    const { garage_name, garageName, owner_name, ownerName, phone, city, pincode, service_bays, serviceBays, services_offered, servicesOffered } = req.body;
+    
+    const cleanGarageName = (garage_name || garageName || '').trim();
+    const cleanOwnerName = (owner_name || ownerName || '').trim();
+    const cleanPhone = (phone || '').trim();
+    const cleanCity = (city || '').trim();
+    const cleanPincode = (pincode || '').trim();
+    const cleanServiceBays = (service_bays || serviceBays || '').trim();
+    const cleanServicesOffered = (services_offered || servicesOffered || '').trim();
+
+    if (!cleanGarageName) {
+        return res.status(400).json({ error: 'Workshop / Garage name is required.' });
+    }
+    if (!cleanOwnerName) {
+        return res.status(400).json({ error: 'Owner / Manager name is required.' });
+    }
+    if (!cleanPhone) {
+        return res.status(400).json({ error: 'Contact phone number is required.' });
+    }
+
+    const phoneDigits = cleanPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+        return res.status(400).json({ error: 'A valid phone number with at least 10 digits is required.' });
+    }
+
+    try {
+        const id = 'gar_app_' + Date.now();
+        await pool.query(`
+            INSERT INTO garage_applications (id, garage_name, owner_name, phone, city, pincode, service_bays, services_offered, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+        `, [id, cleanGarageName, cleanOwnerName, cleanPhone, cleanCity, cleanPincode, cleanServiceBays, cleanServicesOffered]);
+
+        // Mirror to SQLite if active
+        db.run(`
+            INSERT INTO garage_applications (id, garage_name, owner_name, phone, city, pincode, service_bays, services_offered, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [id, cleanGarageName, cleanOwnerName, cleanPhone, cleanCity, cleanPincode, cleanServiceBays, cleanServicesOffered], () => {});
+
+        res.json({
+            success: true,
+            message: 'Your garage partnership application has been submitted successfully.',
+            id
+        });
+    } catch (err) {
+        console.error('garage-applications submit error:', err.message);
+        res.status(500).json({ error: 'Failed to record garage partner application.' });
+    }
+});
+
+/**
+ * GET /api/admin/garage-applications
+ * Admin endpoint to list all partner garage applications
+ */
+apiRouter.get('/admin/garage-applications', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const { status } = req.query;
+        let query = 'SELECT * FROM garage_applications';
+        const params = [];
+        if (status && status !== 'all') {
+            query += ' WHERE status = $1';
+            params.push(status);
+        }
+        query += ' ORDER BY created_at DESC';
+        const result = await pool.query(query, params);
+        res.json({ success: true, applications: result.rows });
+    } catch (err) {
+        console.error('GET /admin/garage-applications error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch garage applications.' });
     }
 });
 
