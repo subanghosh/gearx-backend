@@ -50,7 +50,7 @@ pool.connect((err, client, release) => {
 });
 `;
 
-code = code.replace(/const db = new sqlite3\.Database\('\.\/vroomly2\.sqlite', \(err\) => {[\s\S]*?}\);/, dbReplacement);
+code = code.replace(/const db = new sqlite3\.Database\('\.\/redrivo2\.sqlite', \(err\) => {[\s\S]*?}\);/, dbReplacement);
 
 code = code.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/g, 'SERIAL PRIMARY KEY');
 code = code.replace(/DATETIME/g, 'TIMESTAMP');

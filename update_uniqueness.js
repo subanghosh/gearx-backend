@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/index.js', 'utf8');
+let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/index.js', 'utf8');
 
 // 1. Add POST /users
 if (!content.includes("apiRouter.post('/users'")) {
@@ -47,5 +47,5 @@ if (content.includes(oldWorkersRoute)) {
     content = content.replace(oldWorkersRoute, newWorkersRoute);
 }
 
-fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/index.js', content);
+fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/index.js', content);
 console.log('Backend routes updated successfully');

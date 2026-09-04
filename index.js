@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 if (fs.existsSync(path.join(__dirname, '.env.local'))) {
     require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 } else {
@@ -26,6 +27,50 @@ if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: JWT_SECRET environment variable is missing.');
 }
 const JWT_SECRET = process.env.JWT_SECRET || 'gearx-dev-jwt-secret';
+const FILE_SIGNING_SECRET = process.env.FILE_SIGNING_SECRET || crypto.createHmac('sha256', JWT_SECRET).update('redrivo:file-signing-key:v1').digest('hex');
+
+function generateSignedUploadUrl(filePath, expirySeconds = 900) {
+    if (!filePath || typeof filePath !== 'string') return filePath;
+    // Base64 inline data URLs and external URLs remain untouched
+    if (filePath.startsWith('data:') || (filePath.startsWith('http') && !filePath.includes('/uploads/'))) {
+        return filePath;
+    }
+    // Extract pure filename: handles "/uploads/xyz.png", "uploads/xyz.png", or "https://api.redrivo.in/uploads/xyz.png"
+    let filename = filePath;
+    if (filename.includes('/uploads/')) {
+        filename = filename.split('/uploads/')[1].split('?')[0];
+    } else {
+        filename = filename.replace(/^(\/)?uploads\//, '').split('?')[0];
+    }
+    filename = path.basename(filename);
+    if (!filename) return filePath;
+
+    const exp = Math.floor(Date.now() / 1000) + expirySeconds;
+    const stringToSign = `${filename}:${exp}`;
+    const sig = crypto.createHmac('sha256', FILE_SIGNING_SECRET).update(stringToSign).digest('hex');
+
+    const baseUrl = process.env.PUBLIC_API_URL || process.env.BASE_URL || 'https://api.redrivo.in';
+    return `${baseUrl}/uploads/${encodeURIComponent(filename)}?exp=${exp}&sig=${sig}`;
+}
+
+function signUserKycUrls(user) {
+    if (!user || typeof user !== 'object') return user;
+    const signed = { ...user };
+    const kycFields = [
+        'panurl', 'panUrl', 'panbackurl', 'panBackUrl',
+        'aadhaarurl', 'aadhaarUrl', 'aadhaarbackurl', 'aadhaarBackUrl',
+        'dlurl', 'dlUrl', 'dlbackurl', 'dlBackUrl',
+        'facephotourl', 'facePhotoUrl',
+        'profilepictureurl', 'profilePictureUrl',
+        'photo'
+    ];
+    for (const field of kycFields) {
+        if (signed[field]) {
+            signed[field] = generateSignedUploadUrl(signed[field]);
+        }
+    }
+    return signed;
+}
 const BCRYPT_ROUNDS = 12;
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 if (!GOOGLE_MAPS_API_KEY && process.env.NODE_ENV === 'production') {
@@ -1241,13 +1286,17 @@ apiRouter.get('/customers', authMiddleware, requireRole('admin'), (req, res) => 
     });
 });
 
-apiRouter.get('/vehicles', (req, res) => {
+apiRouter.get('/vehicles', authMiddleware, (req, res) => {
     db.all("SELECT * FROM vehicles", (err, rows) => {
         if (err) {
             console.error("GET /vehicles DB error:", err.message);
             return res.status(500).json({ error: err.message });
         }
-        res.json(rows || []);
+        const mapped = (rows || []).map(r => ({
+            ...r,
+            photo: generateSignedUploadUrl(r.photo)
+        }));
+        res.json(mapped);
     });
 });
 
@@ -1377,7 +1426,7 @@ apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) =
                    bankname, bankaccountname, bankaccountnumber, bankifsc
             FROM users
         `);
-        res.json(result.rows || []);
+        res.json((result.rows || []).map(signUserKycUrls));
     } catch (err) {
         console.error('GET /users error:', err.message);
         res.json([]);
@@ -1424,7 +1473,7 @@ apiRouter.get('/debug-server-paths', (req, res) => {
 });
 
 // Feedback / Survey Routes
-apiRouter.get('/feedback', (req, res) => {
+apiRouter.get('/feedback', authMiddleware, requireRole('admin'), (req, res) => {
     db.all("SELECT * FROM feedback ORDER BY createdAt DESC", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
@@ -1550,7 +1599,7 @@ apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
         if (userRes.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json(userRes.rows[0]);
+        res.json(signUserKycUrls(userRes.rows[0]));
     } catch (err) {
         console.error('GET /users/:id error:', err.message);
         res.status(500).json({ error: 'Failed to fetch user profile' });
@@ -2106,19 +2155,93 @@ apiRouter.get('/trips', authMiddleware, (req, res) => {
             console.error("GET /trips DB error:", err.message);
             return res.status(500).json({ error: err.message });
         }
-        res.json(rows || []);
+        const mapped = (rows || []).map(r => ({
+            ...r,
+            marshalPhoto: generateSignedUploadUrl(r.marshalPhoto)
+        }));
+        res.json(mapped);
     });
 });
 
-apiRouter.get('/media', (req, res) => {
-    const { referenceId } = req.query;
-    let query = "SELECT * FROM media";
-    let params = [];
-    if (referenceId) {
-        query += " WHERE referenceId = ?";
-        params.push(referenceId);
+async function isGarageMediaAuthorized(garageId, referenceId) {
+    if (!garageId || !referenceId) return false;
+    if (referenceId === garageId) return true;
+    
+    try {
+        // 1. Check if referenceId is a garage worker for this garage
+        const workerRes = await pool.query("SELECT id FROM garage_workers WHERE id = $1 AND garageid = $2", [referenceId, garageId]);
+        if (workerRes && workerRes.rows && workerRes.rows.length > 0) return true;
+
+        // 2. Check if referenceId is a service request assigned to this garage
+        const srRes = await pool.query("SELECT id FROM service_requests WHERE id = $1 AND garageid = $2", [referenceId, garageId]);
+        if (srRes && srRes.rows && srRes.rows.length > 0) return true;
+
+        // 3. Check if referenceId is a trip for this garage
+        const tripRes = await pool.query("SELECT t.id FROM trips t JOIN service_requests sr ON t.servicerequestid = sr.id WHERE t.id = $1 AND sr.garageid = $2", [referenceId, garageId]);
+        if (tripRes && tripRes.rows && tripRes.rows.length > 0) return true;
+
+        // Fallback check for SQLite
+        return new Promise((resolve) => {
+            db.get("SELECT id FROM garage_workers WHERE id = ? AND garageId = ?", [referenceId, garageId], (e1, w) => {
+                if (w) return resolve(true);
+                db.get("SELECT id FROM service_requests WHERE id = ? AND garageId = ?", [referenceId, garageId], (e2, sr) => {
+                    if (sr) return resolve(true);
+                    db.get("SELECT t.id FROM trips t JOIN service_requests sr ON t.serviceRequestId = sr.id WHERE t.id = ? AND sr.garageId = ?", [referenceId, garageId], (e3, tr) => {
+                        resolve(!!tr);
+                    });
+                });
+            });
+        });
+    } catch {
+        return false;
     }
-    db.all(query, params, (err, rows) => res.json(rows || []));
+}
+
+apiRouter.get('/media', authMiddleware, requireRole('admin', 'garage'), async (req, res) => {
+    const { referenceId } = req.query;
+
+    if (req.user.role === 'garage') {
+        const garageId = req.user.garageId || req.user.id;
+        if (!garageId) {
+            return res.status(403).json({ error: 'Forbidden: No garage association found for this user.' });
+        }
+
+        if (!referenceId) {
+            return res.status(400).json({ error: 'referenceId is required for garage role media queries.' });
+        }
+
+        const isAuthorized = await isGarageMediaAuthorized(garageId, referenceId);
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'Forbidden: You do not have permission to view media for this entity.' });
+        }
+
+        db.all("SELECT * FROM media WHERE referenceId = ?", [referenceId], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const mapped = (rows || []).map(r => ({
+                ...r,
+                filePath: generateSignedUploadUrl(r.filePath || r.filepath),
+                filepath: generateSignedUploadUrl(r.filepath || r.filePath)
+            }));
+            res.json(mapped);
+        });
+    } else {
+        // Admin: can fetch all media or filter by referenceId
+        let query = "SELECT * FROM media";
+        let params = [];
+        if (referenceId) {
+            query += " WHERE referenceId = ?";
+            params.push(referenceId);
+        }
+        db.all(query, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const mapped = (rows || []).map(r => ({
+                ...r,
+                filePath: generateSignedUploadUrl(r.filePath || r.filepath),
+                filepath: generateSignedUploadUrl(r.filepath || r.filePath)
+            }));
+            res.json(mapped);
+        });
+    }
 });
 
 // --- AUTH ---
@@ -2141,7 +2264,7 @@ apiRouter.post('/auth/login', loginLimiter, async (req, res) => {
         }
         if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
         const token = signToken({ id: user.id, role: user.role, garageId: user.garageId }, user.token_version || user.tokenversion || 1);
-        res.json({ ...user, password: undefined, token });
+        res.json({ ...signUserKycUrls(user), password: undefined, token });
     });
 });
 
@@ -2883,8 +3006,11 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
 });
 
 // --- WORKERS ---
-apiRouter.get('/garages/:id/workers', (req, res) => {
-    db.all("SELECT * FROM garage_workers WHERE garageId = ?", [req.params.id], (err, rows) => res.json(rows || []));
+apiRouter.get('/garages/:id/workers', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access workers for this garage.' });
+    }
+    db.all("SELECT * FROM garage_workers WHERE garageId = ?", [req.params.id], (err, rows) => res.json((rows || []).map(signUserKycUrls)));
 });
 
 apiRouter.post('/garages/:id/workers', (req, res) => {
@@ -2930,8 +3056,8 @@ apiRouter.delete('/garages/:id/workers/:workerId', (req, res) => {
     });
 });
 
-apiRouter.get('/workers', (req, res) => {
-    db.all("SELECT * FROM garage_workers", (err, rows) => res.json(rows || []));
+apiRouter.get('/workers', authMiddleware, requireRole('admin'), (req, res) => {
+    db.all("SELECT * FROM garage_workers", (err, rows) => res.json((rows || []).map(signUserKycUrls)));
 });
 
 
@@ -2954,7 +3080,10 @@ apiRouter.get('/service-requests/:id/audit', (req, res) => {
 });
 
 // --- ORDERS ---
-apiRouter.get('/garages/:id/orders', (req, res) => {
+apiRouter.get('/garages/:id/orders', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access orders for this garage.' });
+    }
     db.all(`SELECT sr.*, c.name as customerName, v.plate, v.makeModel, t.garageDropoffOtp, t.garagePickupOtp, t.deliveryOtp 
             FROM service_requests sr 
             JOIN customers c ON sr.customerId = c.id 
@@ -2963,19 +3092,40 @@ apiRouter.get('/garages/:id/orders', (req, res) => {
             WHERE sr.garageId = ?`, [req.params.id], (err, rows) => res.json(rows || []));
 });
 
-apiRouter.get('/workers/:id/tasks', (req, res) => {
-    db.all(`SELECT sr.*, c.name as customerName, v.plate, v.makeModel 
-            FROM service_requests sr 
-            JOIN customers c ON sr.customerId = c.id 
-            JOIN vehicles v ON sr.vehicleId = v.id 
-            WHERE sr.workerId = ?`, [req.params.id], (err, rows) => res.json(rows || []));
+apiRouter.get('/workers/:id/tasks', authMiddleware, (req, res) => {
+    if (req.user.role === 'admin' || req.user.id === req.params.id) {
+        return fetchTasks();
+    }
+    db.get("SELECT garageId FROM garage_workers WHERE id = ?", [req.params.id], (errW, worker) => {
+        const workerGarageId = worker ? worker.garageId : null;
+        if (req.user.role === 'garage' && workerGarageId && (req.user.garageId === workerGarageId || req.user.id === workerGarageId)) {
+            return fetchTasks();
+        }
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access tasks for this worker.' });
+    });
+
+    function fetchTasks() {
+        db.all(`SELECT sr.*, c.name as customerName, v.plate, v.makeModel 
+                FROM service_requests sr 
+                JOIN customers c ON sr.customerId = c.id 
+                JOIN vehicles v ON sr.vehicleId = v.id 
+                WHERE sr.workerId = ?`, [req.params.id], (err, rows) => res.json(rows || []));
+    }
 });
 
-apiRouter.get('/garages/:id', (req, res) => {
+apiRouter.get('/garages/:id', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access this garage profile.' });
+    }
     db.get("SELECT * FROM garages WHERE id = $1", [req.params.id], (err, row) => {
         if (err || !row) return res.json(row);
         db.all('SELECT id, filePath AS "filePath", fileName AS "fileName", docType AS "docType" FROM media WHERE referenceId = $1', [req.params.id], (err, media) => {
-            row.documents = media || [];
+            const mappedMedia = (media || []).map(m => ({
+                ...m,
+                filePath: generateSignedUploadUrl(m.filePath || m.filepath)
+            }));
+            row.documents = mappedMedia;
+            if (row.photo) row.photo = generateSignedUploadUrl(row.photo);
             res.json(row);
         });
     });
@@ -3011,9 +3161,12 @@ apiRouter.put('/garages/:id', (req, res) => {
     });
 });
 
-apiRouter.get('/garages/:id/stats', (req, res) => {
+apiRouter.get('/garages/:id/stats', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access stats for this garage.' });
+    }
     db.all("SELECT status, totalCustomerPrice FROM service_requests WHERE garageId = ?", [req.params.id], (err, rows) => {
-        const stats = { totalOrders: rows.length, pending: rows.filter(r => r.status !== 'delivered').length, delivered: rows.filter(r => r.status === 'delivered').length, revenue: rows.reduce((acc, r) => acc + (r.totalCustomerPrice || 0), 0) };
+        const stats = { totalOrders: rows ? rows.length : 0, pending: (rows || []).filter(r => r.status !== 'delivered').length, delivered: (rows || []).filter(r => r.status === 'delivered').length, revenue: (rows || []).reduce((acc, r) => acc + (r.totalCustomerPrice || 0), 0) };
         res.json(stats);
     });
 });
@@ -4135,7 +4288,6 @@ apiRouter.put('/workers/:id/payout-plan', async (req, res) => {
 // RAZORPAY DRIVER SUBSCRIPTION PAYMENT ENDPOINTS (LIVE SANDBOX)
 // ============================================================
 const Razorpay = require('razorpay');
-const crypto = require('crypto');
 
 function getRazorpayClient() {
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -5041,7 +5193,7 @@ apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUpl
             }
             db.run(`UPDATE garage_owners SET ${field} = ? WHERE id = ?`, [filePath, entityId], (errU) => {
                 if (errU) return res.status(500).json({ error: errU.message });
-                res.json({ success: true, filePath });
+                res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
             });
         });
     } else {
@@ -5055,7 +5207,7 @@ apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUpl
         }
         const id = 'doc_' + Date.now();
         db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
-            [id, entityId, filePath, fileName, docType], () => res.json({ success: true, filePath }));
+            [id, entityId, filePath, fileName, docType], () => res.json({ success: true, filePath: generateSignedUploadUrl(filePath) }));
     }
 });
 
@@ -5126,7 +5278,7 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
                 if (req.file) fs.unlink(req.file.path, () => {});
                 return res.status(500).json({ error: err.message });
             }
-            res.json({ success: true, id, filePath });
+            res.json({ success: true, id, filePath: generateSignedUploadUrl(filePath) });
         });
 });
 
@@ -5145,7 +5297,7 @@ apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), 
     db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
         [id, garageId, filePath, fileName, docType], (err) => {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, filePath });
+            res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
         });
 });
 
@@ -5211,7 +5363,10 @@ apiRouter.patch('/trips/:id', (req, res) => {
     });
 });
 // --- MULTI-OWNER MANAGEMENT ---
-apiRouter.get('/garages/:id/owners', (req, res) => {
+apiRouter.get('/garages/:id/owners', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access owners for this garage.' });
+    }
     db.all("SELECT * FROM garage_owners WHERE garageId = ? ORDER BY createdAt ASC", [req.params.id], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows || []);
@@ -5272,8 +5427,19 @@ apiRouter.patch('/verify-field', (req, res) => {
 });
 
 // --- SERIALIZED PARTS MANAGEMENT ---
-apiRouter.get('/serialized-parts', (req, res) => {
-    db.all("SELECT * FROM serialized_parts ORDER BY assignedAt DESC", (err, rows) => res.json(rows || []));
+apiRouter.get('/serialized-parts', authMiddleware, requireRole('admin', 'garage'), (req, res) => {
+    let query = "SELECT * FROM serialized_parts";
+    let params = [];
+    if (req.user.role === 'garage') {
+        const garageId = req.user.garageId || req.user.id;
+        query += " WHERE garageId = ?";
+        params.push(garageId);
+    }
+    query += " ORDER BY assignedAt DESC";
+    db.all(query, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows || []);
+    });
 });
 
 apiRouter.post('/serialized-parts/bulk', (req, res) => {
@@ -5339,10 +5505,11 @@ apiRouter.post('/customers', authMiddleware, requireRole('admin'), (req, res) =>
         });
 });
 
-apiRouter.get('/vehicles/:id', (req, res) => {
+apiRouter.get('/vehicles/:id', authMiddleware, (req, res) => {
     db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!row) return res.status(404).json({ error: 'Vehicle not found' });
+        if (row.photo) row.photo = generateSignedUploadUrl(row.photo);
         res.json(row);
     });
 });
@@ -5613,7 +5780,7 @@ apiRouter.post('/service-requests/:id/decline', async (req, res) => {
 });
 
 // Driver Bidding: Fetch bids actively submitted by drivers for this request
-apiRouter.get('/service-requests/:id/bids', async (req, res) => {
+apiRouter.get('/service-requests/:id/bids', authMiddleware, async (req, res) => {
     const requestId = req.params.id;
     try {
         const srRes = await pool.query("SELECT lat, lng, status FROM service_requests WHERE id = $1", [requestId]);
@@ -5649,7 +5816,7 @@ apiRouter.get('/service-requests/:id/bids', async (req, res) => {
                 rating: parseFloat(m.rating || 5.0).toFixed(1),
                 distance: parseFloat(dist.toFixed(1)),
                 eta: Math.max(3, Math.round(dist * 2.5)),
-                photo: m.profilepictureurl || m.facephotourl || null
+                photo: generateSignedUploadUrl(m.profilepictureurl || m.facephotourl || null)
             });
         });
 
@@ -6374,7 +6541,10 @@ async function getDriverWalletSummary(userId) {
 }
 
 // GET earnings statistics for a marshal/driver
-apiRouter.get('/users/:id/earnings', async (req, res) => {
+apiRouter.get('/users/:id/earnings', authMiddleware, async (req, res) => {
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access earnings for this user.' });
+    }
     try {
         const data = await getDriverWalletSummary(req.params.id);
         res.json(data);
@@ -6385,7 +6555,10 @@ apiRouter.get('/users/:id/earnings', async (req, res) => {
 });
 
 // GET wallet statistics for a marshal/driver
-apiRouter.get('/users/:id/wallet', async (req, res) => {
+apiRouter.get('/users/:id/wallet', authMiddleware, async (req, res) => {
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You do not have permission to access wallet for this user.' });
+    }
     try {
         const data = await getDriverWalletSummary(req.params.id);
         res.json(data);
@@ -7198,7 +7371,41 @@ apiRouter.get('/traction/live-metrics', authMiddleware, requireRole('investor', 
 
 
 app.use('/api', apiRouter);
-app.use('/uploads', express.static(activeUploadsDir));
+
+// Secure /uploads route with short-lived HMAC signature verification
+app.get('/uploads/:filename', (req, res) => {
+    const { exp, sig } = req.query;
+    if (!exp || !sig) {
+        return res.status(401).json({ error: 'Access denied: Authentication credentials missing.' });
+    }
+
+    const expNum = parseInt(exp, 10);
+    if (isNaN(expNum) || Date.now() > expNum * 1000) {
+        return res.status(401).json({ error: 'Access denied: Link has expired.' });
+    }
+
+    const filename = path.basename(req.params.filename);
+    const stringToSign = `${filename}:${exp}`;
+    const expectedSig = crypto.createHmac('sha256', FILE_SIGNING_SECRET).update(stringToSign).digest('hex');
+
+    const sigBuffer = Buffer.from(String(sig), 'utf8');
+    const expectedBuffer = Buffer.from(expectedSig, 'utf8');
+    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+        return res.status(403).json({ error: 'Access denied: Invalid signature.' });
+    }
+
+    const targetPath = path.join(activeUploadsDir, filename);
+    if (!fs.existsSync(targetPath)) {
+        return res.status(404).json({ error: 'File not found.' });
+    }
+
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return res.sendFile(targetPath);
+});
+
+app.use('/uploads', (req, res) => {
+    res.status(401).json({ error: 'Access denied: Invalid or unauthenticated request.' });
+});
 
 // Garage Portal
 app.use('/garage', express.static(path.join(__dirname, 'public/garage')));

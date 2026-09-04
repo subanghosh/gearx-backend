@@ -1,5 +1,5 @@
 const { Client } = require('pg');
-const client = new Client({ connectionString: 'postgresql://postgres:postgres@localhost:5432/vroomly' });
+const client = new Client({ connectionString: 'postgresql://postgres:postgres@localhost:5432/redrivo' });
 
 async function run() {
     await client.connect();

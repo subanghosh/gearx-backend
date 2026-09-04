@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./vroomly2.sqlite');
+const db = new sqlite3.Database('./redrivo2.sqlite');
 
 db.serialize(() => {
     db.get("SELECT id, name, phone, email, password FROM users WHERE role = 'garage' AND garageId IS NULL", (err, user) => {

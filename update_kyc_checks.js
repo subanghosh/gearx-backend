@@ -398,7 +398,7 @@ function initializeDatabase() {
 
         // Garage SKUs (Shop-Specific Overrides)
         db.run(`CREATE TABLE IF NOT EXISTS garage_skus (
-            garageId TEXT, skuId TEXT, gearxPrice REAL, garagePrice REAL, stock INTEGER DEFAULT 0,
+            garageId TEXT, skuId TEXT, redrivoPrice REAL, garagePrice REAL, stock INTEGER DEFAULT 0,
             status TEXT DEFAULT 'active', lastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(garageId, skuId),
             FOREIGN KEY(garageId) REFERENCES garages(id),
@@ -407,7 +407,7 @@ function initializeDatabase() {
 
         // Migration for garage_skus
         [
-            "ALTER TABLE garage_skus ADD COLUMN gearxPrice REAL",
+            "ALTER TABLE garage_skus ADD COLUMN redrivoPrice REAL",
             "ALTER TABLE garage_skus ADD COLUMN garagePrice REAL"
         ].forEach(sql => db.run(sql, (err) => {}));
 
@@ -847,7 +847,7 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
             try {
                 await transporterReady;
                 await transporter.sendMail({
-                    from: '"GearX" <support@gearx.in>',
+                    from: '"ReDrivo" <support@redrivo.in>',
                     to: value,
                     subject: 'Verify your new email',
                     text: `Your verification OTP is: ${otp}. Valid for 10 minutes.`
@@ -1033,7 +1033,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         if (email) {
             try {
                 await transporterReady;
-                await transporter.sendMail({ from: '"GearX" <support@gearx.in>', to: email, subject: 'Your GearX OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
+                await transporter.sendMail({ from: '"ReDrivo" <support@redrivo.in>', to: email, subject: 'Your ReDrivo OTP', text: `Your OTP is: ${otp}. Valid for 10 minutes. Do not share with anyone.` });
             } catch(mailErr) {
                 console.warn('Email send failed (non-fatal):', mailErr.message);
             }
@@ -1422,7 +1422,7 @@ apiRouter.put('/skus/:id', (req, res) => {
 
 // CRM: Fetch which garages have activated this SKU
 apiRouter.get('/skus/:id/garages', (req, res) => {
-    db.all(`SELECT g.id, g.name, g.address AS "location", gs.gearxPrice, gs.garagePrice, gs.stock, gs.status
+    db.all(`SELECT g.id, g.name, g.address AS "location", gs.redrivoPrice, gs.garagePrice, gs.stock, gs.status
             FROM garages g
             JOIN garage_skus gs ON g.id = gs.garageId
             WHERE gs.skuId = $1`, [req.params.id], (err, rows) => {
@@ -1436,7 +1436,7 @@ apiRouter.get('/garages/:id/skus', (req, res) => {
             ms.itemName AS "itemName", ms.sparePartBrand AS "sparePartBrand",
             ms.compatibleBrands AS "compatibleBrands", ms.basePrice AS "basePrice",
             ms.partType AS "partType", ms.oemType AS "oemType", ms.unit,
-            gs.gearxPrice, gs.garagePrice, gs.stock, gs.status
+            gs.redrivoPrice, gs.garagePrice, gs.stock, gs.status
             FROM master_skus ms
             JOIN garage_skus gs ON ms.id = gs.skuId
             WHERE gs.garageId = $1`, [req.params.id], (err, rows) => res.json(rows || []));
@@ -1444,13 +1444,13 @@ apiRouter.get('/garages/:id/skus', (req, res) => {
 
 // Save/Activate a part (POST = upsert)
 apiRouter.post('/garages/:id/skus', (req, res) => {
-    const { skuId, gearxPrice, garagePrice, stock, status } = req.body;
-    db.run(`INSERT INTO garage_skus (garageId, skuId, gearxPrice, garagePrice, stock, status) 
+    const { skuId, redrivoPrice, garagePrice, stock, status } = req.body;
+    db.run(`INSERT INTO garage_skus (garageId, skuId, redrivoPrice, garagePrice, stock, status) 
             VALUES (?, ?, ?, ?, ?, ?) 
             ON CONFLICT(garageId, skuId) DO UPDATE SET 
-            gearxPrice = excluded.gearxPrice, garagePrice = excluded.garagePrice, stock = excluded.stock, status = excluded.status, 
+            redrivoPrice = excluded.redrivoPrice, garagePrice = excluded.garagePrice, stock = excluded.stock, status = excluded.status, 
             lastUpdated = CURRENT_TIMESTAMP`,
-        [req.params.id, skuId, gearxPrice, garagePrice, stock, status || 'active'], 
+        [req.params.id, skuId, redrivoPrice, garagePrice, stock, status || 'active'], 
         () => res.json({ success: true }));
 });
 // Deduct stock for a part (used by Job Cards)
@@ -2055,16 +2055,16 @@ app.use('/api', apiRouter);
 app.use('/uploads', express.static('uploads'));
 
 // Garage Portal
-app.use('/garage', express.static(path.join(__dirname, '../vroomly-garage-portal')));
-app.use('/vroomly-garage-portal', express.static(path.join(__dirname, '../vroomly-garage-portal')));
+app.use('/garage', express.static(path.join(__dirname, '../redrivo-garage-portal')));
+app.use('/redrivo-garage-portal', express.static(path.join(__dirname, '../redrivo-garage-portal')));
 
 // Customer App
-app.use('/customer', express.static(path.join(__dirname, '../vroomly-customer-app')));
-app.use('/vroomly-customer-app', express.static(path.join(__dirname, '../vroomly-customer-app')));
+app.use('/customer', express.static(path.join(__dirname, '../redrivo-customer-app')));
+app.use('/redrivo-customer-app', express.static(path.join(__dirname, '../redrivo-customer-app')));
 
 // Marshal App
-app.use('/marshal', express.static(path.join(__dirname, '../vroomly-marshal-app')));
-app.use('/vroomly-marshal-app', express.static(path.join(__dirname, '../vroomly-marshal-app')));
+app.use('/marshal', express.static(path.join(__dirname, '../redrivo-marshal-app')));
+app.use('/redrivo-marshal-app', express.static(path.join(__dirname, '../redrivo-marshal-app')));
 
 // CRM (Admin)
 app.use('/crm', express.static(path.join(__dirname, '../Anti_Gravity')));
@@ -2078,4 +2078,4 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => console.log(`GearX server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`));
+app.listen(PORT, () => console.log(`ReDrivo server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`));

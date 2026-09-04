@@ -1,5 +1,5 @@
 const fs = require('fs');
-let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/index.js', 'utf8');
+let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/index.js', 'utf8');
 
 // 1. Add global unique function
 if (!content.includes('async function checkUniqueEntity')) {
@@ -104,5 +104,5 @@ if (content.includes("pool.query(\"SELECT id FROM users WHERE phone = $1 UNION A
     );
 }
 
-fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/index.js', content);
+fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/index.js', content);
 console.log('Update successful.');

@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('c:/Users/Suban/OneDrive/Documents/vroomly-backend/gearx.db');
+const db = new sqlite3.Database('c:/Users/Suban/OneDrive/Documents/redrivo-backend/redrivo.db');
 
 db.all("PRAGMA table_info(service_requests)", [], (err, rows) => {
     if (err) {

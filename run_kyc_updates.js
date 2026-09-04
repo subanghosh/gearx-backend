@@ -1,5 +1,5 @@
 const fs = require('fs');
-let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/index.js', 'utf8');
+let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/index.js', 'utf8');
 
 // Replace PAN check
 const oldPan = `            const panCheck = await pool.query(\`SELECT id FROM users WHERE pannumber = $1 AND id != $2\`, [cleanPan, req.params.id]);`;
@@ -30,5 +30,5 @@ if (content.includes(oldCustomerStart)) {
     content = content.replace(oldCustomerStart, newCustomerStart);
 }
 
-fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-backend/update_kyc_checks.js', content);
+fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-backend/update_kyc_checks.js', content);
 console.log('Update script prepared.');

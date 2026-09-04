@@ -40,8 +40,8 @@ async function clearNeon() {
 
 function clearSQLite() {
     return new Promise((resolve) => {
-        console.log('--- Clearing SQLite DB (vroomly2.sqlite) ---');
-        const db = new sqlite3.Database('../vroomly2.sqlite', (err) => {
+        console.log('--- Clearing SQLite DB (redrivo2.sqlite) ---');
+        const db = new sqlite3.Database('../redrivo2.sqlite', (err) => {
             if (err) {
                 console.error('Error opening SQLite DB:', err.message);
                 resolve();

@@ -3,7 +3,7 @@ const https = require('https');
 async function request(path, method = 'GET', body = null) {
     return new Promise((resolve, reject) => {
         const options = {
-            hostname: 'gearx-backend.onrender.com',
+            hostname: 'redrivo-backend.onrender.com',
             port: 443,
             path: '/api' + path,
             method: method,

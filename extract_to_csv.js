@@ -28,5 +28,5 @@ data.forEach((row, index) => {
 });
 
 const csvContent = rows.join('\n');
-fs.writeFileSync('c:\\Users\\Suban\\OneDrive\\Documents\\vroomly-backend\\extracted_checklist.csv', csvContent);
+fs.writeFileSync('c:\\Users\\Suban\\OneDrive\\Documents\\redrivo-backend\\extracted_checklist.csv', csvContent);
 console.log('Successfully extracted', rows.length - 1, 'items.');

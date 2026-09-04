@@ -46,7 +46,7 @@
       "id": "admin",
       "name": "Admin User",
       "phone": "111",
-      "email": "admin@vroomly.com",
+      "email": "admin@redrivo.com",
       "password": "admin",
       "role": "admin",
       "status": "active"
@@ -55,7 +55,7 @@
       "id": "mechanic",
       "name": "Mechanic Mike",
       "phone": "888",
-      "email": "mechanic@vroomly.com",
+      "email": "mechanic@redrivo.com",
       "password": "mechanic",
       "role": "mechanic",
       "status": "active"

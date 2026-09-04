@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-const db = new sqlite3.Database('./vroomly2.sqlite');
+const db = new sqlite3.Database('./redrivo2.sqlite');
 
 const tablesToWipe = [
     'customers',
@@ -56,7 +56,7 @@ db.close((err) => {
     }
 
     // Delete obsolete DBs
-    const obsoleteDbs = ['./database.sqlite', './vroomly.sqlite'];
+    const obsoleteDbs = ['./database.sqlite', './redrivo.sqlite'];
     obsoleteDbs.forEach(dbPath => {
         if (fs.existsSync(dbPath)) {
             try {

@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-const db = new sqlite3.Database('./vroomly2.sqlite');
+const db = new sqlite3.Database('./redrivo2.sqlite');
 const csvPath = path.join(__dirname, '../Anti_Gravity/Vroomer_AutoParts_Master_Data_Expanded.csv');
 
 function importSKUs() {
@@ -67,7 +67,7 @@ function importSKUs() {
             });
 
             stmt.finalize(() => {
-                console.log(`✅ Successfully imported ${count} Master SKUs into vroomly2.sqlite`);
+                console.log(`✅ Successfully imported ${count} Master SKUs into redrivo2.sqlite`);
                 db.close();
             });
         });

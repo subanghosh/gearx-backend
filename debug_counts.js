@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('vroomly2.sqlite');
+const db = new sqlite3.Database('redrivo2.sqlite');
 
 function query(sql) {
     return new Promise((resolve, reject) => {

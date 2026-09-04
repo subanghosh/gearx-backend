@@ -7,7 +7,7 @@ async function runTests() {
     // Create test customer
     const custId = 'test_cust_' + Date.now();
     const custPhoneNum = '+91' + Math.floor(6000000000 + Math.random() * 4000000000);
-    const custEmailAddr = 'verify_cust_' + Date.now() + '@vroomly.com';
+    const custEmailAddr = 'verify_cust_' + Date.now() + '@redrivo.com';
     const custRes = await fetch(`${API_URL}/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,7 +43,7 @@ async function runTests() {
     // Create test marshal
     const marshalId = 'test_marshal_' + Date.now();
     const marshalPhoneNum = '+91' + Math.floor(6000000000 + Math.random() * 4000000000);
-    const marshalEmailAddr = 'verify_marshal_' + Date.now() + '@vroomly.com';
+    const marshalEmailAddr = 'verify_marshal_' + Date.now() + '@redrivo.com';
     const marshalRes = await fetch(`${API_URL}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
-const db = new sqlite3.Database('vroomly2.sqlite');
+const db = new sqlite3.Database('redrivo2.sqlite');
 
 console.log(`Dumping all records to file...`);
 

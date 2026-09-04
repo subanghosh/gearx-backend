@@ -21,7 +21,7 @@ async function run() {
             'm_1',
             'Test Marshal',
             'marshal',
-            'marshal@gearx.in',
+            'marshal@redrivo.in',
             '+919999999999',
             'active',
             1, // emailVerified

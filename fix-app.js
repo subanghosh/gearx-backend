@@ -110,8 +110,8 @@ async function enterApp() {
         const mainApp = document.getElementById('main-app');
         if (mainApp) mainApp.classList.remove('hidden');`;
 
-let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-marshal-app/app.js', 'utf8');
+let content = fs.readFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-marshal-app/app.js', 'utf8');
 let lines = content.split('\n');
 
 lines.splice(118, 20, ...codeToInsert.split('\n'));
-fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/vroomly-marshal-app/app.js', lines.join('\n'));
+fs.writeFileSync('C:/Users/Suban/OneDrive/Documents/redrivo-marshal-app/app.js', lines.join('\n'));

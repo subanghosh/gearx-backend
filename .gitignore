@@ -35,6 +35,7 @@ firebaseServiceAccountKey.json
 
 # Scratch & Temporary Testing
 scratch/
+strix_runs/
 cloudflared.exe
 *.traineddata
 
