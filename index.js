@@ -111,16 +111,33 @@ async function checkUniqueEntity(phone, options = {}) {
     return null;
 }
 
+// --- DOMAIN-BASED ROUTING HELPERS ---
+function getNormalizedHost(req) {
+    const rawHost = req.headers['x-forwarded-host'] || req.headers.host || req.hostname || '';
+    return rawHost.split(':')[0].toLowerCase().trim();
+}
+
+function isCustomerDomain(req) {
+    const host = getNormalizedHost(req);
+    return host === 'redrivo.in' || host === 'www.redrivo.in';
+}
+
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
-// Global X-Robots-Tag header to prevent indexing across all routes, APIs, and static assets
+// Apply noindex headers ONLY on api.redrivo.in; leave customer domain (redrivo.in) indexable
 app.use((req, res, next) => {
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    if (!isCustomerDomain(req)) {
+        res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    }
     next();
 });
 
 app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
-    res.send('User-agent: *\nDisallow: /');
+    if (isCustomerDomain(req)) {
+        res.send('User-agent: *\nAllow: /\n');
+    } else {
+        res.send('User-agent: *\nDisallow: /\n');
+    }
 });
 
 // --- SECURITY MIDDLEWARE ---
@@ -7532,24 +7549,73 @@ app.get('/uploads/:filename', (req, res) => {
     return res.sendFile(targetPath);
 });
 
+// --- DOMAIN-SPECIFIC PATH ISOLATION (DEFENSE IN DEPTH) ---
+// On customer domain (redrivo.in), do NOT expose administrative portals or internal uploads
+const RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN = [
+    '/admin',
+    '/crm',
+    '/garage',
+    '/redrivo-garage-portal',
+    '/vroomly-garage-portal',
+    '/marshal',
+    '/vroomly-marshal-app',
+    '/vroomly-customer-app',
+    '/uploads'
+];
+
+app.use((req, res, next) => {
+    if (isCustomerDomain(req)) {
+        const p = req.path.toLowerCase();
+        for (const restricted of RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN) {
+            if (p === restricted || p.startsWith(restricted + '/')) {
+                return res.status(404).send('Not Found');
+            }
+        }
+    }
+    next();
+});
+
+// Clean canonical redirect for /customer on redrivo.in to /
+app.use((req, res, next) => {
+    if (isCustomerDomain(req)) {
+        if (req.path === '/customer' || req.path === '/customer/') {
+            return res.redirect(301, '/');
+        }
+        if (req.path.startsWith('/customer/')) {
+            const target = req.path.replace(/^\/customer/, '') || '/';
+            return res.redirect(301, target);
+        }
+    }
+    next();
+});
+
+// Customer Web App Static Serving (at root on customer domain)
+const customerStatic = express.static(path.join(__dirname, 'public/customer'));
+app.use((req, res, next) => {
+    if (isCustomerDomain(req) && !req.path.startsWith('/api')) {
+        return customerStatic(req, res, next);
+    }
+    next();
+});
+
 app.use('/uploads', (req, res) => {
     res.status(401).json({ error: 'Access denied: Invalid or unauthenticated request.' });
 });
 
-// Garage Portal
+// Garage Portal (api.redrivo.in)
 app.use('/garage', express.static(path.join(__dirname, 'public/garage')));
 app.use('/redrivo-garage-portal', express.static(path.join(__dirname, 'public/garage')));
 app.use('/vroomly-garage-portal', express.static(path.join(__dirname, 'public/garage')));
 
-// Customer App
+// Customer App (api.redrivo.in)
 app.use('/customer', express.static(path.join(__dirname, 'public/customer')));
 app.use('/vroomly-customer-app', express.static(path.join(__dirname, 'public/customer')));
 
-// Marshal App
+// Marshal App (api.redrivo.in)
 app.use('/marshal', express.static(path.join(__dirname, 'public/marshal')));
 app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/marshal')));
 
-// CRM (Admin)
+// CRM (Admin) (api.redrivo.in)
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
@@ -7573,7 +7639,12 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-app.get('/', (req, res) => res.redirect('/customer/'));
+app.get('/', (req, res) => {
+    if (isCustomerDomain(req)) {
+        return res.sendFile(path.join(__dirname, 'public/customer/index.html'));
+    }
+    res.redirect('/customer/');
+});
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()) }));
 
 console.log('[STARTUP-3] Starting Express HTTP server on 0.0.0.0:' + PORT + '...');
