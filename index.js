@@ -111,6 +111,18 @@ async function checkUniqueEntity(phone, options = {}) {
     return null;
 }
 
+// --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
+app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send('User-agent: *\nDisallow: /');
+});
+
+// Global X-Robots-Tag header to prevent indexing across all routes, APIs, and static assets
+app.use((req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    next();
+});
+
 // --- SECURITY MIDDLEWARE ---
 app.use(helmet({
     contentSecurityPolicy: false // disabled to allow inline scripts in existing HTML
