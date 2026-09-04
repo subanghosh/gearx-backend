@@ -113,7 +113,14 @@ async function checkUniqueEntity(phone, options = {}) {
 
 // --- DOMAIN-BASED ROUTING HELPERS ---
 function getNormalizedHost(req) {
-    const rawHost = req.headers['x-forwarded-host'] || req.headers.host || req.hostname || '';
+    let rawHost = '';
+    if (req.headers['x-forwarded-host']) {
+        rawHost = req.headers['x-forwarded-host'].split(',')[0].trim();
+    } else if (req.headers.host) {
+        rawHost = req.headers.host;
+    } else if (req.hostname) {
+        rawHost = req.hostname;
+    }
     return rawHost.split(':')[0].toLowerCase().trim();
 }
 
