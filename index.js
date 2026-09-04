@@ -112,15 +112,15 @@ async function checkUniqueEntity(phone, options = {}) {
 }
 
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
-app.get('/robots.txt', (req, res) => {
-    res.type('text/plain');
-    res.send('User-agent: *\nDisallow: /');
-});
-
 // Global X-Robots-Tag header to prevent indexing across all routes, APIs, and static assets
 app.use((req, res, next) => {
     res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     next();
+});
+
+app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send('User-agent: *\nDisallow: /');
 });
 
 // --- SECURITY MIDDLEWARE ---
