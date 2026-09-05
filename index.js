@@ -4169,7 +4169,8 @@ apiRouter.get('/demand/recommended-pincodes', async (req, res) => {
 });
 
 // ── Dual Payout Model (Commission % vs Subscription) ────────────────────────
-apiRouter.get('/payout-rates', authMiddleware, requireRole('admin', 'marshal'), async (req, res) => {
+// Public read endpoint for driver app and portals to consume platform payout & subscription rates
+apiRouter.get('/payout-rates', async (req, res) => {
     try {
         const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
         const rates = ratesRes.rows[0] || {
