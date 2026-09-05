@@ -143,8 +143,15 @@ app.get('/robots.txt', (req, res) => {
     if (isCustomerDomain(req)) {
         res.send('User-agent: *\nAllow: /\n');
     } else {
-        res.send('User-agent: *\nDisallow: /\n');
+        // Temporarily allow crawling so search engines can read the 'X-Robots-Tag: noindex' header and purge api.redrivo.in from the search index
+        res.send('User-agent: *\nAllow: /\n');
     }
+});
+
+// Google Search Console verification for api.redrivo.in
+app.get('/googleb3142194a3b63def.html', (req, res) => {
+    res.type('text/html');
+    res.send('google-site-verification: googleb3142194a3b63def.html');
 });
 
 // --- SECURITY MIDDLEWARE ---
