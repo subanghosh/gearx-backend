@@ -712,6 +712,8 @@ function switchLoginMode(mode) {
             input.placeholder = 'Enter your email address';
             input.maxLength = 100;
         }
+        const chGroup = document.getElementById('marshal-otp-channel-group');
+        if (chGroup) chGroup.style.display = 'none';
     } else {
         if (tabPhone) tabPhone.classList.add('active');
         if (tabEmail) tabEmail.classList.remove('active');
@@ -722,8 +724,44 @@ function switchLoginMode(mode) {
             input.placeholder = 'Enter your 10 Digits Mobile Number';
             input.maxLength = 10;
         }
+        const chGroup = document.getElementById('marshal-otp-channel-group');
+        if (chGroup) chGroup.style.display = 'flex';
     }
 }
+
+let currentMarshalOtpChannel = 'whatsapp';
+
+window.selectMarshalOtpChannel = function(channel) {
+    currentMarshalOtpChannel = channel;
+    const pillWa = document.getElementById('marshal-pill-whatsapp');
+    const pillSms = document.getElementById('marshal-pill-sms');
+    const labelWa = document.getElementById('marshal-label-whatsapp');
+    const labelSms = document.getElementById('marshal-label-sms');
+
+    if (channel === 'whatsapp') {
+        if (pillWa) {
+            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
+            pillWa.style.border = '1.5px solid #25D366';
+            if (labelWa) labelWa.style.color = '#FFFFFF';
+        }
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelSms) labelSms.style.color = '#8B949E';
+        }
+    } else {
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
+            pillSms.style.border = '1.5px solid #FFD700';
+            if (labelSms) labelSms.style.color = '#FFFFFF';
+        }
+        if (pillWa) {
+            pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelWa) labelWa.style.color = '#8B949E';
+        }
+    }
+};
 
 function handleLoginIdInput(input) {
     if (currentLoginMode === 'phone') {
@@ -738,14 +776,14 @@ function validateLoginIdentifier() {
             showToast('Enter a valid 10-digit mobile number.', 'error');
             return null;
         }
-        return { phone: `+91${raw}` };
+        return { phone: `+91${raw}`, role: 'marshal', preferredChannel: currentMarshalOtpChannel || 'whatsapp' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(raw)) {
             showToast('Enter a valid email address.', 'error');
             return null;
         }
-        return { email: raw.toLowerCase() };
+        return { email: raw.toLowerCase(), role: 'marshal' };
     }
 }
 
@@ -5121,7 +5159,7 @@ window.sendPhoneOTP = async function() {
         return;
     }
     try {
-        await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone: phone}) });
+        await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone: phone, role: 'marshal'}) });
         showToast('OTP sent to ' + phone, 'success');
         document.getElementById('phone-otp-boxes-section').style.display = 'flex';
     } catch(err) {
@@ -5136,7 +5174,7 @@ window.sendEmailOTP = async function() {
         return;
     }
     try {
-        await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email: email}) });
+        await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email: email, role: 'marshal'}) });
         showToast('OTP sent to ' + email, 'success');
         document.getElementById('email-otp-boxes-section').style.display = 'flex';
     } catch(err) {
@@ -5244,9 +5282,9 @@ window.toggleEdit = async function(field) {
             document.getElementById(`${field}-otp-boxes-section`).style.display = 'flex';
             // Send OTP
             if (field === 'phone') {
-                await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone: newVal}) });
+                await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone: newVal, role: 'marshal'}) });
             } else if (field === 'email') {
-                await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email: newVal}) });
+                await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email: newVal, role: 'marshal'}) });
             }
             updateStatusDisplay();
         } catch(err) {

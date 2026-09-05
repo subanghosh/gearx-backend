@@ -2119,7 +2119,7 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
             userId = userLookup.rows[0].id;
         }
     }
-    const { field, value } = req.body;
+    const { field, value, preferredChannel = 'whatsapp' } = req.body;
     if (!field || !value) return res.status(400).json({ error: 'Field and value required' });
     if (field !== 'phone' && field !== 'email') return res.status(400).json({ error: 'Invalid field' });
 
@@ -2148,9 +2148,14 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
         );
 
         if (field === 'phone' && value) {
-            sendFast2SmsOtp(value, otp).catch(smsErr => {
-                console.warn('[FAST2SMS] SMS send error:', smsErr.message);
-            });
+            pool.query('SELECT role FROM users WHERE id = $1', [userId])
+                .then(userRes => {
+                    const userRole = userRes.rows[0]?.role || 'customer';
+                    return sendUnifiedOtp(value, otp, userRole, preferredChannel);
+                })
+                .catch(otpErr => {
+                    console.warn('[UNIFIED_OTP] Update OTP send error:', otpErr.message);
+                });
         }
 
         if (field === 'email') {
@@ -2432,7 +2437,7 @@ apiRouter.post('/auth/logout', authMiddleware, async (req, res) => {
     }
 });
 
-// --- FAST2SMS OTP DISPATCH HELPER ---
+// --- FAST2SMS OTP DISPATCH HELPER (SMS) ---
 async function sendFast2SmsOtp(phone, otp) {
     if (!phone || !otp) return;
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
@@ -2460,6 +2465,148 @@ async function sendFast2SmsOtp(phone, otp) {
         console.warn('[FAST2SMS] SMS dispatch failed (non-fatal):', err.message);
     }
 }
+
+// --- FAST2SMS WHATSAPP BUSINESS OTP DISPATCH HELPER ---
+async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
+    if (!phone || !otp) return { success: false, error: 'Phone and OTP are required' };
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    if (cleanPhone.length !== 10) {
+        console.warn('[FAST2SMS_WA] Invalid 10-digit phone number:', phone);
+        return { success: false, error: 'Invalid 10-digit phone number' };
+    }
+
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    if (!apiKey) {
+        console.warn('[FAST2SMS_WA] FAST2SMS_API_KEY is not configured in environment.');
+        return { success: false, error: 'FAST2SMS_API_KEY not configured' };
+    }
+
+    const targetOtpId = otpId || process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
+    const url = 'https://www.fast2sms.com/dev/otp/send';
+    const payload = {
+        otp_id: targetOtpId,
+        mobile: cleanPhone,
+        otp: String(otp),
+        variables_values: String(otp)
+    };
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'authorization': apiKey,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(5000)
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (res.ok && data && (data.return === true || data.status_code === 200)) {
+            console.log(`[FAST2SMS_WA] WhatsApp OTP sent successfully to ${cleanPhone.slice(0, 2)}******${cleanPhone.slice(-2)} | OTP ID: ${targetOtpId} | RequestId:`, data?.request_id || data?.message || 'OK');
+            return { success: true, data };
+        } else {
+            const errMsg = Array.isArray(data?.message) ? data.message.join(', ') : (data?.message || res.statusText || 'Fast2SMS dispatch failed');
+            console.warn(`[FAST2SMS_WA] Dispatch failed HTTP ${res.status}:`, JSON.stringify(data));
+            return { success: false, status: res.status, error: errMsg, details: data };
+        }
+    } catch (err) {
+        console.warn(`[FAST2SMS_WA] Dispatch exception (${err.name}):`, err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+// --- UNIFIED OTP DISPATCH (DYNAMIC FIRST-ATTEMPT & BIDIRECTIONAL FALLBACK) ---
+async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 'whatsapp') {
+    if (!phone || !otp) return;
+    const cleanChannel = String(preferredChannel || 'whatsapp').toLowerCase().trim();
+    const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
+    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || customerOtpId;
+    const otpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
+
+    if (cleanChannel === 'sms') {
+        // Preferred: SMS -> Fallback: WhatsApp
+        console.log(`[UNIFIED_OTP] Preferred channel: SMS. Attempting Fast2SMS SMS dispatch to ${phone}...`);
+        try {
+            const smsResult = await sendFast2SmsOtp(phone, otp);
+            if (smsResult && smsResult.return !== false) {
+                return { channel: 'fast2sms_sms', success: true, data: smsResult };
+            }
+            console.warn(`[UNIFIED_OTP] Primary SMS dispatch returned false. Falling back to WhatsApp (OTP ID: ${otpId})...`);
+        } catch (smsErr) {
+            console.warn(`[UNIFIED_OTP] Primary SMS attempt error: ${smsErr.message}. Falling back to WhatsApp...`);
+        }
+
+        try {
+            const waResult = await sendFast2SmsWhatsAppOtp(phone, otp, otpId);
+            if (waResult && waResult.success) {
+                return { channel: 'fast2sms_whatsapp', success: true, data: waResult.data };
+            }
+            console.error(`[UNIFIED_OTP] WhatsApp fallback also failed (${waResult?.error || 'Unknown error'}).`);
+            return { channel: 'failed', success: false, error: waResult?.error };
+        } catch (waErr) {
+            console.error(`[UNIFIED_OTP] WhatsApp fallback exception:`, waErr.message);
+            return { channel: 'failed', success: false, error: waErr.message };
+        }
+    } else {
+        // Preferred: WhatsApp (default) -> Fallback: SMS
+        console.log(`[UNIFIED_OTP] Preferred channel: WhatsApp. Attempting Fast2SMS WhatsApp dispatch to ${phone} (OTP ID: ${otpId})...`);
+        try {
+            const waResult = await sendFast2SmsWhatsAppOtp(phone, otp, otpId);
+            if (waResult && waResult.success) {
+                return { channel: 'fast2sms_whatsapp', success: true, data: waResult.data };
+            }
+            console.warn(`[UNIFIED_OTP] Primary WhatsApp delivery failed (${waResult?.error || 'Unknown error'}). Falling back to Fast2SMS SMS...`);
+        } catch (waErr) {
+            console.warn(`[UNIFIED_OTP] Primary WhatsApp attempt error: ${waErr.message}. Falling back to Fast2SMS SMS...`);
+        }
+
+        try {
+            const smsResult = await sendFast2SmsOtp(phone, otp);
+            return { channel: 'fast2sms_sms', success: true, data: smsResult };
+        } catch (smsErr) {
+            console.error(`[UNIFIED_OTP] Fast2SMS SMS fallback failed:`, smsErr.message);
+            return { channel: 'failed', success: false, error: smsErr.message };
+        }
+    }
+}
+
+apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
+    const phone = req.query.phone || '9093184965';
+    const otp = req.query.otp || '123456';
+    const role = req.query.role || 'customer';
+    const preferredChannel = req.query.channel || 'whatsapp';
+    const customOtpId = req.query.otp_id || null;
+
+    if (!process.env.FAST2SMS_API_KEY) {
+        return res.json({
+            configured: false,
+            error: 'FAST2SMS_API_KEY is not configured in environment.'
+        });
+    }
+
+    try {
+        const start = Date.now();
+        const result = customOtpId 
+            ? await sendFast2SmsWhatsAppOtp(phone, otp, customOtpId)
+            : await sendUnifiedOtp(phone, otp, role, preferredChannel);
+        res.json({
+            configured: true,
+            targetPhone: phone,
+            role,
+            preferredChannel,
+            customOtpId: customOtpId || process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17',
+            latencyMs: Date.now() - start,
+            result
+        });
+    } catch (err) {
+        res.status(500).json({
+            configured: true,
+            error: err.message
+        });
+    }
+});
 
 apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), async (req, res) => {
     const phone = req.query.phone || '9093184965';
@@ -2626,7 +2773,7 @@ function isTestAccountIdentifier({ email, phone, name } = {}) {
 }
 
 apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
-    const { email, phone, role } = req.body;
+    const { email, phone, role, preferredChannel = 'whatsapp' } = req.body;
     if (!phone && !email)
         return res.status(400).json({ error: 'Phone or email is required' });
 
@@ -2688,8 +2835,8 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         );
 
         if (phone) {
-            sendFast2SmsOtp(phone, otp).catch(smsErr => {
-                console.warn('[FAST2SMS] SMS send error:', smsErr.message);
+            sendUnifiedOtp(phone, otp, role || 'customer', preferredChannel).catch(otpErr => {
+                console.warn('[UNIFIED_OTP] OTP send error:', otpErr.message);
             });
         }
 

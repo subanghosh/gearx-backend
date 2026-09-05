@@ -164,6 +164,19 @@
                             <input type="tel" id="login-id" placeholder="Enter your 10 Digits Mobile Number" maxlength="10" oninput="handleLoginIdInput(this)">
                         </div>
                     </div>
+                    <!-- OTP Channel Selector (WhatsApp / SMS) -->
+                    <div id="marshal-otp-channel-group" style="display: flex; gap: 8px; margin-bottom: 16px;">
+                        <label class="otp-channel-pill active" id="marshal-pill-whatsapp" onclick="selectMarshalOtpChannel('whatsapp')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(37, 211, 102, 0.12); border: 1.5px solid #25D366; border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="marshal_otp_channel" value="whatsapp" checked style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2z"/></svg>
+                            <span id="marshal-label-whatsapp" style="font-size: 0.88rem; font-weight: 700; color: #FFFFFF;">WhatsApp</span>
+                        </label>
+                        <label class="otp-channel-pill" id="marshal-pill-sms" onclick="selectMarshalOtpChannel('sms')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="marshal_otp_channel" value="sms" style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B949E" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <span id="marshal-label-sms" style="font-size: 0.88rem; font-weight: 600; color: #8B949E;">SMS</span>
+                        </label>
+                    </div>
                     <div class="form-group" id="login-otp-group" style="display:none;">
                         <label>Secure OTP</label>
                         <div class="otp-boxes" data-target="login-otp">

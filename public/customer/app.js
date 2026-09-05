@@ -838,6 +838,8 @@ function switchCustomerAuthMode(mode) {
             btn1.disabled = false;
             btn1.innerHTML = 'Send Verification OTP';
         }
+        const chGroup = document.getElementById('cust-otp-channel-group');
+        if (chGroup) chGroup.style.display = 'none';
     } else {
         if (tabPhone) { tabPhone.style.background = '#FFD700'; tabPhone.style.color = '#000000'; tabPhone.classList.add('active'); }
         if (tabEmail) { tabEmail.style.background = 'transparent'; tabEmail.style.color = '#8B949E'; tabEmail.classList.remove('active'); }
@@ -849,8 +851,44 @@ function switchCustomerAuthMode(mode) {
             input.maxLength = 10;
         }
         if (btn1) btn1.style.display = 'none';
+        const chGroup = document.getElementById('cust-otp-channel-group');
+        if (chGroup) chGroup.style.display = 'flex';
     }
 }
+
+let currentCustomerOtpChannel = 'whatsapp';
+
+window.selectCustomerOtpChannel = function(channel) {
+    currentCustomerOtpChannel = channel;
+    const pillWa = document.getElementById('cust-pill-whatsapp');
+    const pillSms = document.getElementById('cust-pill-sms');
+    const labelWa = document.getElementById('cust-label-whatsapp');
+    const labelSms = document.getElementById('cust-label-sms');
+
+    if (channel === 'whatsapp') {
+        if (pillWa) {
+            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
+            pillWa.style.border = '1.5px solid #25D366';
+            if (labelWa) labelWa.style.color = '#FFFFFF';
+        }
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelSms) labelSms.style.color = '#8B949E';
+        }
+    } else {
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
+            pillSms.style.border = '1.5px solid #FFD700';
+            if (labelSms) labelSms.style.color = '#FFFFFF';
+        }
+        if (pillWa) {
+            pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelWa) labelWa.style.color = '#8B949E';
+        }
+    }
+};
 
 function getCustomerAuthIdentifier() {
     const input = document.getElementById('su-phone');
@@ -860,7 +898,7 @@ function getCustomerAuthIdentifier() {
             showToast('Please enter a valid 10-digit phone number.', 'error');
             return null;
         }
-        return { phone: raw, countryCode: '+91' };
+        return { phone: raw, countryCode: '+91', preferredChannel: currentCustomerOtpChannel || 'whatsapp' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!raw || !emailRegex.test(raw)) {
