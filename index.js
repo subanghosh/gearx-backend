@@ -129,8 +129,13 @@ function isCustomerDomain(req) {
     return host === 'redrivo.in' || host === 'www.redrivo.in';
 }
 
+function isGarageDomain(req) {
+    const host = getNormalizedHost(req);
+    return host === 'garage.redrivo.in' || host === 'www.garage.redrivo.in';
+}
+
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
-// Apply noindex headers ONLY on api.redrivo.in; leave customer domain (redrivo.in) indexable
+// Apply noindex headers on non-customer domains (api.redrivo.in & garage.redrivo.in); leave customer domain (redrivo.in) indexable
 app.use((req, res, next) => {
     if (!isCustomerDomain(req)) {
         res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -142,6 +147,8 @@ app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     if (isCustomerDomain(req)) {
         res.send('User-agent: *\nAllow: /\n');
+    } else if (isGarageDomain(req)) {
+        res.send('User-agent: *\nDisallow: /\n');
     } else {
         // Temporarily allow crawling so search engines can read the 'X-Robots-Tag: noindex' header and purge api.redrivo.in from the search index
         res.send('User-agent: *\nAllow: /\n');
@@ -164,6 +171,8 @@ const allowedOrigins = [
     'https://www.redrivo.com',
     'https://redrivo.in',
     'https://www.redrivo.in',
+    'https://garage.redrivo.in',
+    'https://www.garage.redrivo.in',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:5500',
@@ -7654,6 +7663,17 @@ const RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN = [
     '/uploads'
 ];
 
+// On garage domain (garage.redrivo.in), only expose garage portal and APIs
+const RESTRICTED_PORTALS_ON_GARAGE_DOMAIN = [
+    '/admin',
+    '/crm',
+    '/customer',
+    '/vroomly-customer-app',
+    '/marshal',
+    '/vroomly-marshal-app',
+    '/uploads'
+];
+
 app.use((req, res, next) => {
     if (isCustomerDomain(req)) {
         const p = req.path.toLowerCase();
@@ -7663,10 +7683,19 @@ app.use((req, res, next) => {
             }
         }
     }
+    if (isGarageDomain(req)) {
+        const p = req.path.toLowerCase();
+        for (const restricted of RESTRICTED_PORTALS_ON_GARAGE_DOMAIN) {
+            if (p === restricted || p.startsWith(restricted + '/')) {
+                return res.status(404).send('Not Found');
+            }
+        }
+    }
     next();
 });
 
 // Clean canonical redirect for /customer on redrivo.in to /
+// Clean canonical redirect for /garage on garage.redrivo.in to /
 app.use((req, res, next) => {
     if (isCustomerDomain(req)) {
         if (req.path === '/customer' || req.path === '/customer/') {
@@ -7677,14 +7706,31 @@ app.use((req, res, next) => {
             return res.redirect(301, target);
         }
     }
+    if (isGarageDomain(req)) {
+        if (req.path === '/garage' || req.path === '/garage/' || 
+            req.path === '/redrivo-garage-portal' || req.path === '/redrivo-garage-portal/' ||
+            req.path === '/vroomly-garage-portal' || req.path === '/vroomly-garage-portal/') {
+            return res.redirect(301, '/');
+        }
+        if (req.path.startsWith('/garage/')) {
+            const target = req.path.replace(/^\/garage/, '') || '/';
+            return res.redirect(301, target);
+        }
+    }
     next();
 });
 
 // Customer Web App Static Serving (at root on customer domain)
 const customerStatic = express.static(path.join(__dirname, 'public/customer'));
+// Garage Partner Portal Static Serving (at root on garage domain)
+const garageStatic = express.static(path.join(__dirname, 'public/garage'));
+
 app.use((req, res, next) => {
     if (isCustomerDomain(req) && !req.path.startsWith('/api')) {
         return customerStatic(req, res, next);
+    }
+    if (isGarageDomain(req) && !req.path.startsWith('/api')) {
+        return garageStatic(req, res, next);
     }
     next();
 });
@@ -7733,6 +7779,9 @@ app.use((err, req, res, next) => {
 app.get('/', (req, res) => {
     if (isCustomerDomain(req)) {
         return res.sendFile(path.join(__dirname, 'public/customer/index.html'));
+    }
+    if (isGarageDomain(req)) {
+        return res.sendFile(path.join(__dirname, 'public/garage/index.html'));
     }
     res.redirect('/customer/');
 });
