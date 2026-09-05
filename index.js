@@ -552,7 +552,14 @@ function initializeDatabase() {
             "ALTER TABLE users ADD COLUMN dob TEXT",
             "ALTER TABLE users ADD COLUMN gender TEXT",
             "ALTER TABLE garage_workers ADD COLUMN dob TEXT",
-            "ALTER TABLE garage_workers ADD COLUMN gender TEXT"
+            "ALTER TABLE garage_workers ADD COLUMN gender TEXT",
+            "ALTER TABLE users ADD COLUMN payout_model TEXT DEFAULT 'commission'",
+            "ALTER TABLE users ADD COLUMN subscription_cycle TEXT",
+            "ALTER TABLE users ADD COLUMN subscription_valid_until TEXT",
+            "ALTER TABLE users ADD COLUMN pending_payout_model TEXT",
+            "ALTER TABLE users ADD COLUMN pending_subscription_cycle TEXT",
+            "ALTER TABLE users ADD COLUMN pending_effective_date TEXT",
+            "ALTER TABLE users ADD COLUMN payout_model_last_switched_at TEXT"
         ].forEach(sql => db.run(sql, (err) => {}));
 
         // Garages Table
@@ -982,9 +989,18 @@ async function ensureKycColumns() {
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_types TEXT DEFAULT \'bike\'').catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_model VARCHAR(32) DEFAULT 'commission'").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_cycle VARCHAR(32)").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_valid_until TIMESTAMPTZ").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_payout_model VARCHAR(32)").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_subscription_cycle VARCHAR(32)").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_effective_date DATE").catch(() => {});
+        await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS payout_model_last_switched_at TIMESTAMPTZ").catch(() => {});
+
         await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
         await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
         await pool.query('ALTER TABLE garage_workers ADD COLUMN IF NOT EXISTS vehicle_types TEXT DEFAULT \'bike\'').catch(() => {});
+
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS serviceCenterType TEXT DEFAULT \'local\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedCarBrands TEXT DEFAULT \'\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedBikeBrands TEXT DEFAULT \'\'').catch(() => {});
@@ -1025,10 +1041,51 @@ async function ensureKycColumns() {
         `).catch(e => console.warn('investor/garage tables ensure failed:', e.message));
 
         console.log('Postgres columns, investor, and garage application tables ensured.');
+        await syncExpiredSubscriptions();
     } catch(e) {
         console.warn('Postgres columns ensure failed:', e.message);
     }
 }
+
+// ============================================================
+// SUBSCRIPTION EXPIRATION & PAYOUT MODEL SYNC WORKER
+// ============================================================
+async function syncExpiredSubscriptions() {
+    try {
+        const updateUsersRes = await pool.query(`
+            UPDATE users 
+            SET payout_model = 'commission',
+                pending_payout_model = NULL,
+                pending_subscription_cycle = NULL,
+                pending_effective_date = NULL
+            WHERE payout_model = 'subscription' 
+              AND (subscription_valid_until IS NULL OR subscription_valid_until < NOW())
+            RETURNING id, name, phone, subscription_valid_until;
+        `);
+
+        if (updateUsersRes.rows && updateUsersRes.rows.length > 0) {
+            const driverIds = updateUsersRes.rows.map(r => r.id);
+            console.log(`[SUBSCRIPTION_SYNC] Reset ${driverIds.length} expired driver subscription(s) to commission: ${driverIds.join(', ')}`);
+
+            driverIds.forEach(driverId => {
+                db.run(`
+                    UPDATE users 
+                    SET payout_model = 'commission',
+                        pending_payout_model = NULL,
+                        pending_subscription_cycle = NULL,
+                        pending_effective_date = NULL
+                    WHERE id = ?
+                `, [driverId], () => {});
+            });
+        }
+    } catch (err) {
+        console.error('[SUBSCRIPTION_SYNC_ERROR]', err.message);
+    }
+}
+
+// Background sync interval (every 5 minutes)
+setInterval(syncExpiredSubscriptions, 5 * 60 * 1000);
+
 ensureKycColumns();
 
 async function notifyMarshalsFCM(title, body, payloadData = {}) {
@@ -1483,6 +1540,7 @@ apiRouter.post('/users', authMiddleware, requireRole('admin'), async (req, res) 
 
 apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
+        await syncExpiredSubscriptions();
         const result = await pool.query(`
             SELECT id, name, role, email, phone, garageId as "garageId", garageid,
                    status, emailVerified as "emailVerified", emailverified,
@@ -1496,7 +1554,14 @@ apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) =
                    profilePictureUrl as "profilePictureUrl", profilepictureurl,
                    dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason,
                    pannumber, aadhaarnumber, dlnumber, vehicle_types,
-                   bankname, bankaccountname, bankaccountnumber, bankifsc
+                   bankname, bankaccountname, bankaccountnumber, bankifsc,
+                   payout_model as "payoutModel", payout_model,
+                   subscription_cycle as "subscriptionCycle", subscription_cycle,
+                   subscription_valid_until as "subscriptionValidUntil", subscription_valid_until,
+                   pending_payout_model as "pendingPayoutModel", pending_payout_model,
+                   pending_subscription_cycle as "pendingSubscriptionCycle", pending_subscription_cycle,
+                   pending_effective_date as "pendingEffectiveDate", pending_effective_date,
+                   payout_model_last_switched_at as "payoutModelLastSwitchedAt", payout_model_last_switched_at
             FROM users
         `);
         res.json((result.rows || []).map(signUserKycUrls));
@@ -1651,6 +1716,7 @@ apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: 'Forbidden: You can only access your own profile.' });
     }
     try {
+        await syncExpiredSubscriptions();
         const userRes = await pool.query(`
             SELECT id, name, role, email, phone, garageId as "garageId", garageid,
                    status, emailVerified as "emailVerified", emailverified,
@@ -1666,7 +1732,14 @@ apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
                    dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason,
                    pannumber, aadhaarnumber, dlnumber, vehicle_types,
                    bankname, bankaccountname, bankaccountnumber, bankifsc,
-                   panurl, panbackurl, aadhaarurl, aadhaarbackurl, dlurl, dlbackurl, facephotourl
+                   panurl, panbackurl, aadhaarurl, aadhaarbackurl, dlurl, dlbackurl, facephotourl,
+                   payout_model as "payoutModel", payout_model,
+                   subscription_cycle as "subscriptionCycle", subscription_cycle,
+                   subscription_valid_until as "subscriptionValidUntil", subscription_valid_until,
+                   pending_payout_model as "pendingPayoutModel", pending_payout_model,
+                   pending_subscription_cycle as "pendingSubscriptionCycle", pending_subscription_cycle,
+                   pending_effective_date as "pendingEffectiveDate", pending_effective_date,
+                   payout_model_last_switched_at as "payoutModelLastSwitchedAt", payout_model_last_switched_at
             FROM users WHERE id = $1
         `, [id]);
         if (userRes.rows.length === 0) {
@@ -4295,6 +4368,8 @@ apiRouter.put('/workers/:id/payout-plan', async (req, res) => {
             return res.status(400).json({ error: 'Invalid subscription cycle requested.' });
         }
 
+        await syncExpiredSubscriptions();
+
         // Fetch driver current plan & last switched date
         const userRes = await pool.query(
             "SELECT payout_model, subscription_cycle, subscription_valid_until, payout_model_last_switched_at FROM users WHERE id = $1",
@@ -4665,6 +4740,7 @@ apiRouter.post('/webhooks/razorpay', async (req, res) => {
 // 4. CRM Subscription Ledger
 apiRouter.get('/crm/driver-subscriptions', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
+        await syncExpiredSubscriptions();
         const { status, cycle, driverId } = req.query;
         let query = `
             SELECT sp.*, u.name as driver_name, u.phone as driver_phone, u.payout_model as current_payout_model
