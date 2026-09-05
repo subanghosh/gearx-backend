@@ -1150,6 +1150,39 @@ apiRouter.get('/admin/system/env-keys', authMiddleware, requireRole('admin'), (r
     });
 });
 
+apiRouter.post('/admin/system/upload-apk', authMiddleware, requireRole('admin'), (req, res, next) => {
+    apkUpload.single('apk')(req, res, (err) => {
+        if (err) {
+            console.error('[APK_UPLOAD] Multer error:', err.message);
+            return res.status(400).json({ error: err.message });
+        }
+        next();
+    });
+}, async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No APK file provided in multipart "apk" field.' });
+    }
+
+    try {
+        const savedPath = req.file.path;
+        const stats = fs.statSync(savedPath);
+
+        console.log(`[APK_UPLOAD] Admin (${req.user?.email || req.user?.id}) published APK: ${req.file.filename} (${stats.size} bytes) -> ${savedPath}`);
+
+        res.json({
+            success: true,
+            filename: req.file.filename,
+            sizeBytes: stats.size,
+            sizeMB: (stats.size / (1024 * 1024)).toFixed(2) + ' MB',
+            downloadUrl: `https://api.redrivo.in/downloads/${req.file.filename}`,
+            uploadedAt: new Date().toISOString()
+        });
+    } catch (err) {
+        console.error('[APK_UPLOAD] Error saving APK:', err);
+        res.status(500).json({ error: 'Failed to process APK upload: ' + err.message });
+    }
+});
+
 apiRouter.get('/health', (req, res) => {
     res.json({ status: 'active', message: 'Backend is running correctly' });
 });
@@ -3662,6 +3695,15 @@ try {
     activeUploadsDir = require('os').tmpdir();
 }
 
+let activeDownloadsDir = path.join(activeUploadsDir, 'downloads');
+try {
+    if (!fs.existsSync(activeDownloadsDir)) {
+        fs.mkdirSync(activeDownloadsDir, { recursive: true });
+    }
+} catch (err) {
+    console.warn('[STARTUP-2] Failed to create downloads directory on volume:', err.message);
+}
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, activeUploadsDir);
@@ -3682,6 +3724,39 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE } });
+
+// --- DEDICATED APK UPLOAD MULTER CONFIG (150MB LIMIT) ---
+const apkStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        if (!fs.existsSync(activeDownloadsDir)) {
+            fs.mkdirSync(activeDownloadsDir, { recursive: true });
+        }
+        cb(null, activeDownloadsDir);
+    },
+    filename: (req, file, cb) => {
+        let targetName = req.query.target || req.body.target || file.originalname;
+        targetName = path.basename(targetName).toLowerCase();
+        if (targetName === 'driver' || targetName === 'driver.apk') targetName = 'redrivo-driver.apk';
+        if (targetName === 'customer' || targetName === 'customer.apk') targetName = 'redrivo-customer.apk';
+        if (targetName === 'marshal' || targetName === 'marshal.apk') targetName = 'redrivo-driver.apk';
+        if (!targetName.endsWith('.apk')) targetName += '.apk';
+        cb(null, targetName);
+    }
+});
+
+const apkUpload = multer({
+    storage: apkStorage,
+    limits: { fileSize: 150 * 1024 * 1024 }, // 150MB limit
+    fileFilter: (req, file, cb) => {
+        if (file.originalname.toLowerCase().endsWith('.apk') || 
+            file.mimetype === 'application/vnd.android.package-archive' || 
+            file.mimetype === 'application/octet-stream') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only .apk files are allowed.'));
+        }
+    }
+});
 
 function checkMagicBytes(buffer, mimetype) {
     if (!buffer || buffer.length < 4) return false;
@@ -7903,7 +7978,36 @@ app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/mars
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
-// Public Downloads (APKs & App Distribution)
+// Public Downloads with Persistent Volume Priority (APKs & App Distribution)
+app.get('/downloads/:filename', (req, res) => {
+    const rawFilename = req.params.filename;
+    const safeFilename = path.basename(rawFilename); // Prevent path traversal
+    
+    // 1. Check persistent volume downloads first (/app/uploads/downloads/<filename>)
+    const volumePath = path.join(activeDownloadsDir, safeFilename);
+    // 2. Fallback to repository static directory for local development
+    const repoPath = path.join(__dirname, 'public/downloads', safeFilename);
+
+    let targetPath = null;
+    if (fs.existsSync(volumePath)) {
+        targetPath = volumePath;
+    } else if (fs.existsSync(repoPath)) {
+        targetPath = repoPath;
+    }
+
+    if (!targetPath) {
+        return res.status(404).json({ error: 'Download not found' });
+    }
+
+    if (safeFilename.endsWith('.apk')) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+        res.setHeader('Cache-Control', 'public, max-age=14400, must-revalidate');
+    }
+
+    res.sendFile(targetPath);
+});
+
 app.use('/downloads', express.static(path.join(__dirname, 'public/downloads'), {
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.apk')) {
