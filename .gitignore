@@ -73,3 +73,7 @@ migrate_*.js
 *.json
 !package.json
 !package-lock.json
+
+# APK binaries (distributed via Railway persistent volume / Cloudflare Pages)
+*.apk
+public/downloads/*.apk

@@ -27,7 +27,17 @@ async function publish() {
     console.log(`Modified:         ${stats.mtime.toLocaleString()}`);
     console.log(`======================================================\n`);
 
-    const token = process.argv[3] || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzcl9hZG1fMTc4ODA2OTAyMzE1OCIsInJvbGUiOiJhZG1pbiIsImdhcmFnZUlkIjpudWxsLCJ0b2tlblZlcnNpb24iOjEsImlhdCI6MTc4ODYyMzczOSwiZXhwIjoxNzg4NzEwMTM5fQ.hQAnG1ryQGwMZbDbiSV4XgvW50b3PqI_hykpzMwrgYI';
+    let token = process.argv[3];
+    if (!token && process.env.JWT_SECRET) {
+        token = jwt.sign(
+            { id: 'usr_adm_1788069023158', role: 'admin', garageId: null, tokenVersion: 1 },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+    }
+    if (!token) {
+        token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzcl9hZG1fMTc4ODA2OTAyMzE1OCIsInJvbGUiOiJhZG1pbiIsImdhcmFnZUlkIjpudWxsLCJ0b2tlblZlcnNpb24iOjEsImlhdCI6MTc4ODYyMzczOSwiZXhwIjoxNzg4NzEwMTM5fQ.hQAnG1ryQGwMZbDbiSV4XgvW50b3PqI_hykpzMwrgYI';
+    }
 
     console.log('Uploading APK via POST /api/admin/system/upload-apk...');
     const startTime = Date.now();
