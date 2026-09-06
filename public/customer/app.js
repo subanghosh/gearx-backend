@@ -689,6 +689,8 @@ function forceLogout(message, silent = false) {
 
     // Toggle main app state immediately to the auth screen
     if (appCont) appCont.classList.add('hidden');
+    const profCont = document.getElementById('complete-profile-container');
+    if (profCont) profCont.classList.add('hidden');
     const loginCont = document.getElementById('login-container');
     if (loginCont) loginCont.classList.remove('hidden');
 
@@ -1072,6 +1074,13 @@ async function handleSignupStep2() {
         }
         document.getElementById('btn-signup-step2').style.display = 'none';
 
+        // Check Profile Completion Gate
+        const profileStatus = checkProfileCompletionStatus(currentUser);
+        if (!profileStatus.isComplete) {
+            openCompleteProfilePage(profileStatus);
+            return;
+        }
+
         // Redirect to Dashboard
         document.getElementById('display-name').textContent = currentUser.name;
         document.getElementById('login-container').classList.add('hidden');
@@ -1160,6 +1169,13 @@ async function handleGoogleSignIn() {
 
         showToast(`Welcome back, ${data.user.name || 'Customer'}!`, 'success');
 
+        // Check Profile Completion Gate
+        const profileStatus = checkProfileCompletionStatus(currentUser);
+        if (!profileStatus.isComplete) {
+            openCompleteProfilePage(profileStatus);
+            return;
+        }
+
         // Redirect to Dashboard
         document.getElementById('display-name').textContent = currentUser.name;
         document.getElementById('login-container').classList.add('hidden');
@@ -1217,6 +1233,300 @@ async function handleGoogleSignIn() {
     }
 }
 
+// ============================================================================
+// COMPLETE PROFILE CONTROLLER (MANDATORY PROFILE ONBOARDING GATE)
+// ============================================================================
+let currentProfileOtpChannel = 'whatsapp';
+let profileOtpCooldownSeconds = 0;
+let profileOtpCooldownInterval = null;
+let profilePhoneSent = '';
+
+function checkProfileCompletionStatus(user) {
+    if (!user) return { isComplete: false, needsName: true, needsPhone: false };
+    const rawName = user.name ? String(user.name).trim() : '';
+    const lowerName = rawName.toLowerCase();
+    const needsName = (!rawName || lowerName === 'new customer' || lowerName === 'customer');
+
+    const rawPhone = user.phone ? String(user.phone).trim() : '';
+    const isPhoneVerified = (user.phoneVerified === 1 || user.phoneverified === 1);
+    const needsPhone = (!rawPhone || !isPhoneVerified);
+
+    return {
+        isComplete: !needsName && !needsPhone,
+        needsName: needsName,
+        needsPhone: needsPhone
+    };
+}
+
+function selectProfileOtpChannel(channel) {
+    currentProfileOtpChannel = channel;
+    const pillWa = document.getElementById('profile-pill-whatsapp');
+    const pillSms = document.getElementById('profile-pill-sms');
+    const labelWa = document.getElementById('profile-label-whatsapp');
+    const labelSms = document.getElementById('profile-label-sms');
+
+    if (channel === 'whatsapp') {
+        if (pillWa) {
+            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
+            pillWa.style.border = '1.5px solid #25D366';
+            if (labelWa) labelWa.style.color = '#FFFFFF';
+        }
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelSms) labelSms.style.color = '#8B949E';
+        }
+    } else {
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
+            pillSms.style.border = '1.5px solid #FFD700';
+            if (labelSms) labelSms.style.color = '#FFFFFF';
+        }
+        if (pillWa) {
+            pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelWa) labelWa.style.color = '#8B949E';
+        }
+    }
+}
+
+function openCompleteProfilePage(status) {
+    const loginCont = document.getElementById('login-container');
+    const appCont = document.getElementById('app-container');
+    const profCont = document.getElementById('complete-profile-container');
+    const splash = document.getElementById('splash-screen');
+
+    if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => splash.style.display = 'none', 500);
+    }
+    if (loginCont) loginCont.classList.add('hidden');
+    if (appCont) appCont.classList.add('hidden');
+    if (profCont) profCont.classList.remove('hidden');
+
+    const phoneGroup = document.getElementById('profile-phone-group');
+    const nameInput = document.getElementById('profile-input-name');
+    const phoneInput = document.getElementById('profile-input-phone');
+    const titleEl = document.getElementById('complete-profile-title');
+    const subtitleEl = document.getElementById('complete-profile-subtitle');
+
+    // Pre-populate name if user already has one (e.g. from Google displayName) or leave blank
+    if (currentUser && currentUser.name && currentUser.name.toLowerCase() !== 'new customer' && currentUser.name.toLowerCase() !== 'customer') {
+        if (nameInput) nameInput.value = currentUser.name;
+    } else {
+        if (nameInput) nameInput.value = '';
+    }
+
+    if (status.needsPhone) {
+        if (phoneGroup) phoneGroup.style.display = 'block';
+        if (titleEl) titleEl.textContent = 'Complete Your Profile';
+        if (subtitleEl) subtitleEl.textContent = 'Please link a verified mobile number and your name to continue';
+        if (phoneInput && currentUser && currentUser.phone) {
+            phoneInput.value = currentUser.phone.replace('+91', '');
+        }
+    } else {
+        if (phoneGroup) phoneGroup.style.display = 'none';
+        if (titleEl) titleEl.textContent = 'What is your name?';
+        if (subtitleEl) subtitleEl.textContent = 'Please enter your full name to personalize your ReDrivo experience';
+    }
+
+    if (nameInput && !status.needsPhone) {
+        setTimeout(() => nameInput.focus(), 200);
+    } else if (phoneInput && status.needsPhone) {
+        setTimeout(() => phoneInput.focus(), 200);
+    }
+}
+
+async function handleProfileSendPhoneOtp() {
+    if (profileOtpCooldownSeconds > 0) {
+        showToast(`Please wait ${profileOtpCooldownSeconds}s before requesting a new OTP.`, 'error');
+        return;
+    }
+
+    const phoneInput = document.getElementById('profile-input-phone');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    if (!phone || !/^\d{10}$/.test(phone)) {
+        showToast('Please enter a valid 10-digit mobile number.', 'error');
+        return;
+    }
+
+    if (!currentUser || !currentUser.id) {
+        showToast('Session error. Please log in again.', 'error');
+        confirmLogout();
+        return;
+    }
+
+    const btn = document.getElementById('btn-profile-send-otp');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'Sending OTP...';
+    }
+
+    try {
+        const userId = currentUser.id.replace('_user', '');
+        const token = localStorage.getItem('redrivo_token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_URL}/users/${userId}/send-update-otp`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                field: 'phone',
+                value: '+91' + phone,
+                preferredChannel: currentProfileOtpChannel || 'whatsapp'
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to send verification OTP');
+
+        profilePhoneSent = '+91' + phone;
+        document.getElementById('profile-otp-area').style.display = 'block';
+        if (btn) btn.innerHTML = 'Resend OTP';
+
+        startProfileOtpCooldown();
+        showToast(currentProfileOtpChannel === 'sms' ? 'OTP sent via SMS!' : 'OTP sent via WhatsApp!', 'success');
+        if (data.otp) {
+            console.log('DEV UPDATE OTP:', data.otp);
+            if (window.fillOtpBoxes) fillOtpBoxes('profile-otp', data.otp);
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            if (!profilePhoneSent) btn.innerHTML = 'Send Verification OTP';
+        }
+    }
+}
+
+function handleProfileResendPhoneOtp() {
+    handleProfileSendPhoneOtp();
+}
+
+function startProfileOtpCooldown() {
+    profileOtpCooldownSeconds = 60;
+    const resendLink = document.getElementById('profile-resend-otp-link');
+    if (resendLink) {
+        resendLink.style.pointerEvents = 'none';
+        resendLink.style.opacity = '0.5';
+    }
+    if (profileOtpCooldownInterval) clearInterval(profileOtpCooldownInterval);
+    profileOtpCooldownInterval = setInterval(() => {
+        profileOtpCooldownSeconds--;
+        if (resendLink) {
+            if (profileOtpCooldownSeconds > 0) {
+                resendLink.textContent = `Resend OTP (${profileOtpCooldownSeconds}s)`;
+            } else {
+                resendLink.textContent = 'Resend OTP';
+                resendLink.style.pointerEvents = 'auto';
+                resendLink.style.opacity = '1';
+                clearInterval(profileOtpCooldownInterval);
+            }
+        }
+    }, 1000);
+}
+
+async function submitCompleteProfile() {
+    const nameInput = document.getElementById('profile-input-name');
+    const name = nameInput ? nameInput.value.trim() : '';
+
+    if (!name || name.length < 2) {
+        showToast('Please enter your full name (at least 2 characters).', 'error');
+        if (nameInput) nameInput.focus();
+        return;
+    }
+
+    if (!currentUser || !currentUser.id) {
+        showToast('Session error. Please log in again.', 'error');
+        confirmLogout();
+        return;
+    }
+
+    const userId = currentUser.id.replace('_user', '');
+    const token = localStorage.getItem('redrivo_token');
+    const status = checkProfileCompletionStatus(currentUser);
+
+    const submitBtn = document.getElementById('btn-submit-profile');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Saving Profile...';
+    }
+
+    try {
+        // Step A: If phone verification is required, verify OTP first
+        if (status.needsPhone) {
+            const otpInput = document.getElementById('profile-otp');
+            const otp = otpInput ? otpInput.value.trim() : '';
+            if (!otp || otp.length !== 6) {
+                throw new Error('Please enter the 6-digit OTP sent to your phone.');
+            }
+            if (!profilePhoneSent) {
+                throw new Error('Please tap "Send Verification OTP" first.');
+            }
+
+            const verifyHeaders = { 'Content-Type': 'application/json' };
+            if (token) verifyHeaders['Authorization'] = `Bearer ${token}`;
+
+            const verifyRes = await fetch(`${API_URL}/users/${userId}/verify-update-otp`, {
+                method: 'POST',
+                headers: verifyHeaders,
+                body: JSON.stringify({
+                    field: 'phone',
+                    value: profilePhoneSent,
+                    otp: otp
+                })
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok) throw new Error(verifyData.error || 'Phone verification failed.');
+
+            currentUser.phone = profilePhoneSent;
+            currentUser.phoneVerified = 1;
+            currentUser.phoneverified = 1;
+        }
+
+        // Step B: Update Full Name via PATCH /users/:id
+        const patchRes = await fetch(`${API_URL}/users/${userId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ name: name })
+        });
+        const patchData = await patchRes.json();
+        if (!patchRes.ok) throw new Error(patchData.error || 'Failed to update profile name.');
+
+        // Step C: Update local session state
+        currentUser.name = name;
+        localStorage.setItem('redrivo_current_user', JSON.stringify(currentUser));
+
+        showToast('Profile completed successfully!', 'success');
+
+        // Step D: Transition to Main Dashboard
+        const profCont = document.getElementById('complete-profile-container');
+        const appCont = document.getElementById('app-container');
+        if (profCont) profCont.classList.add('hidden');
+        if (appCont) appCont.classList.remove('hidden');
+
+        const dispName = document.getElementById('display-name');
+        if (dispName) dispName.textContent = currentUser.name;
+        const hdrName = document.getElementById('header-user-name');
+        if (hdrName) hdrName.textContent = currentUser.name;
+
+        updateUserAvatar();
+        loadDashboard();
+        loadCategories();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Complete & Continue';
+        }
+    }
+}
+
 function logout() {
     document.getElementById('logout-modal').style.display = 'flex';
 }
@@ -1252,6 +1562,26 @@ async function confirmLogout() {
         btn1.disabled = false;
     }
     document.getElementById('btn-signup-step2').style.display = 'none';
+
+    // Reset Complete Profile modal / screen state
+    const profCont = document.getElementById('complete-profile-container');
+    if (profCont) profCont.classList.add('hidden');
+    const pName = document.getElementById('profile-input-name');
+    if (pName) pName.value = '';
+    const pPhone = document.getElementById('profile-input-phone');
+    if (pPhone) pPhone.value = '';
+    const pOtpArea = document.getElementById('profile-otp-area');
+    if (pOtpArea) pOtpArea.style.display = 'none';
+    if (window.clearOtpBoxes) clearOtpBoxes('profile-otp'); else {
+        const pOtp = document.getElementById('profile-otp');
+        if (pOtp) pOtp.value = '';
+    }
+    profilePhoneSent = '';
+    if (profileOtpCooldownInterval) {
+        clearInterval(profileOtpCooldownInterval);
+        profileOtpCooldownInterval = null;
+        profileOtpCooldownSeconds = 0;
+    }
 
     // Toggle main app state immediately to the auth screen
     document.getElementById('app-container').classList.add('hidden');
@@ -5963,8 +6293,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedUser) {
         currentUser = JSON.parse(savedUser);
         // Correcting ID mapping if necessary
-        if (currentUser.id.includes('_user')) {
+        if (currentUser.id && currentUser.id.includes('_user')) {
             currentUser.id = currentUser.id.replace('_user', '');
+        }
+
+        // Check Profile Completion Gate
+        const profileStatus = checkProfileCompletionStatus(currentUser);
+        if (!profileStatus.isComplete) {
+            openCompleteProfilePage(profileStatus);
+            return;
         }
         
         document.getElementById('display-name').textContent = currentUser.name;

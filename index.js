@@ -3024,7 +3024,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                     ON CONFLICT (id) DO UPDATE SET
                         phone = COALESCE(EXCLUDED.phone, customers.phone),
                         email = COALESCE(EXCLUDED.email, customers.email)
-                `, [cleanCustId, user.name || 'New Customer', user.phone || finalPhone, user.email || finalEmail]).catch(() => {});
+                `, [cleanCustId, user.name || null, user.phone || finalPhone, user.email || finalEmail]).catch(() => {});
             }
             return await buildResponse({ 
                 id: user.id, 
@@ -3132,23 +3132,23 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 email: finalEmail
             }, true);
         } else {
-            // Default: customer
+            // Default: customer (name is left NULL until user completes profile)
             const newUserId = 'cust_' + Date.now();
             await pool.query(
-                `INSERT INTO users (id, name, role, phone, email, status) VALUES ($1, 'New Customer', 'customer', $2, $3, 'active')`,
+                `INSERT INTO users (id, name, role, phone, email, status) VALUES ($1, NULL, 'customer', $2, $3, 'active')`,
                 [newUserId, finalPhone, finalEmail]
             );
             await pool.query(
-                `INSERT INTO customers (id, name, phone, email, status) VALUES ($1, 'New Customer', $2, $3, 'active')`,
+                `INSERT INTO customers (id, name, phone, email, status) VALUES ($1, NULL, $2, $3, 'active')`,
                 [newUserId, finalPhone, finalEmail]
             );
             return await buildResponse({ 
                 id: newUserId, 
-                name: 'New Customer', 
+                name: null, 
                 role: 'customer', 
                 garageId: null, 
-                status: 'active',
-                phone: finalPhone,
+                status: 'active', 
+                phone: finalPhone, 
                 email: finalEmail
             }, true);
         }

@@ -186,6 +186,82 @@
         </div>
     </div>
 
+    <!-- Dedicated Fullscreen Complete Profile Page (Fresh page, not a modal) -->
+    <div id="complete-profile-container" class="auth-container hidden" style="position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; background: #0B0E14; display: flex; width: 100vw; height: 100vh; height: 100dvh; z-index: 9999;">
+        <!-- Premium Background Elements -->
+        <div style="position: absolute; top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(255, 215, 0, 0.05) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+        <div style="position: absolute; bottom: -10%; right: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(255, 215, 0, 0.03) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+
+        <div class="auth-card fade-in" style="z-index: 1; width: 90%; max-width: 480px; background: rgba(18, 22, 29, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); padding: 32px 28px;">
+            <div style="text-align: center; margin-bottom: 26px;">
+                <img src="assets/redrivo_logo_transparent_dark_bg.png" alt="ReDrivo Logo" style="width: 130px; height: auto; margin: 0 auto 14px; filter: drop-shadow(0 8px 24px rgba(250, 204, 21, 0.15));" />
+                <h2 id="complete-profile-title" style="font-size: 1.45rem; font-weight: 800; color: #FFFFFF; margin-bottom: 6px; letter-spacing: -0.5px;">Complete Your Profile</h2>
+                <p id="complete-profile-subtitle" class="subtitle" style="font-size: 0.9rem; color: #8B949E; font-weight: 500; line-height: 1.4;">Please enter your name to continue</p>
+            </div>
+
+            <form id="form-complete-profile" onsubmit="event.preventDefault(); submitCompleteProfile();" style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Full Name Field -->
+                <div id="profile-name-group" class="form-group" style="margin-bottom: 0;">
+                    <label id="profile-name-label" style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Full Name</label>
+                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; height: 56px; display: flex; align-items: center; padding: 0 18px; transition: border-color 0.2s;">
+                        <input type="text" id="profile-input-name" placeholder="Enter your full name" autocomplete="name" style="background: transparent; border: none; outline: none; font-size: 1.05rem; color: #FFFFFF; font-weight: 500; width: 100%;" />
+                    </div>
+                </div>
+
+                <!-- Phone Verification Field (For Google / Email users without verified phone) -->
+                <div id="profile-phone-group" class="form-group" style="display: none; margin-bottom: 0;">
+                    <label style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Mobile Number</label>
+                    <div class="phone-input-group" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; height: 56px; transition: all 0.3s ease;">
+                        <span class="prefix" style="background: transparent; border-right: 1px solid rgba(255, 255, 255, 0.1); color: #8B949E; font-weight: 600; padding: 0 18px; display: flex; align-items: center;">+91</span>
+                        <input type="tel" id="profile-input-phone" placeholder="10-digit mobile number" maxlength="10" style="background: transparent; border: none; outline: none; padding-left: 18px; font-size: 1.05rem; letter-spacing: 1px; color: #FFFFFF; font-weight: 500; width: 100%;">
+                    </div>
+
+                    <!-- OTP Channel Selector (WhatsApp / SMS) -->
+                    <div id="profile-otp-channel-group" style="display: flex; gap: 8px; margin-top: 12px;">
+                        <label class="otp-channel-pill active" id="profile-pill-whatsapp" onclick="selectProfileOtpChannel('whatsapp')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 12px; background: rgba(37, 211, 102, 0.12); border: 1.5px solid #25D366; border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="profile_otp_channel" value="whatsapp" checked style="display: none;">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                            <span id="profile-label-whatsapp" style="font-size: 0.85rem; font-weight: 700; color: #FFFFFF;">WhatsApp</span>
+                        </label>
+                        <label class="otp-channel-pill" id="profile-pill-sms" onclick="selectProfileOtpChannel('sms')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="profile_otp_channel" value="sms" style="display: none;">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8B949E" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <span id="profile-label-sms" style="font-size: 0.85rem; font-weight: 600; color: #8B949E;">SMS</span>
+                        </label>
+                    </div>
+
+                    <button type="button" id="btn-profile-send-otp" class="btn btn-outline" style="width:100%; margin-top:14px; padding: 12px; font-size: 0.92rem; font-weight: 600; border-radius: 12px; background: rgba(255, 255, 255, 0.05); color: #FFFFFF; border: 1px solid rgba(255, 255, 255, 0.15); cursor: pointer;" onclick="handleProfileSendPhoneOtp()">Send Verification OTP</button>
+
+                    <!-- Profile OTP Verification Input Box Area -->
+                    <div id="profile-otp-area" style="display:none; margin-top: 16px; padding: 16px 8px; background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.15); border-radius: 16px;">
+                        <label style="display:block; font-size:0.78rem; color:#FFD700; margin-bottom:12px; text-transform:uppercase; letter-spacing: 1px; font-weight: 700; text-align: center;">Enter 6-Digit OTP</label>
+                        <div class="otp-boxes" data-target="profile-otp">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        </div>
+                        <input type="hidden" id="profile-otp" value="">
+                        <p style="text-align:center; margin-top:16px; font-size:0.85rem; color:#8B949E;">
+                            Didn't receive the code? <br><a id="profile-resend-otp-link" href="javascript:void(0)" onclick="handleProfileResendPhoneOtp()" style="color:#FFD700; font-weight:600; text-decoration:none; display: inline-block; margin-top: 6px;">Resend OTP</a>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" id="btn-submit-profile" class="btn btn-primary" style="width:100%; margin-top:10px; padding: 16px; font-size: 1.05rem; font-weight: 700; border-radius: 16px; background: #FFD700; color: #000000; border: none; cursor: pointer; transition: transform 0.2s, background 0.2s;">
+                    Complete & Continue
+                </button>
+            </form>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="javascript:void(0)" onclick="confirmLogout()" style="color: #8B949E; font-size: 0.85rem; text-decoration: none; font-weight: 500; transition: color 0.2s;">Use a different account</a>
+            </div>
+        </div>
+    </div>
+
     <div id="app-container" class="hidden" style="position: relative; min-height: 100vh; overflow-x: hidden;">
         <nav class="navbar" style="display: flex; justify-content: space-between; align-items: center; padding: 24px; background: transparent; position: absolute; top: 0; left: 0; width: 100%; z-index: 100; border-bottom: none; backdrop-filter: none; -webkit-backdrop-filter: none;">
             <div style="display: flex; align-items: center; gap: 10px;">
