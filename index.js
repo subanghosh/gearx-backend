@@ -8042,3 +8042,4 @@ console.log('[STARTUP-3] Starting Express HTTP server on 0.0.0.0:' + PORT + '...
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[STARTUP-4] ✓ GearX server running on 0.0.0.0:${PORT} [${process.env.NODE_ENV || 'development'}]`);
 });
+// trigger fresh deploy
