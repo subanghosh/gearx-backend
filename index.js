@@ -429,6 +429,13 @@ const pool = new Pool({
 pool.on('error', (err, client) => {
     console.error('Unexpected error on idle client', err);
 });
+
+// Ensure is_test_account column exists in PostgreSQL
+pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
+`).catch(e => console.warn('Schema check warning:', e.message));
+
 const db = {
     convertQuery: (sql) => {
         let i = 1;
@@ -4884,9 +4891,19 @@ apiRouter.post('/driver/subscription/create-order', async (req, res) => {
         }
 
         // Verify driver exists
-        const driverRes = await pool.query("SELECT id, name, phone FROM users WHERE id = $1", [driverId]);
+        const driverRes = await pool.query("SELECT id, name, phone, is_test_account FROM users WHERE id = $1", [driverId]);
         if (driverRes.rows.length === 0) return res.status(404).json({ error: 'Driver not found.' });
         const driver = driverRes.rows[0];
+
+        // Safety Gate: Block sandbox Razorpay checkout for real users unless live keys or is_test_account
+        const isLiveMode = process.env.RAZORPAY_KEY_ID?.startsWith('rzp_live_');
+        const isTestDriver = driver.is_test_account === true || driver.phone?.includes('9999999999') || driverId === 'm_1';
+        if (!isLiveMode && !isTestDriver) {
+            return res.status(403).json({
+                error: 'Online subscription passes are launching shortly. Please continue earning under the standard commission model or contact support.',
+                disabled: true
+            });
+        }
 
         // Fetch official rates from single source of truth
         const ratesRes = await pool.query("SELECT * FROM payout_model_rates WHERE id = 'current_rates'");
@@ -5430,18 +5447,15 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             tripId, requestId, amount
         } = req.body;
 
-        if (!customerId) return res.status(400).json({ error: 'Customer ID is required.' });
-
-        // Safety Kill Switch: Check if customer advance payments feature is enabled
+        // Safety Kill Switch: Check if customer advance payments feature is enabled OR live keys active
         const featRes = await pool.query("SELECT value FROM system_settings WHERE key = 'enable_customer_advance_payment'");
-        const isGlobalEnabled = featRes.rows[0]?.value === 'true' || process.env.ENABLE_CUSTOMER_ADVANCE_PAYMENT === 'true';
+        const isGlobalEnabled = featRes.rows[0]?.value === 'true' || process.env.ENABLE_CUSTOMER_ADVANCE_PAYMENT === 'true' || process.env.RAZORPAY_KEY_ID?.startsWith('rzp_live_');
 
-        // TEST-ONLY GATE: Scoped strictly to test phone 9999999999
+        // Check if customer is a verified test account from database
         let isTestAccount = false;
         try {
-            const custRes = await pool.query("SELECT phone FROM customers WHERE id = $1 UNION SELECT phone FROM users WHERE id = $1", [customerId]);
-            const p = custRes.rows[0]?.phone ? custRes.rows[0].phone.replace('+91', '').trim() : '';
-            if (p === '9999999999' || customerId === 'cust_test_9999999999' || p.endsWith('9999999999')) {
+            const custRes = await pool.query("SELECT is_test_account, phone FROM customers WHERE id = $1 UNION SELECT is_test_account, phone FROM users WHERE id = $1", [customerId]);
+            if (custRes.rows[0]?.is_test_account === true || custRes.rows[0]?.phone?.includes('9999999999') || customerId === 'cust_test_9999999999') {
                 isTestAccount = true;
             }
         } catch(e) {}
@@ -6872,6 +6886,23 @@ apiRouter.post('/trips/:id/create-extension-order', authMiddleware, async (req, 
 
         if (trip.pricing_mode !== 'hourly') {
             return res.status(400).json({ error: 'Trip is not an hourly rental booking' });
+        }
+
+        // Safety Gate: Block sandbox Razorpay checkout for real users unless live keys or is_test_account
+        const isLiveMode = process.env.RAZORPAY_KEY_ID?.startsWith('rzp_live_');
+        let isTestAccount = false;
+        try {
+            const custRes = await pool.query("SELECT is_test_account, phone FROM customers WHERE id = $1 UNION SELECT is_test_account, phone FROM users WHERE id = $1", [trip.customerid]);
+            if (custRes.rows[0]?.is_test_account === true || custRes.rows[0]?.phone?.includes('9999999999') || trip.customerid === 'cust_test_9999999999') {
+                isTestAccount = true;
+            }
+        } catch(e) {}
+
+        if (!isLiveMode && !isTestAccount) {
+            return res.status(403).json({
+                error: 'Online rental extensions are launching shortly. Any extra time is automatically calculated and settled at trip dropoff.',
+                disabled: true
+            });
         }
 
         // Fetch hourly rate from system settings

@@ -5156,6 +5156,12 @@ window.submitPayoutPlanSwitch = async function() {
                 body: JSON.stringify({ driverId: currentUser.id, cycle: requestedCycle })
             });
             const orderData = await orderRes.json().catch(() => ({}));
+            if (orderData?.disabled) {
+                showToast(orderData.error || 'Online subscription passes are launching shortly. You will continue earning under the standard commission model.', 'info');
+                if (btn) { btn.innerHTML = 'Confirm Plan'; btn.disabled = false; }
+                closePayoutPlanModal();
+                return;
+            }
             if (!orderRes.ok) throw new Error(orderData.error || 'Failed to initialize subscription checkout.');
 
             // 2. Open Razorpay Checkout or Sandbox verification

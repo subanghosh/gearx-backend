@@ -2869,6 +2869,14 @@ async function confirmRentalExtension() {
 
     try {
         const orderRes = await apiPost(`/trips/${tripId}/create-extension-order`, { durationMinutes: mins });
+        if (orderRes?.disabled) {
+            showToast(orderRes.error || 'Online extensions are launching shortly. Any extra time is automatically calculated and settled at trip completion.', 'info');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                selectRentalExtension(mins);
+            }
+            return;
+        }
         if (!orderRes || !orderRes.orderId) {
             throw new Error(orderRes?.error || 'Failed to initialize extension order');
         }
