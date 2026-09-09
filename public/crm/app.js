@@ -3164,23 +3164,6 @@ async function reviewMarshalKYC(marshalId) {
         return alert('Driver data not found in local state. Please wait for sync.');
     }
 
-    // Lazy-load complete details (including full document base64 images) on-demand
-    try {
-        const res = await fetch(`${API_URL}/users/${marshalId}`);
-        if (res.ok) {
-            const fullDetails = await res.json();
-            if (fullDetails && fullDetails.id) {
-                Object.assign(m, fullDetails);
-                const userIdx = PROTOTYPE_STATE.users.findIndex(u => String(u.id) === String(marshalId));
-                if (userIdx !== -1) {
-                    Object.assign(PROTOTYPE_STATE.users[userIdx], fullDetails);
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('Could not lazy-load full user KYC details:', e);
-    }
-
     // Determine type for header
     const mType = PROTOTYPE_STATE.users.find(u => String(u.id) === String(marshalId)) ? 'Platform' : 'Garage';
     const gName = mType === 'Garage' ? (PROTOTYPE_STATE.garages.find(g => g.id === m.garageId)?.name || 'Unknown Garage') : null;
@@ -3671,7 +3654,7 @@ function renderLogin(container) {
                 <div id="admin-email-section">
                     <div class="form-group">
                         <label class="label" style="font-size: 0.75rem; letter-spacing: 1px; color: var(--text-dim);">ADMINISTRATOR EMAIL</label>
-                        <input type="email" id="login-email" class="input" placeholder="admin@redrivo.com" autocomplete="email" style="margin-top: 6px; height: 50px; font-size: 0.95rem;" onkeydown="if(event.key==='Enter') handleSendAdminOTP()">
+                        <input type="email" id="login-email" class="input" placeholder="subanghosh7@gmail.com" style="margin-top: 6px; height: 50px; font-size: 0.95rem;" onkeydown="if(event.key==='Enter') handleSendAdminOTP()">
                     </div>
                     
                     <button id="btn-send-admin-otp" onclick="handleSendAdminOTP()" class="btn btn-primary" style="width: 100%; margin-top: 24px; height: 50px; font-weight:700; font-size: 0.95rem;">
@@ -7271,18 +7254,20 @@ async function renderIncentives(container) {
     try {
         window._driverOpsTab = window._driverOpsTab || 'withdrawals';
         window._incentiveVehicleType = window._incentiveVehicleType || 'car';
+        window._hourlySlabsVehicleType = window._hourlySlabsVehicleType || 'car';
         window._withdrawalTab = window._withdrawalTab || 'requested';
 
         let withdrawalsList = [];
         let pendingCount = 0;
         try {
-            const [wRes, countRes, sysRes, slabsRes, globalRes, ratesRes] = await Promise.all([
+            const [wRes, countRes, sysRes, slabsRes, hourlySlabsRes, globalRes, ratesRes] = await Promise.all([
                 fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`).catch(() => null),
                 fetch(`${API_URL}/admin/withdrawals?status=requested`).catch(() => null),
                 fetch(`${API_URL}/system-settings`).catch(() => null),
-                fetch(`${API_URL}/settings/incentives`).catch(() => null),
+                fetch(`${API_URL}/settings/incentives?type=${window._incentiveVehicleType}`).catch(() => null),
+                fetch(`${API_URL}/settings/hourly-slabs?type=${window._hourlySlabsVehicleType}`).catch(() => null),
                 fetch(`${API_URL}/settings/global`).catch(() => null),
-                fetch(`${API_URL}/payout-rates`).catch(() => null)
+                fetch(`${API_URL}/payout-model-rates`).catch(() => null)
             ]);
 
             if (wRes && wRes.ok) {
@@ -7304,48 +7289,72 @@ async function renderIncentives(container) {
                     }));
                 }
             }
+            if (hourlySlabsRes && hourlySlabsRes.ok) {
+                const hSlabsData = await hourlySlabsRes.json();
+                if (Array.isArray(hSlabsData) && hSlabsData.length > 0) {
+                    window._currentHourlySlabs = hSlabsData.map(s => ({
+                        maxHours: Number(s.maxHours !== undefined ? s.maxHours : s.maxhours),
+                        ratePerHour: Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour)
+                    }));
+                }
+            }
             if (globalRes && globalRes.ok) {
                 window._globalSettings = await globalRes.json();
             }
             if (ratesRes && ratesRes.ok) {
                 const ratesData = await ratesRes.json();
-                if (ratesData && ratesData.rates) {
-                    window._payoutRates = ratesData.rates;
-                    window._payoutRatesLoadFailed = false;
-                }
-            } else {
-                console.warn("Failed to load live payout rates from server:", ratesRes ? ratesRes.status : 'network error');
-                window._payoutRatesLoadFailed = true;
+                if (ratesData && ratesData.rates) window._payoutRates = ratesData.rates;
             }
         } catch (eWdr) {
             console.error("Failed to load settings/withdrawals in renderIncentives:", eWdr);
-            window._payoutRatesLoadFailed = true;
         }
 
         if (!window._currentSlabs) {
-            window._currentSlabs = [
-                { maxDistance: 5, ratePerKm: 40 },
-                { maxDistance: 10, ratePerKm: 30 },
-                { maxDistance: 15, ratePerKm: 35 }
-            ];
+            if (window._incentiveVehicleType === 'bike') {
+                window._currentSlabs = [
+                    { maxDistance: 5, ratePerKm: 15 },
+                    { maxDistance: 15, ratePerKm: 10 },
+                    { maxDistance: 999, ratePerKm: 7 }
+                ];
+            } else {
+                window._currentSlabs = [
+                    { maxDistance: 10, ratePerKm: 35 },
+                    { maxDistance: 25, ratePerKm: 28 },
+                    { maxDistance: 999, ratePerKm: 18 }
+                ];
+            }
+        }
+        if (!window._currentHourlySlabs) {
+            if (window._hourlySlabsVehicleType === 'bike') {
+                window._currentHourlySlabs = [
+                    { maxHours: 2, ratePerHour: 45 },
+                    { maxHours: 6, ratePerHour: 40 },
+                    { maxHours: 999, ratePerHour: 35 }
+                ];
+            } else {
+                window._currentHourlySlabs = [
+                    { maxHours: 2, ratePerHour: 90 },
+                    { maxHours: 6, ratePerHour: 80 },
+                    { maxHours: 999, ratePerHour: 70 }
+                ];
+            }
         }
         if (!window._globalSettings) {
             window._globalSettings = { five_star_bonus: 50, payout_days: 3 };
         }
         if (!window._payoutRates) {
-            window._payoutRatesLoadFailed = true;
             window._payoutRates = {
-                commissionRatePercent: 0,
-                subscriptionWeeklyPrice: 0,
-                subscriptionMonthlyPrice: 0,
-                subscriptionQuarterlyPrice: 0,
-                subscriptionYearlyPrice: 0,
-                subscriptionAnnualPrice: 0,
+                commissionRatePercent: 20.0,
+                subscriptionDailyPrice: 99.00,
+                subscriptionWeeklyPrice: 499.00,
+                subscriptionMonthlyPrice: 1499.00,
+                subscriptionAnnualPrice: 14999.00,
                 demandSearchWeight: 1.0,
                 demandBookingWeight: 3.0
             };
         }
         if (window._slabsEditMode === undefined) window._slabsEditMode = false;
+        if (window._hourlySlabsEditMode === undefined) window._hourlySlabsEditMode = false;
         if (window._globalEditMode === undefined) window._globalEditMode = false;
         if (window._payoutRatesEditMode === undefined) window._payoutRatesEditMode = false;
 
@@ -7361,6 +7370,9 @@ async function renderIncentives(container) {
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'slabs' ? 'active' : ''}" onclick="window._driverOpsTab='slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="tag" style="width:16px; height:16px;"></i> Distance Rate Slabs
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'hourly_slabs' ? 'active' : ''}" onclick="window._driverOpsTab='hourly_slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'hourly_slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'hourly_slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="clock" style="width:16px; height:16px;"></i> Hourly Rate Slabs
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'fare_rules' ? 'active' : ''}" onclick="window._driverOpsTab='fare_rules'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'fare_rules' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'fare_rules' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Fares & Payout Rules
@@ -7558,6 +7570,70 @@ async function renderIncentives(container) {
                 `;
             }
 
+            // TAB: HOURLY RATE SLABS
+            else if (window._driverOpsTab === 'hourly_slabs') {
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Hourly Rate Slabs</h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Configure the driver payout floor rate per hour for hourly rentals. Evaluated in ascending order of Max Hours.</p>
+                        </div>
+
+                        <div style="display:flex; gap:8px;">
+                            <button class="tab-btn ${window._hourlySlabsVehicleType === 'car' ? 'active' : ''}" onclick="window._hourlySlabsVehicleType='car'; window._currentHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._hourlySlabsVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._hourlySlabsVehicleType === 'car' ? '#000' : '#fff'};">
+                                Car Slabs
+                            </button>
+                            <button class="tab-btn ${window._hourlySlabsVehicleType === 'bike' ? 'active' : ''}" onclick="window._hourlySlabsVehicleType='bike'; window._currentHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._hourlySlabsVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._hourlySlabsVehicleType === 'bike' ? '#000' : '#fff'};">
+                                Bike Slabs
+                            </button>
+                        </div>
+                    </div>
+
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
+                                <th style="padding:10px;">From (Hours)</th>
+                                <th style="padding:10px;">To (Hours)</th>
+                                <th style="padding:10px;">Driver Payout Rate (₹/HR)</th>
+                                ${window._hourlySlabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                (window._currentHourlySlabs || []).forEach((slab, index) => {
+                    let fromVal = 0.0;
+                    if (index > 0) {
+                        fromVal = (Number(window._currentHourlySlabs[index - 1].maxHours) + 0.1).toFixed(1);
+                    }
+                    const disabledAttr = window._hourlySlabsEditMode ? '' : 'disabled';
+                    html += `
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:10px; color:var(--text-muted); font-weight:600;">${fromVal} Hrs</td>
+                            <td style="padding:10px;"><input type="number" step="0.5" value="${slab.maxHours}" onchange="window._currentHourlySlabs[${index}].maxHours=Number(this.value); window.drawIncentivesUI()" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                            <td style="padding:10px;"><input type="number" step="1" value="${slab.ratePerHour}" onchange="window._currentHourlySlabs[${index}].ratePerHour=Number(this.value)" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            ${window._hourlySlabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentHourlySlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+
+                    <div style="display:flex; gap:10px;">
+                        ${window._hourlySlabsEditMode ? `
+                            <button onclick="window._currentHourlySlabs.push({maxHours: 999, ratePerHour: window._hourlySlabsVehicleType === 'bike' ? 35 : 70}); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Slab</button>
+                            <button onclick="saveHourlyIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Slabs</button>
+                        ` : `
+                            <button onclick="window._hourlySlabsEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Slabs</button>
+                        `}
+                    </div>
+                </div>
+                `;
+            }
+
             // TAB 3: BASE FARES & PAYOUT RULES
             else if (window._driverOpsTab === 'fare_rules') {
                 const disabledGlobal = window._globalEditMode ? '' : 'disabled';
@@ -7653,7 +7729,7 @@ async function renderIncentives(container) {
 
             // TAB 4: COMMISSION & SUBSCRIPTIONS
             else if (window._driverOpsTab === 'pricing_model') {
-                const disabledPayout = (window._payoutRatesEditMode && !window._payoutRatesLoadFailed) ? '' : 'disabled';
+                const disabledPayout = window._payoutRatesEditMode ? '' : 'disabled';
                 html += `
                 <div class="card" style="margin-top:0;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -7664,23 +7740,17 @@ async function renderIncentives(container) {
                         <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Driver Monetization</span>
                     </div>
 
-                    ${window._payoutRatesLoadFailed ? `
-                    <div style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:12px 16px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; color:#FCA5A5;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <i data-lucide="alert-triangle" style="width:20px; height:20px; color:#EF4444; flex-shrink:0;"></i>
-                            <div>
-                                <strong style="color:#fff;">Failed to load live rates from server.</strong> Displayed values may be outdated. Editing is disabled until connection is restored.
-                            </div>
-                        </div>
-                        <button onclick="renderIncentives(document.getElementById('app'))" class="btn btn-secondary btn-sm" style="padding:4px 12px; font-size:0.75rem; white-space:nowrap;">Retry Load</button>
-                    </div>
-                    ` : ''}
-
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:18px; margin-bottom:24px;">
                         <div>
                             <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Platform Commission Cut (%)</label>
                             <input type="number" step="0.1" id="crm-rate-commission" value="${window._payoutRates.commissionRatePercent}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Deducted from gross trip fare</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Daily Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-daily" value="${window._payoutRates.subscriptionDailyPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">24-hour unlimited pass</span>
                         </div>
 
                         <div>
@@ -7696,14 +7766,8 @@ async function renderIncentives(container) {
                         </div>
 
                         <div>
-                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Quarterly Pass (₹)</label>
-                            <input type="number" step="1" id="crm-rate-quarterly" value="${window._payoutRates.subscriptionQuarterlyPrice !== undefined ? window._payoutRates.subscriptionQuarterlyPrice : 3999}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
-                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">90-day calendar pass</span>
-                        </div>
-
-                        <div>
-                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Yearly Pass (₹)</label>
-                            <input type="number" step="1" id="crm-rate-yearly" value="${window._payoutRates.subscriptionYearlyPrice !== undefined ? window._payoutRates.subscriptionYearlyPrice : (window._payoutRates.subscriptionAnnualPrice !== undefined ? window._payoutRates.subscriptionAnnualPrice : 14999)}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Annual Pass (₹)</label>
+                            <input type="number" step="1" id="crm-rate-annual" value="${window._payoutRates.subscriptionAnnualPrice}" ${disabledPayout} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">365-day full pass</span>
                         </div>
 
@@ -7721,13 +7785,11 @@ async function renderIncentives(container) {
                     </div>
 
                     <div>
-                        ${window._payoutRatesLoadFailed ? `
-                            <button disabled class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; opacity:0.5; cursor:not-allowed;">Live Rates Offline (Editing Disabled)</button>
-                        ` : (window._payoutRatesEditMode ? `
+                        ${window._payoutRatesEditMode ? `
                             <button onclick="savePayoutRates()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Payout Rates</button>
                         ` : `
                             <button onclick="window._payoutRatesEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rates</button>
-                        `)}
+                        `}
                     </div>
                 </div>
                 `;
@@ -7739,10 +7801,10 @@ async function renderIncentives(container) {
 
         window.savePayoutRates = async function() {
             const commission = document.getElementById('crm-rate-commission').value;
+            const daily = document.getElementById('crm-rate-daily').value;
             const weekly = document.getElementById('crm-rate-weekly').value;
             const monthly = document.getElementById('crm-rate-monthly').value;
-            const quarterly = document.getElementById('crm-rate-quarterly').value;
-            const yearly = document.getElementById('crm-rate-yearly')?.value || document.getElementById('crm-rate-annual')?.value;
+            const annual = document.getElementById('crm-rate-annual').value;
             const searchWeight = document.getElementById('crm-rate-search-weight')?.value || 1.0;
             const bookingWeight = document.getElementById('crm-rate-booking-weight')?.value || 3.0;
 
@@ -7752,11 +7814,10 @@ async function renderIncentives(container) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         commissionRatePercent: commission,
+                        subscriptionDailyPrice: daily,
                         subscriptionWeeklyPrice: weekly,
                         subscriptionMonthlyPrice: monthly,
-                        subscriptionQuarterlyPrice: quarterly,
-                        subscriptionYearlyPrice: yearly,
-                        subscriptionAnnualPrice: yearly,
+                        subscriptionAnnualPrice: annual,
                         demandSearchWeight: searchWeight,
                         demandBookingWeight: bookingWeight
                     })
@@ -7843,6 +7904,36 @@ async function renderIncentives(container) {
                     renderIncentives(container);
                 } else {
                     alert('Failed to save settings.');
+                }
+            } catch(e) {
+                alert('Error: ' + e.message);
+            }
+        };
+
+        window.saveHourlyIncentives = async function() {
+            if (!Array.isArray(window._currentHourlySlabs)) return;
+            window._currentHourlySlabs.sort((a,b) => a.maxHours - b.maxHours);
+            try {
+                const token = localStorage.getItem('token');
+                const sres = await fetch(`${API_URL}/settings/hourly-slabs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ 
+                        slabs: window._currentHourlySlabs,
+                        type: window._hourlySlabsVehicleType 
+                    })
+                });
+                if(sres.ok) {
+                    window._hourlySlabsEditMode = false;
+                    alert('Hourly rate slabs saved successfully!');
+                    window._currentHourlySlabs = null;
+                    renderIncentives(container);
+                } else {
+                    const errData = await sres.json().catch(() => ({}));
+                    alert('Failed to save hourly slabs: ' + (errData.error || sres.statusText));
                 }
             } catch(e) {
                 alert('Error: ' + e.message);

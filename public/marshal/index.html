@@ -2,6 +2,14 @@
 <html lang="en">
 
 <head>
+    <!-- Favicon & App Icons -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0B0E14">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ReDrivo Driver Portal</title>
@@ -994,6 +1002,29 @@
 <span class="text-sm font-bold text-[#D4AF37]/70 mt-1" id="map-eta">-- mins ETA</span>
 </div>
 </div>
+
+<!-- Hourly Rental Countdown Container (Driver View) -->
+<div id="map-hourly-rental-container" style="display: none; flex-direction: column; width: 100%; margin-top: 12px; margin-bottom: 4px; background: linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(20, 24, 33, 0.95) 100%); border: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 16px; padding: 12px 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined" id="map-rental-timer-icon" style="color: #D4AF37; font-size: 18px;">timer</span>
+            <span id="map-rental-timer-title" style="font-size: 0.72rem; color: #fff; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Hourly Rental</span>
+        </div>
+        <span id="map-rental-booked-duration" style="font-size: 0.68rem; color: #D4AF37; background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 9999px; padding: 2px 8px; font-weight: 700;">1 hr booked</span>
+    </div>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px;">
+        <span id="map-rental-timer-label" style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Remaining Time</span>
+        <span id="map-rental-countdown" style="font-size: 1.8rem; font-weight: 900; font-family: monospace; color: #D4AF37; letter-spacing: 2px; text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);">--:--</span>
+    </div>
+    <!-- Overtime Notice Banner (Driver View) -->
+    <div id="map-overtime-notice-banner" style="display: none; align-items: flex-start; gap: 8px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 8px 10px; margin-top: 8px;">
+        <span class="material-symbols-outlined" style="font-size: 16px; color: #fbbf24; flex-shrink: 0; margin-top: 1px;">info</span>
+        <div id="map-overtime-notice-text" style="font-size: 0.68rem; color: #fef3c7; line-height: 1.35; font-weight: 500;">
+            Trip time exceeded — continuing without an extension is being logged for review.
+        </div>
+    </div>
+</div>
+
 <!-- Middle Row: Status Badge -->
 <div class="my-4">
 <div class="inline-flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl">
@@ -1557,7 +1588,7 @@
         <!-- Account Holder Name -->
         <div>
             <label class="block text-xs font-bold text-gray-300 mb-1">Account Holder Name *</label>
-            <input type="text" id="payout-account-holder-name" placeholder="e.g. RAJESH KUMAR SHARMA" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
+            <input type="text" id="payout-account-holder-name" placeholder="e.g. AMITAVA MUKHERJEE" class="w-full bg-[#1e1b18] border border-white/10 rounded-xl p-3 text-white text-sm focus:border-amber-500 focus:outline-none">
         </div>
 
         <!-- Bank Name Search (Search-as-you-type list-only) -->

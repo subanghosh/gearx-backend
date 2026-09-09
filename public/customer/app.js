@@ -507,21 +507,23 @@ function selectPD(type) {
 }
 
 function updatePricingSummary() {
-    const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
-    let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
-    let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
-    
     const activeVehicle = userVehicles[activeVehicleIndex];
-    const isBike = activeVehicle && (String(activeVehicle.type).toLowerCase() === 'bike' || String(activeVehicle.category).toLowerCase() === 'bike');
+    const isBike = activeVehicle && (String(activeVehicle.type).toLowerCase().includes('bike') || String(activeVehicle.category).toLowerCase().includes('bike'));
     const vehicleType = isBike ? 'bike' : 'car';
 
+    const platformBaseChargeKey = `${vehicleType}_platform_base_charge`;
     const rateKey = `${vehicleType}_customer_rate_per_km`;
     const baseFareKey = `${vehicleType}_base_fare`;
     const haltRateKey = `${vehicleType}_halt_rate_per_min`;
     
-    const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 15 : 8);
+    const platformBaseCharge = window.redrivoSystemSettings?.[platformBaseChargeKey] !== undefined ? parseFloat(window.redrivoSystemSettings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
+    const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
     const baseFare = window.redrivoSystemSettings?.[baseFareKey] !== undefined ? parseFloat(window.redrivoSystemSettings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
     const haltRate = window.redrivoSystemSettings?.[haltRateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[haltRateKey]) : (vehicleType === 'car' ? 5 : 3);
+    
+    const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
+    let redrivoServiceCharge = isP2P ? platformBaseCharge : (currentServiceType === 'TrackA' ? 299 : platformBaseCharge);
+    let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
     
     window.customerRatePerKm = ratePerKm;
 
@@ -579,7 +581,7 @@ function showToast(message, type = 'info') {
     if (!container) {
         container = document.createElement('div');
         container.id = 'toast-container';
-        container.style.cssText = 'position:fixed; top:24px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:12px; max-width:90%; width:380px; align-items:center; pointer-events:none;';
+        container.style.cssText = 'position:fixed; top:24px; left:50%; transform:translateX(-50%); z-index:999999; display:flex; flex-direction:column; gap:12px; max-width:90%; width:380px; align-items:center; pointer-events:none;';
         document.body.appendChild(container);
     }
 
@@ -604,6 +606,13 @@ function showToast(message, type = 'info') {
             glow: 'rgba(250, 204, 21, 0.25)',
             iconColor: '#facc15',
             icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>` 
+        },
+        warning: {
+            bg: 'rgba(67, 30, 0, 0.9)',
+            border: 'rgba(245, 158, 11, 0.4)',
+            glow: 'rgba(245, 158, 11, 0.3)',
+            iconColor: '#f59e0b',
+            icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`
         }
     };
     const { bg, border, glow, icon, iconColor } = colors[type] || colors.info;
@@ -1335,6 +1344,75 @@ function openCompleteProfilePage(status) {
     } else if (phoneInput && status.needsPhone) {
         setTimeout(() => phoneInput.focus(), 200);
     }
+
+    // Reactive input listeners for real-time button state updates
+    if (nameInput && !nameInput._boundProfileStateListener) {
+        nameInput._boundProfileStateListener = true;
+        nameInput.addEventListener('input', updateCompleteProfileButtonState);
+    }
+    if (phoneInput && !phoneInput._boundProfileStateListener) {
+        phoneInput._boundProfileStateListener = true;
+        phoneInput.addEventListener('input', () => {
+            const currentVal = '+91' + phoneInput.value.trim();
+            if (profilePhoneSent && currentVal !== profilePhoneSent) {
+                profilePhoneSent = '';
+                const otpArea = document.getElementById('profile-otp-area');
+                if (otpArea) otpArea.style.display = 'none';
+                if (window.clearOtpBoxes) window.clearOtpBoxes('profile-otp');
+                const btn = document.getElementById('btn-profile-send-otp');
+                if (btn) btn.innerHTML = 'Send Verification OTP';
+            }
+            updateCompleteProfileButtonState();
+        });
+    }
+    const hiddenOtp = document.getElementById('profile-otp');
+    if (hiddenOtp && !hiddenOtp._boundProfileStateListener) {
+        hiddenOtp._boundProfileStateListener = true;
+        hiddenOtp.addEventListener('input', updateCompleteProfileButtonState);
+        hiddenOtp.addEventListener('change', updateCompleteProfileButtonState);
+    }
+    document.querySelectorAll('#profile-otp-area .otp-box').forEach(box => {
+        if (!box._boundProfileStateListener) {
+            box._boundProfileStateListener = true;
+            box.addEventListener('input', () => setTimeout(updateCompleteProfileButtonState, 20));
+        }
+    });
+
+    updateCompleteProfileButtonState();
+}
+
+function updateCompleteProfileButtonState() {
+    const submitBtn = document.getElementById('btn-submit-profile');
+    if (!submitBtn) return;
+
+    const nameInput = document.getElementById('profile-input-name');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const status = checkProfileCompletionStatus(currentUser);
+
+    let isValid = (name.length >= 2);
+
+    if (status.needsPhone) {
+        const otpInput = document.getElementById('profile-otp');
+        const otp = otpInput ? otpInput.value.trim() : '';
+        const hasSentOtp = Boolean(profilePhoneSent);
+        const hasValidOtp = (otp.length === 6);
+
+        isValid = isValid && hasSentOtp && hasValidOtp;
+    }
+
+    if (isValid) {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.style.background = '#FFD700';
+        submitBtn.style.color = '#000000';
+    } else {
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
+        submitBtn.style.cursor = 'not-allowed';
+        submitBtn.style.background = 'rgba(255, 215, 0, 0.3)';
+        submitBtn.style.color = 'rgba(0, 0, 0, 0.6)';
+    }
 }
 
 async function handleProfileSendPhoneOtp() {
@@ -1385,10 +1463,12 @@ async function handleProfileSendPhoneOtp() {
         if (btn) btn.innerHTML = 'Resend OTP';
 
         startProfileOtpCooldown();
+        updateCompleteProfileButtonState();
         showToast(currentProfileOtpChannel === 'sms' ? 'OTP sent via SMS!' : 'OTP sent via WhatsApp!', 'success');
         if (data.otp) {
             console.log('DEV UPDATE OTP:', data.otp);
             if (window.fillOtpBoxes) fillOtpBoxes('profile-otp', data.otp);
+            updateCompleteProfileButtonState();
         }
     } catch (e) {
         showToast(e.message, 'error');
@@ -1456,13 +1536,13 @@ async function submitCompleteProfile() {
     try {
         // Step A: If phone verification is required, verify OTP first
         if (status.needsPhone) {
+            if (!profilePhoneSent) {
+                throw new Error('Please tap "Send Verification OTP" first.');
+            }
             const otpInput = document.getElementById('profile-otp');
             const otp = otpInput ? otpInput.value.trim() : '';
             if (!otp || otp.length !== 6) {
                 throw new Error('Please enter the 6-digit OTP sent to your phone.');
-            }
-            if (!profilePhoneSent) {
-                throw new Error('Please tap "Send Verification OTP" first.');
             }
 
             const verifyHeaders = { 'Content-Type': 'application/json' };
@@ -1630,8 +1710,8 @@ function initCustomerMap(attempts = 0) {
         return;
     }
     
-    // Default to Mumbai BKC
-    customerMap = new google.maps.Map(document.getElementById('leaflet-map'), { center: {lat: 19.0664, lng: 72.8680}, zoom: 13, disableDefaultUI: true, styles: lightMapStyle });
+    // Default to Kolkata
+    customerMap = new google.maps.Map(document.getElementById('leaflet-map'), { center: {lat: 22.5726, lng: 88.3639}, zoom: 13, disableDefaultUI: true, styles: lightMapStyle });
     console.log("[DEBUG-MAP] customerMap successfully instantiated");
     
     // L.tileLayer removed;
@@ -1881,8 +1961,8 @@ async function triggerGeolocation() {
 }
 
 function handleGpsFallback() {
-    const lat = 19.0664;
-    const lng = 72.8680;
+    const lat = 22.5726;
+    const lng = 88.3639;
     if (customerMap) {
         customerMap.setCenter({lat: parseFloat(lat), lng: parseFloat(lng)});
         customerMap.setZoom(13);
@@ -1891,7 +1971,7 @@ function handleGpsFallback() {
     if (pickupInput) {
         pickupInput.setAttribute('data-lat', lat);
         pickupInput.setAttribute('data-lng', lng);
-        pickupInput.setAttribute('data-address', "BKC, Mumbai");
+        pickupInput.setAttribute('data-address', "Park Street, Kolkata");
         // Do not pre-fill value, keep it blank so placeholder shows and vanishes on focus
     }
     showNearbyMarshalsOnMap(lat, lng);
@@ -2596,12 +2676,306 @@ function initEnRouteMap(mapLat, mapLng, attempts = 0) {
     }
 }
 
+// --- HOURLY RENTAL COUNTDOWN & EXTENSION LOGIC ---
+let customerRentalTimerInterval = null;
+let currentRentalSelectedMins = 15;
+
+function setupHourlyRentalView(trip, req) {
+    const etaBanner = document.getElementById('enroute-eta-banner');
+    const rentalCard = document.getElementById('enroute-hourly-rental-card');
+    if (!rentalCard) return;
+
+    const pricingMode = trip.pricingMode || trip.pricing_mode || (req ? req.pricing_mode || req.pricingMode : '');
+    const isHourly = pricingMode === 'hourly';
+    const isInTransit = trip.status === 'in_transit';
+
+    if (isHourly && isInTransit) {
+        if (etaBanner) etaBanner.style.display = 'none';
+        rentalCard.style.display = 'flex';
+        startCustomerRentalTimer(trip, req);
+    } else {
+        if (etaBanner) etaBanner.style.display = 'flex';
+        rentalCard.style.display = 'none';
+        if (customerRentalTimerInterval) {
+            clearInterval(customerRentalTimerInterval);
+            customerRentalTimerInterval = null;
+        }
+    }
+}
+
+function startCustomerRentalTimer(trip, req) {
+    if (customerRentalTimerInterval) clearInterval(customerRentalTimerInterval);
+
+    const updateTimer = () => {
+        const displayEl = document.getElementById('rental-countdown-display');
+        const subtitleEl = document.getElementById('rental-timer-subtitle');
+        const titleEl = document.getElementById('rental-timer-title');
+        const iconEl = document.getElementById('rental-timer-icon');
+        const bookedEl = document.getElementById('rental-booked-duration');
+        const cardEl = document.getElementById('enroute-hourly-rental-card');
+
+        if (!displayEl) return;
+
+        const estHours = parseFloat(trip.estimatedHours || trip.estimated_hours || (req ? req.estimated_hours : 1)) || 1;
+        if (bookedEl) {
+            bookedEl.textContent = `${estHours} hr${estHours > 1 ? 's' : ''} booked`;
+        }
+
+        // Calculate expiresAt
+        let expiresAtMs = null;
+        const expiresAtRaw = trip.rentalExpiresAt || trip.rentalexpiresat || (req ? req.rentalexpiresat || req.rentalExpiresAt : null);
+        if (expiresAtRaw) {
+            expiresAtMs = new Date(expiresAtRaw).getTime();
+        } else {
+            const startedAtRaw = trip.rentalStartedAt || trip.rentalstartedat || (req ? req.rentalstartedat || req.rentalStartedAt : null);
+            const startedMs = startedAtRaw ? new Date(startedAtRaw).getTime() : Date.now();
+            expiresAtMs = startedMs + (estHours * 60 * 60 * 1000);
+        }
+
+        const now = Date.now();
+        const diffMs = expiresAtMs - now;
+
+        if (diffMs >= 0) {
+            // Counting down
+            const totalSec = Math.floor(diffMs / 1000);
+            const hrs = Math.floor(totalSec / 3600);
+            const mins = Math.floor((totalSec % 3600) / 60);
+            const secs = totalSec % 60;
+
+            let timeStr = '';
+            if (hrs > 0) {
+                timeStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else {
+                timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+
+            displayEl.textContent = timeStr;
+            displayEl.style.color = 'var(--primary)';
+            displayEl.style.textShadow = '0 0 12px rgba(250, 204, 21, 0.3)';
+
+            if (subtitleEl) {
+                subtitleEl.textContent = 'Remaining Time';
+                subtitleEl.style.color = 'var(--text-muted)';
+            }
+            if (titleEl) titleEl.textContent = 'Hourly Rental';
+            if (iconEl) {
+                iconEl.textContent = 'timer';
+                iconEl.style.color = 'var(--primary)';
+            }
+            if (cardEl) {
+                cardEl.style.border = '1.5px solid rgba(250, 204, 21, 0.35)';
+                cardEl.style.background = 'linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(20, 24, 33, 0.95) 100%)';
+            }
+            const noticeBanner = document.getElementById('enroute-overtime-notice-banner');
+            if (noticeBanner) noticeBanner.style.display = 'none';
+        } else {
+            // Overtime! Count up
+            const overtimeSec = Math.floor(Math.abs(diffMs) / 1000);
+            const hrs = Math.floor(overtimeSec / 3600);
+            const mins = Math.floor((overtimeSec % 3600) / 60);
+            const secs = overtimeSec % 60;
+
+            let timeStr = '+';
+            if (hrs > 0) {
+                timeStr += `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else {
+                timeStr += `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+
+            displayEl.textContent = timeStr;
+            displayEl.style.color = '#ef4444';
+            displayEl.style.textShadow = '0 0 12px rgba(239, 68, 68, 0.5)';
+
+            if (subtitleEl) {
+                subtitleEl.textContent = 'Overtime (Extra Charges Apply)';
+                subtitleEl.style.color = '#f87171';
+            }
+            if (titleEl) titleEl.textContent = 'Overtime Active';
+            if (iconEl) {
+                iconEl.textContent = 'warning';
+                iconEl.style.color = '#ef4444';
+            }
+            if (cardEl) {
+                cardEl.style.border = '1.5px solid rgba(239, 68, 68, 0.5)';
+                cardEl.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(20, 24, 33, 0.95) 100%)';
+            }
+
+            // Display neutral notice banner
+            const noticeBanner = document.getElementById('enroute-overtime-notice-banner');
+            const noticeText = document.getElementById('enroute-overtime-notice-text');
+            if (noticeBanner) {
+                noticeBanner.style.display = 'flex';
+                if (noticeText) {
+                    noticeText.textContent = 'Trip time exceeded — continuing without an extension is being logged for review.';
+                }
+            }
+        }
+    };
+
+    updateTimer();
+    customerRentalTimerInterval = setInterval(updateTimer, 1000);
+}
+
+function toggleRentalAddTimePanel() {
+    const panel = document.getElementById('rental-add-time-panel');
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none' || panel.style.display === '';
+    panel.style.display = isHidden ? 'flex' : 'none';
+    if (isHidden) {
+        selectRentalExtension(currentRentalSelectedMins || 15);
+    }
+}
+
+function selectRentalExtension(mins) {
+    currentRentalSelectedMins = mins;
+    ['15', '30', '60'].forEach(m => {
+        const btn = document.getElementById(`btn-ext-${m}`);
+        if (btn) {
+            if (parseInt(m, 10) === mins) {
+                btn.style.border = '1.5px solid var(--primary)';
+                btn.style.background = 'rgba(250, 204, 21, 0.15)';
+            } else {
+                btn.style.border = '1px solid rgba(255,255,255,0.12)';
+                btn.style.background = 'rgba(255,255,255,0.04)';
+            }
+        }
+    });
+
+    const rates = { 15: 38, 30: 75, 60: 150 };
+    const cost = rates[mins] || Math.round((mins / 60) * 150);
+    const confirmBtn = document.getElementById('btn-confirm-extension');
+    if (confirmBtn) {
+        confirmBtn.style.display = 'block';
+        confirmBtn.textContent = `Pay & Extend +${mins}m for ₹${cost}`;
+    }
+}
+
+async function confirmRentalExtension() {
+    const confirmBtn = document.getElementById('btn-confirm-extension');
+    if (!window._lastEnRouteTrip || !window._lastEnRouteTrip.id) {
+        showToast('No active trip found to extend', 'error');
+        return;
+    }
+
+    const tripId = window._lastEnRouteTrip.id;
+    const mins = currentRentalSelectedMins || 15;
+    const rates = { 15: 38, 30: 75, 60: 150 };
+    const cost = rates[mins] || Math.round((mins / 60) * 150);
+
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Initializing Razorpay...';
+    }
+
+    try {
+        const orderRes = await apiPost(`/trips/${tripId}/create-extension-order`, { durationMinutes: mins });
+        if (!orderRes || !orderRes.orderId) {
+            throw new Error(orderRes?.error || 'Failed to initialize extension order');
+        }
+
+        if (window.Razorpay) {
+            const options = {
+                key: orderRes.keyId,
+                amount: orderRes.amount,
+                currency: orderRes.currency || 'INR',
+                name: 'ReDrivo — Rental Extension',
+                description: `Extend rental by +${mins} minutes`,
+                order_id: orderRes.orderId,
+                prefill: {
+                    name: currentUser?.name || 'Customer',
+                    contact: currentUser?.phone || '9999999999',
+                    email: currentUser?.email || 'customer@redrivo.com'
+                },
+                theme: { color: '#FACC15' },
+                handler: async function (response) {
+                    try {
+                        showToast('Verifying payment & extending rental...', 'info');
+                        const verifyRes = await apiPost(`/trips/${tripId}/verify-extension-payment`, {
+                            orderId: response.razorpay_order_id || orderRes.orderId,
+                            paymentId: response.razorpay_payment_id,
+                            signature: response.razorpay_signature,
+                            durationMinutes: mins
+                        });
+
+                        if (verifyRes && verifyRes.success) {
+                            showToast(`✓ Rental extended by ${mins} mins!`, 'success');
+                            if (window._lastEnRouteTrip) {
+                                window._lastEnRouteTrip.rentalExpiresAt = verifyRes.rentalExpiresAt;
+                                window._lastEnRouteTrip.rental_expires_at = verifyRes.rentalExpiresAt;
+                                window._lastEnRouteTrip.rentalexpiresat = verifyRes.rentalExpiresAt;
+                                window._lastEnRouteTrip.estimatedHours = verifyRes.estimatedHours;
+                            }
+                            toggleRentalAddTimePanel();
+                            const req = userRequests.find(r => r.id === (window._lastEnRouteTrip.serviceRequestId || window._lastEnRouteTrip.servicerequestid));
+                            setupHourlyRentalView(window._lastEnRouteTrip, req);
+                        } else {
+                            showToast(verifyRes?.error || 'Verification failed', 'error');
+                        }
+                    } catch (eVer) {
+                        console.error('Extension verification failed:', eVer);
+                        showToast('Payment verification failed: ' + eVer.message, 'error');
+                    } finally {
+                        if (confirmBtn) {
+                            confirmBtn.disabled = false;
+                            selectRentalExtension(mins);
+                        }
+                    }
+                },
+                modal: {
+                    ondismiss: function() {
+                        showToast('Extension checkout cancelled — no payment was taken and no extra time was added.', 'warning');
+                        if (confirmBtn) {
+                            confirmBtn.disabled = false;
+                            selectRentalExtension(mins);
+                        }
+                    }
+                }
+            };
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (resp) {
+                showToast('Payment Failed: ' + (resp.error?.description || 'Gateway error') + ' — no time added.', 'error');
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    selectRentalExtension(mins);
+                }
+            });
+            rzp.open();
+        } else {
+            // Fallback for non-browser/direct API
+            const fallbackRes = await apiPost(`/trips/${tripId}/extend-rental`, { durationMinutes: mins });
+            if (fallbackRes && fallbackRes.success) {
+                showToast(`Rental extended by ${mins} mins!`, 'success');
+                if (window._lastEnRouteTrip) {
+                    window._lastEnRouteTrip.rentalExpiresAt = fallbackRes.rentalExpiresAt;
+                    window._lastEnRouteTrip.rental_expires_at = fallbackRes.rentalExpiresAt;
+                    window._lastEnRouteTrip.rentalexpiresat = fallbackRes.rentalExpiresAt;
+                }
+                toggleRentalAddTimePanel();
+                const req = userRequests.find(r => r.id === (window._lastEnRouteTrip.serviceRequestId || window._lastEnRouteTrip.servicerequestid));
+                setupHourlyRentalView(window._lastEnRouteTrip, req);
+            }
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                selectRentalExtension(mins);
+            }
+        }
+    } catch (err) {
+        console.error('Error extending rental:', err);
+        showToast(err.message || 'Failed to extend rental', 'error');
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            selectRentalExtension(mins);
+        }
+    }
+}
+
 function showMarshalEnRoute(trip) {
     const enRouteScreen = document.getElementById('marshal-en-route-screen');
     const dash = document.getElementById('dashboard');
     if (!enRouteScreen) return;
     
     try {
+        window._lastEnRouteTrip = trip;
         enRouteScreen.style.display = 'flex';
         // Join the socket room for live tracking
         if (window.socket && trip && trip.id) {
@@ -2626,6 +3000,9 @@ function showMarshalEnRoute(trip) {
         if (typeof checkWeatherDelay === 'function') {
             checkWeatherDelay(weatherLat, weatherLng);
         }
+
+        // Configure Hourly Rental View or standard ETA view
+        setupHourlyRentalView(trip, req);
 
         // Render intermediate stops if any
         const stopsCard = document.getElementById('enroute-stops-card');
@@ -2850,11 +3227,11 @@ function renderVehicles() {
         if (garageContainer) garageContainer.style.display = 'block';
         if (addMoreContainer) addMoreContainer.style.display = 'block';
         if (formElements) formElements.style.display = 'none';
+        if (typeof updateRouteVisibility === 'function') updateRouteVisibility();
         return;
     }
 
     // Always show garage container
-    if (placeholderCard) placeholderCard.style.display = 'none';
     if (garageContainer) {
         garageContainer.style.display = 'block';
         garageContainer.style.opacity = '1';
@@ -2862,6 +3239,7 @@ function renderVehicles() {
     }
     if (addMoreContainer) addMoreContainer.style.display = 'block';
     if (formElements) formElements.style.display = 'none';
+    if (typeof updateRouteVisibility === 'function') updateRouteVisibility();
 
     // Clamp active index
     if (activeVehicleIndex >= userVehicles.length) {
@@ -3208,9 +3586,9 @@ window.setVehicleIndex = function(idx) {
 let locationSearchTimeouts = {};
 
 function getDynamicPresets() {
-    const defaultHome = { name: 'Home', address: '45, Linking Road, Bandra West, Mumbai', lat: 19.0544, lng: 72.8402, icon: 'home' };
-    const defaultOffice = { name: 'Office', address: 'Maker Chambers IV, Nariman Point, Mumbai', lat: 18.9281, lng: 72.8224, icon: 'office' };
-    const defaultOther = { name: 'Other', address: 'Phoenix Palladium, Lower Parel, Mumbai', lat: 18.9942, lng: 72.8267, icon: 'other' };
+    const defaultHome = { name: 'Home', address: 'Park Street, Kolkata', lat: 22.5487, lng: 88.3516, icon: 'home' };
+    const defaultOffice = { name: 'Office', address: 'Sector V, Salt Lake, Kolkata', lat: 22.5804, lng: 88.4378, icon: 'office' };
+    const defaultOther = { name: 'Other', address: 'South City Mall, Prince Anwar Shah Rd, Kolkata', lat: 22.5000, lng: 88.3618, icon: 'other' };
 
     let home = defaultHome;
     let office = defaultOffice;
@@ -3745,12 +4123,12 @@ async function chooseCurrentGeoLocation(vehicleId) {
                 console.error("IP fallback failed:", ipErr);
             }
             
-            showToast("GPS access failed. Falling back to default GPS Location (BKC).", "warning");
-            selectLocationSuggestion(vehicleId, 'Trident Hotel, BKC, Mumbai', 19.0664, 72.8680, false, null, null, true);
+            showToast("GPS access failed. Falling back to default GPS Location (Kolkata).", "warning");
+            selectLocationSuggestion(vehicleId, 'Park Street, Kolkata', 22.5726, 88.3639, false, null, null, true);
         }, { enableHighAccuracy: true, timeout: 4000, maximumAge: 600000 });
     } else {
         showToast("Geolocation is not supported by your browser.", "error");
-        selectLocationSuggestion(vehicleId, 'Trident Hotel, BKC, Mumbai', 19.0664, 72.8680, false, null, null, true);
+        selectLocationSuggestion(vehicleId, 'Park Street, Kolkata', 22.5726, 88.3639, false, null, null, true);
     }
 }
 
@@ -3967,26 +4345,26 @@ async function selectLocationSuggestion(vehicleId, address, lat, lng, isCustom =
                 } else {
                     console.warn("Details API response missing coordinates:", details);
                     if (isNaN(parseFloat(finalLat)) || isNaN(parseFloat(finalLng))) {
-                        showToast("Failed to resolve coordinates. Using fallback BKC.", "warning");
-                        finalLat = 19.0664;
-                        finalLng = 72.8680;
+                        showToast("Failed to resolve coordinates. Using fallback Kolkata.", "warning");
+                        finalLat = 22.5726;
+                        finalLng = 88.3639;
                         resolved = false;
                     }
                 }
             } else {
                 if (isNaN(parseFloat(finalLat)) || isNaN(parseFloat(finalLng))) {
-                    showToast("Failed to resolve coordinates. Using fallback BKC.", "warning");
-                    finalLat = 19.0664;
-                    finalLng = 72.8680;
+                    showToast("Failed to resolve coordinates. Using fallback Kolkata.", "warning");
+                    finalLat = 22.5726;
+                    finalLng = 88.3639;
                     resolved = false;
                 }
             }
         } catch (e) {
             console.error("Place details resolution error:", e);
             if (isNaN(parseFloat(finalLat)) || isNaN(parseFloat(finalLng))) {
-                showToast("Failed to resolve coordinates. Using fallback BKC.", "warning");
-                finalLat = 19.0664;
-                finalLng = 72.8680;
+                showToast("Failed to resolve coordinates. Using fallback Kolkata.", "warning");
+                finalLat = 22.5726;
+                finalLng = 88.3639;
                 resolved = false;
             }
         }
@@ -3995,16 +4373,16 @@ async function selectLocationSuggestion(vehicleId, address, lat, lng, isCustom =
         if (window.customerMap) {
             const center = window.customerMap.getCenter();
             if (center && center.lat !== undefined && center.lng !== undefined) {
-                finalLat = center.lat;
-                finalLng = center.lng;
+                finalLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+                finalLng = typeof center.lng === 'function' ? center.lng() : center.lng;
             } else {
-                finalLat = 19.0664;
-                finalLng = 72.8680;
+                finalLat = 22.5726;
+                finalLng = 88.3639;
                 resolved = false;
             }
         } else {
-            finalLat = 19.0664;
-            finalLng = 72.8680;
+            finalLat = 22.5726;
+            finalLng = 88.3639;
             resolved = false;
         }
     }
@@ -5056,7 +5434,14 @@ async function saveVehicle() {
             plate, make, model, type, fuel, transmission, color, seats,
             makeModel: `${make} ${model}`,
         };
-        if (photoBase64) payload.photo = photoBase64;
+        if (photoBase64) {
+            payload.photo = photoBase64;
+        } else if (editId) {
+            const existingVeh = userVehicles.find(v => v.id === editId);
+            if (existingVeh && existingVeh.photo) {
+                payload.photo = existingVeh.photo;
+            }
+        }
 
         if (editId) {
             await apiPut(`/vehicles/${editId}`, payload);
@@ -5232,8 +5617,8 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
     // Retrieve selected location selector details (lat, lng, pickup address)
     const locInput = document.getElementById(`pickup-location-global`);
     const dropInput = document.getElementById(`drop-location-global`);
-    let lat = 19.0760; // fallback Mumbai lat
-    let lng = 72.8777; // fallback Mumbai lng
+    let lat = 22.5726; // fallback Kolkata lat
+    let lng = 88.3639; // fallback Kolkata lng
     let pickupAddress = '';
     let dropAddress = '';
     
@@ -5386,16 +5771,18 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         const isBike = activeVehicle && (String(activeVehicle.type).toLowerCase() === 'bike' || String(activeVehicle.category).toLowerCase() === 'bike');
         const vehicleType = isBike ? 'bike' : 'car';
 
+        const platformBaseChargeKey = `${vehicleType}_platform_base_charge`;
         const rateKey = `${vehicleType}_customer_rate_per_km`;
         const baseFareKey = `${vehicleType}_base_fare`;
         const haltRateKey = `${vehicleType}_halt_rate_per_min`;
         
-        const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 15 : 8);
+        const platformBaseCharge = window.redrivoSystemSettings?.[platformBaseChargeKey] !== undefined ? parseFloat(window.redrivoSystemSettings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
+        const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
         const baseFare = window.redrivoSystemSettings?.[baseFareKey] !== undefined ? parseFloat(window.redrivoSystemSettings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
         const haltRate = window.redrivoSystemSettings?.[haltRateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[haltRateKey]) : (vehicleType === 'car' ? 5 : 3);
 
         const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
-        let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        let redrivoServiceCharge = isP2P ? platformBaseCharge : (currentServiceType === 'TrackA' ? 299 : platformBaseCharge);
         let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
         let distance = (window.lockedTripDistanceKm !== null && window.lockedTripDistanceKm !== undefined) ? window.lockedTripDistanceKm : (window.calculatedRouteDistance || 0);
         const pickupInput = document.getElementById('pickup-location-global');
@@ -6523,8 +6910,8 @@ function switchTab(tabId) {
 
         // Get current pickup coordinates to query garages sorted by proximity
         const locInput = document.getElementById('pickup-location-global');
-        let lat = 19.0664;
-        let lng = 72.8680;
+        let lat = 22.5726;
+        let lng = 88.3639;
         if (locInput) {
             const dataLat = locInput.getAttribute('data-lat');
             const dataLng = locInput.getAttribute('data-lng');
@@ -6723,9 +7110,9 @@ window.proceedWithGarageBooking = function(g, flowType, vehicleId, condition) {
 
     // Fallback if empty/detecting
     if (!customerAddress || customerAddress.startsWith("Detecting") || customerAddress.startsWith("Approximate")) {
-        customerAddress = "Trident Hotel, BKC, Mumbai";
-        customerLat = "19.0664";
-        customerLng = "72.8680";
+        customerAddress = "Park Street, Kolkata";
+        customerLat = "22.5726";
+        customerLng = "88.3639";
     }
 
     if (flowType === 'pickup') {
@@ -6823,6 +7210,9 @@ window.clearGarageSelection = function() {
     if (typeof updateFixedActionButton === 'function') {
         updateFixedActionButton();
     }
+    if (typeof updateRouteVisibility === 'function') {
+        updateRouteVisibility();
+    }
 };
 
 window.loadNearbyGarages = async function(lat, lng) {
@@ -6842,8 +7232,8 @@ window.loadNearbyGarages = async function(lat, lng) {
     }
 
     if (!lat || !lng) {
-        lat = 19.0664;
-        lng = 72.8680;
+        lat = 22.5726;
+        lng = 88.3639;
     }
 
     try {
@@ -7473,15 +7863,17 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         }
 
         const settings = window.redrivoSystemSettings || {};
+        const platformBaseChargeKey = `${vehicleType}_platform_base_charge`;
         const rateKey = `${vehicleType}_customer_rate_per_km`;
         const baseFareKey = `${vehicleType}_base_fare`;
         const haltRateKey = `${vehicleType}_halt_rate_per_min`;
         
+        const platformBaseCharge = settings[platformBaseChargeKey] !== undefined ? parseFloat(settings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
         const ratePerKm = settings[rateKey] !== undefined ? parseFloat(settings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
         const minFare = settings[baseFareKey] !== undefined ? parseFloat(settings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
         const haltRate = parseFloat(settings[haltRateKey] || (vehicleType === 'car' ? 5 : 3));
         const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
-        const redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        const redrivoServiceCharge = isP2P ? platformBaseCharge : (currentServiceType === 'TrackA' ? 299 : platformBaseCharge);
         const inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
 
         const pricingMode = window.selectedPricingMode || 'distance';
@@ -8360,7 +8752,14 @@ window.confirmScheduleBooking = async function() {
     
     try {
         const isP2P = (window.bookingFlow === 'p2p' || !window.selectedGarageId);
-        let redrivoServiceCharge = isP2P ? 99 : (currentServiceType === 'TrackA' ? 299 : 99);
+        const v = userVehicles.find(veh => veh.id === vehicleId) || userVehicles[activeVehicleIndex] || {};
+        const isBike = String(v.type).toLowerCase().includes('bike') || String(v.category).toLowerCase().includes('bike');
+        const vehicleType = isBike ? 'bike' : 'car';
+        const platformBaseCharge = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_platform_base_charge`]) || (vehicleType === 'bike' ? 49 : 99);
+        const ratePerKm = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_customer_rate_per_km`]) || (vehicleType === 'car' ? 30 : 8);
+        const minBaseFare = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_base_fare`]) || (vehicleType === 'car' ? 150 : 50);
+
+        let redrivoServiceCharge = isP2P ? platformBaseCharge : (currentServiceType === 'TrackA' ? 299 : platformBaseCharge);
         let inspectionFee = isP2P ? 0 : (currentServiceType === 'TrackB' ? 250 : 0);
         let distance = (window.lockedTripDistanceKm !== null && window.lockedTripDistanceKm !== undefined) ? window.lockedTripDistanceKm : (window.calculatedRouteDistance || 0);
         const pickupInput = document.getElementById('pickup-location-global');
@@ -8377,7 +8776,7 @@ window.confirmScheduleBooking = async function() {
         }
         let pdCharge = 0;
         if (isP2P || currentPDType !== 'None') {
-            const baseCharge = Math.max(150, Math.round(distance * (window.customerRatePerKm || 30)));
+            const baseCharge = Math.max(minBaseFare, Math.round(distance * ratePerKm));
             pdCharge = currentPDType === 'Both' ? baseCharge * 2 : baseCharge;
         }
         let total = redrivoServiceCharge + inspectionFee + pdCharge;
@@ -8949,34 +9348,48 @@ window.updateRouteVisibility = updateRouteVisibility;
 function updateRouteVisibility() {
     const pickupInput = document.getElementById('pickup-location-global');
     const dropInput = document.getElementById('drop-location-global');
+    const placeholderCard = document.getElementById('location-placeholder-card');
     
     if (pickupInput && dropInput) {
         const pLat = pickupInput.getAttribute('data-lat');
         const pLng = pickupInput.getAttribute('data-lng');
         const dLat = dropInput.getAttribute('data-lat');
         const dLng = dropInput.getAttribute('data-lng');
+        const pAddr = (pickupInput.value || pickupInput.getAttribute('data-address') || '').trim();
+        const dAddr = (dropInput.value || dropInput.getAttribute('data-address') || '').trim();
         
         const pLatNum = parseFloat(pLat);
         const pLngNum = parseFloat(pLng);
         const dLatNum = parseFloat(dLat);
         const dLngNum = parseFloat(dLng);
+
+        const hasPickup = !isNaN(pLatNum) && !isNaN(pLngNum) && pAddr.length > 0;
+        const hasDrop = !isNaN(dLatNum) && !isNaN(dLngNum) && dAddr.length > 0;
+
+        if (hasPickup && hasDrop) {
+            if (placeholderCard) placeholderCard.style.display = 'none';
+        } else {
+            if (placeholderCard) placeholderCard.style.display = 'block';
+        }
         
-        if (!isNaN(pLatNum) && !isNaN(pLngNum) && !isNaN(dLatNum) && !isNaN(dLngNum) && pickupLocationResolved && dropLocationResolved) {
+        if (hasPickup && hasDrop && pickupLocationResolved && dropLocationResolved) {
             window.routePickup = {
                 lat: pLatNum,
                 lng: pLngNum,
-                address: pickupInput.value || pickupInput.getAttribute('data-address')
+                address: pAddr
             };
             window.routeDrop = {
                 lat: dLatNum,
                 lng: dLngNum,
-                address: dropInput.value || dropInput.getAttribute('data-address')
+                address: dAddr
             };
             window.routeStops = window.routeStops || [];
             
             recalculateAndDrawRoute();
             return;
         }
+    } else {
+        if (placeholderCard) placeholderCard.style.display = 'block';
     }
     
     clearRouteLine();
@@ -9265,8 +9678,8 @@ window.selectRouteSearchSuggestion = async function(type, indexOrId, address, pl
     if (modal) modal.style.display = 'none';
     window.routeSearchModalOpen = false;
 
-    let lat = defaultLat !== null ? parseFloat(defaultLat) : 19.0664;
-    let lng = defaultLng !== null ? parseFloat(defaultLng) : 72.8680;
+    let lat = defaultLat !== null ? parseFloat(defaultLat) : 22.5726;
+    let lng = defaultLng !== null ? parseFloat(defaultLng) : 88.3639;
 
     if (placeId) {
         showToast("Resolving stop coordinates...", "info");
@@ -9781,9 +10194,9 @@ window.setupGarageFlowRouting = function(g, flowType, vehicleId, condition) {
     }
 
     if (!customerAddress || customerAddress.startsWith("Detecting") || customerAddress.startsWith("Approximate")) {
-        customerAddress = "Trident Hotel, BKC, Mumbai";
-        customerLat = "19.0664";
-        customerLng = "72.8680";
+        customerAddress = "Park Street, Kolkata";
+        customerLat = "22.5726";
+        customerLng = "88.3639";
     }
 
     if (flowType === 'pickup' || flowType === 'round_trip') {
@@ -10858,7 +11271,7 @@ window.openRentalBookingModal = async function(vehicleId) {
 
                 <div>
                     <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Drop / Destination Address *</label>
-                    <input type="text" id="rb-drop-address" required placeholder="Where should the ReDrivo driver drop you?" value="BKC Corporate Hub, Mumbai" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.85rem;" />
+                    <input type="text" id="rb-drop-address" required placeholder="Where should the ReDrivo driver drop you?" value="Park Street, Kolkata" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.85rem;" />
                 </div>
 
                 <div style="background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.2); border-radius: 10px; padding: 12px; margin-top: 4px;">

@@ -371,6 +371,17 @@ const mockLocations = {
     kolkata: { lat: 22.5487, lng: 88.3516, name: 'Kolkata Park Street' }
 };
 
+function getDefaultCityLocation() {
+    if (currentUser && currentUser.city) {
+        const c = String(currentUser.city).toLowerCase();
+        if (c.includes('mumbai') || c.includes('thane') || c.includes('navi')) return mockLocations.mumbai;
+        if (c.includes('delhi') || c.includes('noida') || c.includes('gurugram') || c.includes('ghaziabad')) return mockLocations.delhi;
+        if (c.includes('bangalore') || c.includes('bengaluru')) return mockLocations.bangalore;
+        if (c.includes('kolkata') || c.includes('howrah')) return mockLocations.kolkata;
+    }
+    return mockLocations.kolkata;
+}
+
 async function reportMarshalLocation(lat, lng) {
     if (!currentUser || !currentUser.id) return;
     try {
@@ -411,7 +422,7 @@ function updateLocationStatusUI(msg = '', isError = false) {
     }
 
     if (isError) {
-        textEl.textContent = `GPS Error: ${msg}. Using fallback BKC Mumbai (${marshalLat ? marshalLat.toFixed(4) : '?'}, ${marshalLng ? marshalLng.toFixed(4) : '?'})`;
+        textEl.textContent = `GPS Error: ${msg}. Using fallback Kolkata (${marshalLat ? marshalLat.toFixed(4) : '?'}, ${marshalLng ? marshalLng.toFixed(4) : '?'})`;
         if (iconEl) {
             iconEl.textContent = 'location_off';
             iconEl.style.color = '#ef4444';
@@ -3136,14 +3147,18 @@ function showIncomingPickupModal(pickup) {
         else if (subType.includes('hatchback')) imgSrc = 'images/hatchback.png';
     }
     
-    const displayPrice = Math.round(pickup.totalCustomerPrice || pickup.totalcustomerprice || pickup.price || 0);
+    const grossPrice = Math.round(pickup.totalCustomerPrice || pickup.totalcustomerprice || pickup.price || 0);
+    const payoutModel = (currentUser && (currentUser.payoutModel || currentUser.payout_model)) || 'commission';
+    const isSubscribed = payoutModel === 'subscription' && currentUser && (currentUser.subscriptionValidUntil || currentUser.subscription_valid_until) && new Date(currentUser.subscriptionValidUntil || currentUser.subscription_valid_until) >= new Date();
+    const commPct = 20.0;
+    const displayEarnings = isSubscribed ? grossPrice : (pickup.driverPayout ? Math.round(pickup.driverPayout) : Math.round(grossPrice * (1 - (commPct / 100))));
     
     const address = pickup.pickupAddress || pickup.pickup_address || pickup.pickupaddress || 'Nearby location';
 
     document.getElementById('ip-vehicle-name').textContent = fullName;
     document.getElementById('ip-vehicle-plate').textContent = plate;
     document.getElementById('ip-vehicle-image').src = imgSrc;
-    document.getElementById('ip-earnings').textContent = `₹${displayPrice}`;
+    document.getElementById('ip-earnings').textContent = `₹${displayEarnings}`;
     document.getElementById('ip-distance').textContent = distStr;
     document.getElementById('ip-address').textContent = address;
 
@@ -3637,6 +3652,138 @@ window.autoVerifyStop = async function(tripId, stopIndex) {
     }
 };
 
+// --- HOURLY RENTAL COUNTDOWN (DRIVER VIEW) ---
+let marshalRentalTimerInterval = null;
+
+function setupMarshalHourlyRentalView(trip, req) {
+    const container = document.getElementById('map-hourly-rental-container');
+    if (!container) return;
+
+    const pricingMode = trip.pricingMode || trip.pricing_mode || (req ? req.pricing_mode || req.pricingMode : '');
+    const isHourly = pricingMode === 'hourly';
+    const isInTransit = trip.status === 'in_transit';
+
+    if (isHourly && isInTransit) {
+        container.style.display = 'flex';
+        startMarshalRentalTimer(trip, req);
+    } else {
+        container.style.display = 'none';
+        if (marshalRentalTimerInterval) {
+            clearInterval(marshalRentalTimerInterval);
+            marshalRentalTimerInterval = null;
+        }
+    }
+}
+
+function startMarshalRentalTimer(trip, req) {
+    if (marshalRentalTimerInterval) clearInterval(marshalRentalTimerInterval);
+
+    const updateTimer = () => {
+        const displayEl = document.getElementById('map-rental-countdown');
+        const labelEl = document.getElementById('map-rental-timer-label');
+        const titleEl = document.getElementById('map-rental-timer-title');
+        const iconEl = document.getElementById('map-rental-timer-icon');
+        const bookedEl = document.getElementById('map-rental-booked-duration');
+        const container = document.getElementById('map-hourly-rental-container');
+
+        if (!displayEl) return;
+
+        const estHours = parseFloat(trip.estimatedHours || trip.estimated_hours || (req ? req.estimated_hours : 1)) || 1;
+        if (bookedEl) {
+            bookedEl.textContent = `${estHours} hr${estHours > 1 ? 's' : ''} booked`;
+        }
+
+        let expiresAtMs = null;
+        const expiresAtRaw = trip.rentalExpiresAt || trip.rentalexpiresat || (req ? req.rentalexpiresat || req.rentalExpiresAt : null);
+        if (expiresAtRaw) {
+            expiresAtMs = new Date(expiresAtRaw).getTime();
+        } else {
+            const startedAtRaw = trip.rentalStartedAt || trip.rentalstartedat || (req ? req.rentalstartedat || req.rentalStartedAt : null);
+            const startedMs = startedAtRaw ? new Date(startedAtRaw).getTime() : Date.now();
+            expiresAtMs = startedMs + (estHours * 60 * 60 * 1000);
+        }
+
+        const now = Date.now();
+        const diffMs = expiresAtMs - now;
+
+        if (diffMs >= 0) {
+            const totalSec = Math.floor(diffMs / 1000);
+            const hrs = Math.floor(totalSec / 3600);
+            const mins = Math.floor((totalSec % 3600) / 60);
+            const secs = totalSec % 60;
+
+            let timeStr = '';
+            if (hrs > 0) {
+                timeStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else {
+                timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+
+            displayEl.textContent = timeStr;
+            displayEl.style.color = '#D4AF37';
+            displayEl.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.3)';
+
+            if (labelEl) {
+                labelEl.textContent = 'Remaining Time';
+                labelEl.style.color = '#94a3b8';
+            }
+            if (titleEl) titleEl.textContent = 'Hourly Rental';
+            if (iconEl) {
+                iconEl.textContent = 'timer';
+                iconEl.style.color = '#D4AF37';
+            }
+            if (container) {
+                container.style.border = '1.5px solid rgba(250, 204, 21, 0.35)';
+                container.style.background = 'linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(20, 24, 33, 0.95) 100%)';
+            }
+            const banner = document.getElementById('map-overtime-notice-banner');
+            if (banner) banner.style.display = 'none';
+        } else {
+            const overtimeSec = Math.floor(Math.abs(diffMs) / 1000);
+            const hrs = Math.floor(overtimeSec / 3600);
+            const mins = Math.floor((overtimeSec % 3600) / 60);
+            const secs = overtimeSec % 60;
+
+            let timeStr = '+';
+            if (hrs > 0) {
+                timeStr += `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else {
+                timeStr += `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+
+            displayEl.textContent = timeStr;
+            displayEl.style.color = '#ef4444';
+            displayEl.style.textShadow = '0 0 10px rgba(239, 68, 68, 0.5)';
+
+            if (labelEl) {
+                labelEl.textContent = 'Overtime Elapsed';
+                labelEl.style.color = '#f87171';
+            }
+            if (titleEl) titleEl.textContent = 'Overtime (Active)';
+            if (iconEl) {
+                iconEl.textContent = 'warning';
+                iconEl.style.color = '#ef4444';
+            }
+            if (container) {
+                container.style.border = '1.5px solid rgba(239, 68, 68, 0.5)';
+                container.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(20, 24, 33, 0.95) 100%)';
+            }
+
+            const banner = document.getElementById('map-overtime-notice-banner');
+            const bannerText = document.getElementById('map-overtime-notice-text');
+            if (banner) {
+                banner.style.display = 'flex';
+                if (bannerText) {
+                    bannerText.textContent = 'Trip time exceeded — continuing without an extension is being logged for review.';
+                }
+            }
+        }
+    };
+
+    updateTimer();
+    marshalRentalTimerInterval = setInterval(updateTimer, 1000);
+}
+
 window.openMapView = async function(tripId = null) {
     if (typeof google === 'undefined' || !google.maps) {
         if (!window.openMapViewRetries) window.openMapViewRetries = 0;
@@ -3884,22 +4031,25 @@ window.openMapView = async function(tripId = null) {
         if (mapTargetTitle) mapTargetTitle.textContent = targetTitle;
         if (mapTargetAddress) mapTargetAddress.textContent = targetAddress;
 
+        // Configure Synchronized Hourly Rental View
+        setupMarshalHourlyRentalView(trip, req);
+
         // Initialize Map
         if (!marshalMap && typeof google !== 'undefined' && google.maps) {
-            marshalMap = new google.maps.Map(document.getElementById('marshal-leaflet-map'), { center: {lat: 28.6139, lng: 77.2090}, zoom: 13, disableDefaultUI: true, styles: lightMapStyle });
+            marshalMap = new google.maps.Map(document.getElementById('marshal-leaflet-map'), { center: {lat: 22.5726, lng: 88.3639}, zoom: 13, disableDefaultUI: true, styles: lightMapStyle });
             // L.tileLayer removed
         }
 
         // Determine target coordinates based on bookingFlow and trip status
-        let targetLat = 19.0760;
-        let targetLng = 72.8777;
+        let targetLat = 22.5726;
+        let targetLng = 88.3639;
         let resolved = false;
 
         const bookingFlow = trip.bookingFlow || trip.bookingflow || 'p2p';
         const garageId = req.assignedGarageId || req.garageId || req.garageid;
         
-        const pickupLat = parseFloat(req.pickuplat || req.pickupLat || req.pickup_lat || req.lat || 19.0760);
-        const pickupLng = parseFloat(req.pickuplng || req.pickupLng || req.pickup_lng || req.lng || 72.8777);
+        const pickupLat = parseFloat(req.pickuplat || req.pickupLat || req.pickup_lat || req.lat || 22.5726);
+        const pickupLng = parseFloat(req.pickuplng || req.pickupLng || req.pickup_lng || req.lng || 88.3639);
         const dropLat = parseFloat(req.droplat || req.dropLat || req.drop_lat || req.droplng || pickupLat);
         const dropLng = parseFloat(req.droplng || req.dropLng || req.drop_lng || req.droplng || pickupLng);
 
@@ -4053,12 +4203,21 @@ window.openMapView = async function(tripId = null) {
                     marshalMap.fitBounds(bounds, 50);
 
                     try {
-                        await fetch(`${API_URL}/trips/${trip.id}`, {
-                            method: 'PATCH', headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ marshalLat: lat, marshalLng: lng })
+                        await fetch(`${API_URL}/trips/${trip.id}/location`, {
+                            method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ lat, lng, speed, accuracy })
                         });
                     } catch(e){}
                 };
+
+                // Request Screen Wake Lock during active trip navigation
+                if ('wakeLock' in navigator && !window._driverScreenWakeLock) {
+                    try {
+                        navigator.wakeLock.request('screen').then(lock => {
+                            window._driverScreenWakeLock = lock;
+                        }).catch(() => {});
+                    } catch(eLock){}
+                }
 
                 if (activeGpsMode !== 'gps') {
                     sendLocation(marshalLat, marshalLng);
@@ -4066,6 +4225,8 @@ window.openMapView = async function(tripId = null) {
                     navigator.geolocation.getCurrentPosition(async (updPos) => {
                         let uLat = updPos.coords.latitude;
                         let uLng = updPos.coords.longitude;
+                        let uSpeed = updPos.coords.speed;
+                        let uAcc = updPos.coords.accuracy;
                         let uDist = calcDistanceKm(uLat, uLng, tLat, tLng);
                         if (uDist > 50) {
                             if (window.DEV_MODE_MOCK_LOCATION) {
@@ -4075,7 +4236,7 @@ window.openMapView = async function(tripId = null) {
                                 showToast('Warning: Your GPS location is unusually far from the destination. Please check your GPS signal.', 'warning');
                             }
                         }
-                        sendLocation(uLat, uLng);
+                        sendLocation(uLat, uLng, uSpeed, uAcc);
                     }, () => {
                         if (window.DEV_MODE_MOCK_LOCATION) {
                             sendLocation(marshalLat || tLat + 0.015, marshalLng || tLng + 0.015);

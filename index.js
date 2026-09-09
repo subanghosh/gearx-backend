@@ -3,13 +3,13 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 if (fs.existsSync(path.join(__dirname, '.env.local'))) {
-    require('dotenv').config({ path: path.join(__dirname, '.env.local') });
-} else {
-    require('dotenv').config();
+    require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
 }
 const { Pool } = require('pg');
 const multer = require('multer');
+const { isR2Configured, uploadBufferToR2, getPresignedDocUrl, getR2ObjectStream, headR2Object, normalizeKey } = require('./r2Storage');
 const nodemailer = require('nodemailer');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -639,6 +639,9 @@ function initializeDatabase() {
         db.run("ALTER TABLE service_requests ADD COLUMN booking_flow TEXT", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN pickup_drop_type TEXT", () => {});
         db.run("ALTER TABLE service_requests ADD COLUMN route_stops TEXT", () => {});
+        db.run("ALTER TABLE service_requests ADD COLUMN vehicle_type TEXT DEFAULT 'car'", () => {});
+        db.run("ALTER TABLE service_requests ADD COLUMN estimated_hours REAL DEFAULT 1.0", () => {});
+        db.run("ALTER TABLE service_requests ADD COLUMN unextended_overtime_cost REAL DEFAULT 0", () => {});
 
         // Trips Table (Marshal Operations)
         db.run(`CREATE TABLE IF NOT EXISTS trips (
@@ -687,6 +690,22 @@ function initializeDatabase() {
             db.run(`INSERT INTO system_settings (key, value) VALUES ('commission_low_tier', '65.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('bonus_5_star_percentage', '5.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('max_pickup_distance_km', '10.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_platform_base_charge', '99.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_platform_base_charge', '49.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_base_fare', '150.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_base_fare', '50.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_customer_rate_per_km', '30.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_customer_rate_per_km', '8.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_halt_rate_per_min', '5.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_halt_rate_per_min', '3.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_hourly_rate', '150.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_hourly_rate', '80.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_max_pickup_distance_km', '10.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_max_pickup_distance_km', '5.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_five_star_bonus', '50.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_five_star_bonus', '30.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('car_payout_days', '3') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_payout_days', '3') ON CONFLICT(key) DO NOTHING`);
         });
 
         // Disputes Table
@@ -907,13 +926,33 @@ function initializeDatabase() {
         db.run(`CREATE TABLE IF NOT EXISTS incentive_slabs (
             id TEXT PRIMARY KEY,
             maxDistance REAL,
-            ratePerKm REAL
+            ratePerKm REAL,
+            vehicle_type TEXT DEFAULT 'car'
         )`, () => {
             db.get("SELECT COUNT(*) as count FROM incentive_slabs", (err, row) => {
                 if (row && Number(row.count) === 0) {
-                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_1', 5.0, 15.0)");
-                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_2', 10.0, 20.0)");
-                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES ('slab_3', 999.0, 25.0)");
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm, vehicle_type) VALUES ('slab_1', 5.0, 15.0, 'car')");
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm, vehicle_type) VALUES ('slab_2', 10.0, 20.0, 'car')");
+                    db.run("INSERT INTO incentive_slabs (id, maxDistance, ratePerKm, vehicle_type) VALUES ('slab_3', 999.0, 25.0, 'car')");
+                }
+            });
+        });
+
+        // Hourly Incentive Slabs Table (Dedicated for Hourly Rentals)
+        db.run(`CREATE TABLE IF NOT EXISTS hourly_incentive_slabs (
+            id TEXT PRIMARY KEY,
+            maxHours REAL NOT NULL,
+            ratePerHour REAL NOT NULL,
+            vehicle_type TEXT DEFAULT 'car'
+        )`, () => {
+            db.get("SELECT COUNT(*) as count FROM hourly_incentive_slabs", (err, row) => {
+                if (row && Number(row.count) === 0) {
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_car_1', 2.0, 90.0, 'car')");
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_car_2', 6.0, 80.0, 'car')");
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_car_3', 999.0, 70.0, 'car')");
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_bike_1', 2.0, 45.0, 'bike')");
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_bike_2', 6.0, 40.0, 'bike')");
+                    db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_bike_3', 999.0, 35.0, 'bike')");
                 }
             });
         });
@@ -1247,8 +1286,8 @@ apiRouter.get('/maps/config', (req, res) => {
 
 apiRouter.get('/maps/autocomplete', async (req, res) => {
     const query = req.query.q;
-    const biasLat = req.query.lat ? parseFloat(req.query.lat) : null;
-    const biasLng = req.query.lng ? parseFloat(req.query.lng) : null;
+    const biasLat = req.query.lat ? parseFloat(req.query.lat) : 22.5726;
+    const biasLng = req.query.lng ? parseFloat(req.query.lng) : 88.3639;
 
     if (!query || query.trim().length < 3) {
         return res.json([]);
@@ -1390,8 +1429,8 @@ apiRouter.get('/maps/details', async (req, res) => {
         }
     }
     
-    // Fallback: Return default BKC location if Details resolution fails
-    res.json({ lat: 19.0664, lng: 72.8680, address: 'Fallback: BKC, Mumbai', source: 'fallback' });
+    // Fallback: Return default Kolkata location if Details resolution fails
+    res.json({ lat: 22.5726, lng: 88.3639, address: 'Fallback: Park Street, Kolkata', source: 'fallback' });
 });
 
 apiRouter.get('/maps/reverse-geocode', async (req, res) => {
@@ -1685,27 +1724,43 @@ apiRouter.post('/feedback', (req, res) => {
 
 // Incentive Slabs & Global Settings Routes
 apiRouter.get('/settings/incentives', (req, res) => {
-    db.all("SELECT maxDistance, ratePerKm FROM incentive_slabs ORDER BY maxDistance ASC", [], (err, rows) => {
+    const type = (req.query.type || 'car').toLowerCase();
+    db.all("SELECT maxDistance, ratePerKm, vehicle_type as \"vehicleType\" FROM incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = ? ORDER BY maxDistance ASC", [type], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+        if (rows && rows.length > 0) {
+            return res.json(rows);
+        }
+        if (type === 'bike') {
+            return res.json([
+                { maxDistance: 5, ratePerKm: 15, vehicleType: 'bike' },
+                { maxDistance: 15, ratePerKm: 10, vehicleType: 'bike' },
+                { maxDistance: 999, ratePerKm: 7, vehicleType: 'bike' }
+            ]);
+        }
+        return res.json([
+            { maxDistance: 10, ratePerKm: 35, vehicleType: 'car' },
+            { maxDistance: 25, ratePerKm: 28, vehicleType: 'car' },
+            { maxDistance: 999, ratePerKm: 18, vehicleType: 'car' }
+        ]);
     });
 });
 
 apiRouter.post('/settings/incentives', authMiddleware, requireRole('admin'), (req, res) => {
     const { slabs } = req.body;
+    const type = (req.body.type || 'car').toLowerCase();
     if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
     
-    db.run("DELETE FROM incentive_slabs", [], (err) => {
+    db.run("DELETE FROM incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = ?", [type], (err) => {
         if (err) return res.status(500).json({ error: err.message });
         
         let completed = 0;
         if (slabs.length === 0) return res.json({ success: true });
         
         slabs.forEach((slab, idx) => {
-            const id = `slab_${idx}_${Date.now()}`;
+            const id = `slab_${type}_${idx}_${Date.now()}`;
             db.run(
-                "INSERT INTO incentive_slabs (id, maxDistance, ratePerKm) VALUES (?, ?, ?)",
-                [id, Number(slab.maxDistance), Number(slab.ratePerKm)],
+                "INSERT INTO incentive_slabs (id, maxDistance, ratePerKm, vehicle_type) VALUES (?, ?, ?, ?)",
+                [id, Number(slab.maxDistance), Number(slab.ratePerKm), type],
                 (err2) => {
                     completed++;
                     if (completed === slabs.length) {
@@ -1717,11 +1772,99 @@ apiRouter.post('/settings/incentives', authMiddleware, requireRole('admin'), (re
     });
 });
 
+// Hourly Rate Slabs Routes (Dedicated for Hourly Rentals with Atomic Transaction)
+apiRouter.get('/settings/hourly-slabs', (req, res) => {
+    const type = (req.query.type || 'car').toLowerCase();
+    pool.query(
+        "SELECT maxhours as \"maxHours\", rateperhour as \"ratePerHour\", vehicle_type as \"vehicleType\" FROM hourly_incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1 ORDER BY maxhours ASC",
+        [type]
+    ).then(result => {
+        if (result.rows && result.rows.length > 0) {
+            return res.json(result.rows);
+        }
+        if (type === 'bike') {
+            return res.json([
+                { maxHours: 2, ratePerHour: 45, vehicleType: 'bike' },
+                { maxHours: 6, ratePerHour: 40, vehicleType: 'bike' },
+                { maxHours: 999, ratePerHour: 35, vehicleType: 'bike' }
+            ]);
+        }
+        return res.json([
+            { maxHours: 2, ratePerHour: 90, vehicleType: 'car' },
+            { maxHours: 6, ratePerHour: 80, vehicleType: 'car' },
+            { maxHours: 999, ratePerHour: 70, vehicleType: 'car' }
+        ]);
+    }).catch(err => {
+        console.error('Error fetching hourly slabs:', err.message);
+        res.status(500).json({ error: err.message });
+    });
+});
+
+apiRouter.post('/settings/hourly-slabs', authMiddleware, requireRole('admin'), async (req, res) => {
+    const { slabs } = req.body;
+    const type = (req.body.type || 'car').toLowerCase();
+    if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
+
+    // Strict pre-validation: validate all entries before touching database
+    for (let i = 0; i < slabs.length; i++) {
+        const s = slabs[i];
+        const maxH = Number(s.maxHours !== undefined ? s.maxHours : s.maxhours);
+        const rate = Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour);
+        if (isNaN(maxH) || maxH <= 0 || isNaN(rate) || rate < 0 || !isFinite(maxH) || !isFinite(rate)) {
+            return res.status(400).json({ 
+                error: `Invalid slab at index ${i}: maxHours must be > 0 and ratePerHour must be >= 0` 
+            });
+        }
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query("DELETE FROM hourly_incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1", [type]);
+
+        for (let idx = 0; idx < slabs.length; idx++) {
+            const slab = slabs[idx];
+            const id = `hslab_${type}_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const maxH = Number(slab.maxHours !== undefined ? slab.maxHours : slab.maxhours);
+            const rate = Number(slab.ratePerHour !== undefined ? slab.ratePerHour : slab.rateperhour);
+            await client.query(
+                "INSERT INTO hourly_incentive_slabs (id, maxhours, rateperhour, vehicle_type) VALUES ($1, $2, $3, $4)",
+                [id, maxH, rate, type]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Atomic transaction failed for hourly slabs, rolled back:', err.message);
+        res.status(500).json({ error: 'Failed to update hourly rate slabs: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 apiRouter.get('/settings/global', (req, res) => {
-    db.all("SELECT key, value FROM system_settings WHERE key IN ('five_star_bonus', 'payout_days')", [], (err, rows) => {
+    db.all("SELECT key, value FROM system_settings", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        const settings = { five_star_bonus: 50, payout_days: 3 }; // defaults
-        rows.forEach(r => { settings[r.key] = Number(r.value); });
+        const settings = {
+            five_star_bonus: 50,
+            payout_days: 3,
+            car_platform_base_charge: 99,
+            bike_platform_base_charge: 49,
+            car_base_fare: 150,
+            bike_base_fare: 50,
+            car_customer_rate_per_km: 30,
+            bike_customer_rate_per_km: 8,
+            car_halt_rate_per_min: 5,
+            bike_halt_rate_per_min: 3,
+            car_hourly_rate: 150,
+            bike_hourly_rate: 80
+        };
+        rows.forEach(r => {
+            const num = Number(r.value);
+            settings[r.key] = isNaN(num) ? r.value : num;
+        });
         res.json(settings);
     });
 });
@@ -2316,6 +2459,12 @@ apiRouter.get('/trips', authMiddleware, (req, res) => {
                sr.customerId AS "customerId",
                sr.booking_flow AS "bookingFlow",
                sr.pickup_drop_type AS "pickupDropType",
+               sr.pricing_mode AS "pricingMode",
+               sr.estimated_hours AS "estimatedHours",
+               sr.totalcustomerprice AS "totalCustomerPrice",
+               sr.baseamount AS "baseAmount",
+               sr.pickup_address AS "pickup_address",
+               sr.drop_address AS "drop_address",
                sr.garageId AS "assignedGarageId",
                u.name AS "marshalName", 
                u.phone AS "marshalPhone",
@@ -2350,6 +2499,12 @@ apiRouter.get('/trips', authMiddleware, (req, res) => {
         }
         const mapped = (rows || []).map(r => ({
             ...r,
+            rentalStartedAt: r.rentalStartedAt || r.rentalstartedat,
+            rentalExpiresAt: r.rentalExpiresAt || r.rentalexpiresat,
+            rentalExtensions: r.rentalExtensions || r.rental_extensions || [],
+            pricingMode: r.pricingMode || r.pricing_mode,
+            estimatedHours: r.estimatedHours !== undefined ? r.estimatedHours : r.estimated_hours,
+            totalCustomerPrice: r.totalCustomerPrice !== undefined ? r.totalCustomerPrice : r.totalcustomerprice,
             marshalPhoto: generateSignedUploadUrl(r.marshalPhoto)
         }));
         res.json(mapped);
@@ -3704,16 +3859,7 @@ try {
     console.warn('[STARTUP-2] Failed to create downloads directory on volume:', err.message);
 }
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, activeUploadsDir);
-    },
-    filename: (req, file, cb) => {
-        // Sanitize filename to prevent path traversal
-        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        cb(null, Date.now() + '-' + safeName);
-    }
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
     if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -3789,16 +3935,11 @@ const validateUploadedFiles = (req, res, next) => {
     }
     for (const file of filesToCheck) {
         try {
-            const fd = fs.openSync(file.path, 'r');
-            const buffer = Buffer.alloc(32);
-            const bytesRead = fs.readSync(fd, buffer, 0, 32, 0);
-            fs.closeSync(fd);
-            if (bytesRead < 4 || !checkMagicBytes(buffer, file.mimetype)) {
-                filesToCheck.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+            const buf = file.buffer || (file.path && fs.existsSync(file.path) ? fs.readFileSync(file.path) : null);
+            if (!buf || buf.length < 4 || !checkMagicBytes(buf, file.mimetype)) {
                 return res.status(400).json({ error: `Invalid file content. The uploaded file does not match the signature for ${file.mimetype}.` });
             }
         } catch (err) {
-            filesToCheck.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
             return res.status(400).json({ error: 'Failed to inspect uploaded file.' });
         }
     }
@@ -3816,15 +3957,26 @@ apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, up
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     try {
         const file = req.file;
-        const data = fs.readFileSync(file.path);
-        const base64Data = `data:${file.mimetype};base64,${data.toString('base64')}`;
-        fs.unlink(file.path, () => {});
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        const filePath = `uploads/${filename}`;
+
+        if (isR2Configured()) {
+            await uploadBufferToR2({
+                key: filePath,
+                buffer: file.buffer,
+                mimetype: file.mimetype,
+                metadata: { userId: req.params.id, type: 'profile_picture' }
+            });
+        }
+
+        const signedUrl = generateSignedUploadUrl(filePath);
 
         // Update both users and garage_workers tables
-        await pool.query(`UPDATE users SET profilepictureurl = $1 WHERE id = $2`, [base64Data, req.params.id]);
-        await pool.query(`UPDATE garage_workers SET profilepictureurl = $1 WHERE id = $2`, [base64Data, req.params.id]).catch(() => {});
+        await pool.query(`UPDATE users SET profilepictureurl = $1 WHERE id = $2`, [filePath, req.params.id]);
+        await pool.query(`UPDATE garage_workers SET profilepictureurl = $1 WHERE id = $2`, [filePath, req.params.id]).catch(() => {});
 
-        res.json({ success: true, profilePictureUrl: base64Data });
+        res.json({ success: true, profilePictureUrl: signedUrl });
     } catch (err) {
         console.error('Profile picture upload error:', err.message);
         res.status(500).json({ error: 'Failed to upload profile picture: ' + err.message });
@@ -3849,20 +4001,30 @@ apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.
 
         const colName = docTypeMap[docType];
         if (!colName) {
-            fs.unlink(req.file.path, () => {});
             return res.status(400).json({ error: 'Invalid docType: ' + docType });
         }
 
         const file = req.file;
-        const data = fs.readFileSync(file.path);
-        const base64Data = `data:${file.mimetype};base64,${data.toString('base64')}`;
-        fs.unlink(file.path, () => {});
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        const filePath = `uploads/${filename}`;
+
+        if (isR2Configured()) {
+            await uploadBufferToR2({
+                key: filePath,
+                buffer: file.buffer,
+                mimetype: file.mimetype,
+                metadata: { userId: id, docType }
+            });
+        }
+
+        const signedUrl = generateSignedUploadUrl(filePath);
 
         // Update both users and garage_workers tables
-        await pool.query(`UPDATE users SET ${colName} = $1 WHERE id = $2`, [base64Data, id]);
-        await pool.query(`UPDATE garage_workers SET ${colName} = $1 WHERE id = $2`, [base64Data, id]).catch(() => {});
+        await pool.query(`UPDATE users SET ${colName} = $1 WHERE id = $2`, [filePath, id]);
+        await pool.query(`UPDATE garage_workers SET ${colName} = $1 WHERE id = $2`, [filePath, id]).catch(() => {});
 
-        res.json({ success: true, fileUrl: base64Data });
+        res.json({ success: true, fileUrl: signedUrl });
     } catch (err) {
         console.error('KYC file upload error:', err.message);
         res.status(500).json({ error: 'Failed to upload document: ' + err.message });
@@ -3954,86 +4116,107 @@ apiRouter.put('/workers/:id/kyc', authMiddleware, verifyOwnership, upload.fields
     }
 
     let panUrl = existingUser.panurl || null;
-    if (files.panFile) {
+    if (files.panFile && files.panFile[0]) {
         try {
             const file = files.panFile[0];
-            const data = fs.readFileSync(file.path);
-            panUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            panUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: panUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'pan' } });
+            }
         } catch (e) {
-            console.error('Error converting PAN file to base64:', e);
+            console.error('Error uploading PAN file to R2:', e);
         }
     }
 
     let panBackUrl = existingUser.panbackurl || null;
-    if (files.panBackFile) {
+    if (files.panBackFile && files.panBackFile[0]) {
         try {
             const file = files.panBackFile[0];
-            const data = fs.readFileSync(file.path);
-            panBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            panBackUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: panBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'panback' } });
+            }
         } catch (e) {
-            console.error('Error converting PAN back file to base64:', e);
+            console.error('Error uploading PAN back file to R2:', e);
         }
     }
 
     let aadhaarUrl = existingUser.aadhaarurl || null;
-    if (files.aadhaarFile) {
+    if (files.aadhaarFile && files.aadhaarFile[0]) {
         try {
             const file = files.aadhaarFile[0];
-            const data = fs.readFileSync(file.path);
-            aadhaarUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            aadhaarUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: aadhaarUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaar' } });
+            }
         } catch (e) {
-            console.error('Error converting Aadhaar file to base64:', e);
+            console.error('Error uploading Aadhaar file to R2:', e);
         }
     }
 
     let aadhaarBackUrl = existingUser.aadhaarbackurl || null;
-    if (files.aadhaarBackFile) {
+    if (files.aadhaarBackFile && files.aadhaarBackFile[0]) {
         try {
             const file = files.aadhaarBackFile[0];
-            const data = fs.readFileSync(file.path);
-            aadhaarBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            aadhaarBackUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: aadhaarBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaarback' } });
+            }
         } catch (e) {
-            console.error('Error converting Aadhaar back file to base64:', e);
+            console.error('Error uploading Aadhaar back file to R2:', e);
         }
     }
 
     let facePhotoUrl = existingUser.facephotourl || null;
-    if (files.faceFile) {
+    if (files.faceFile && files.faceFile[0]) {
         try {
             const file = files.faceFile[0];
-            const data = fs.readFileSync(file.path);
-            facePhotoUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            facePhotoUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: facePhotoUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'face' } });
+            }
         } catch (e) {
-            console.error('Error converting face file to base64:', e);
+            console.error('Error uploading face file to R2:', e);
         }
     }
 
     let dlUrl = existingUser.dlurl || null;
-    if (files.dlFile) {
+    if (files.dlFile && files.dlFile[0]) {
         try {
             const file = files.dlFile[0];
-            const data = fs.readFileSync(file.path);
-            dlUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            dlUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: dlUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dl' } });
+            }
         } catch (e) {
-            console.error('Error converting DL file to base64:', e);
+            console.error('Error uploading DL file to R2:', e);
         }
     }
 
     let dlBackUrl = existingUser.dlbackurl || null;
-    if (files.dlBackFile) {
+    if (files.dlBackFile && files.dlBackFile[0]) {
         try {
             const file = files.dlBackFile[0];
-            const data = fs.readFileSync(file.path);
-            dlBackUrl = `data:${file.mimetype};base64,${data.toString('base64')}`;
-            fs.unlink(file.path, () => {});
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filename = `${Date.now()}-${safeName}`;
+            dlBackUrl = `uploads/${filename}`;
+            if (isR2Configured()) {
+                await uploadBufferToR2({ key: dlBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dlback' } });
+            }
         } catch (e) {
-            console.error('Error converting DL back file to base64:', e);
+            console.error('Error uploading DL back file to R2:', e);
         }
     }
 
@@ -5085,25 +5268,22 @@ async function calculateServerSideFare(params) {
         estimatedHours = 4,
         vehicleType = 'car',
         vehicleCondition = 'Working',
-        routeStops = []
+        routeStops = [],
+        bookingFlow = 'p2p'
     } = params;
+
+    const typeKey = (vehicleType || 'car').toLowerCase();
 
     // 1. Fetch system settings
     const settingsRes = await pool.query("SELECT key, value FROM system_settings");
     const settings = {};
     settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
 
-    // 2. Fetch incentive slabs
-    const slabsRes = await pool.query("SELECT maxdistance, rateperkm FROM incentive_slabs ORDER BY maxdistance ASC");
-    const slabs = slabsRes.rows.map(s => ({
-        maxDistance: parseFloat(s.maxdistance),
-        ratePerKm: parseFloat(s.rateperkm)
-    }));
-
     const dist = parseFloat(distanceKm) || 0;
-    const baseFare = parseFloat(settings['base_fare'] || '50.0');
-    const minFare = parseFloat(settings['min_fare'] || '99.0');
-    const haltRate = parseFloat(settings['halt_rate_per_min'] || '2.0');
+    const ratePerKm = parseFloat(settings[`${typeKey}_customer_rate_per_km`] !== undefined ? settings[`${typeKey}_customer_rate_per_km`] : (settings['customer_rate_per_km'] || (typeKey === 'car' ? 30.0 : 8.0)));
+    const baseFareFloor = parseFloat(settings[`${typeKey}_base_fare`] !== undefined ? settings[`${typeKey}_base_fare`] : (settings['base_fare'] || (typeKey === 'car' ? 150.0 : 50.0)));
+    const haltRate = parseFloat(settings[`${typeKey}_halt_rate_per_min`] !== undefined ? settings[`${typeKey}_halt_rate_per_min`] : (settings['halt_rate_per_min'] || (typeKey === 'car' ? 5.0 : 3.0)));
+    const platformBaseCharge = parseFloat(settings[`${typeKey}_platform_base_charge`] !== undefined ? settings[`${typeKey}_platform_base_charge`] : (settings['platform_base_charge'] || (bookingFlow === 'p2p' ? 99.0 : 99.0)));
 
     // Towing fee if vehicle is not working
     let towingFee = 0;
@@ -5114,21 +5294,15 @@ async function calculateServerSideFare(params) {
     }
 
     if (pricingMode === 'hourly') {
-        const typeKey = (vehicleType || 'car').toLowerCase();
         const hourlyRate = parseFloat(settings[`${typeKey}_hourly_rate`] || (typeKey === 'car' ? '150.0' : '80.0'));
         const hours = parseFloat(estimatedHours) || 4;
         const total = (hours * hourlyRate) + towingFee;
-        return Math.max(minFare, Math.round(total * 100) / 100);
+        return Math.round(total * 100) / 100;
     }
 
-    // Distance pricing mode
-    let slabRate = 15.0;
-    if (slabs.length > 0) {
-        const match = slabs.find(s => dist <= s.maxDistance);
-        slabRate = match ? match.ratePerKm : slabs[slabs.length - 1].ratePerKm;
-    }
-
-    const distanceCharge = Math.max(minFare, dist * slabRate);
+    // Distance pricing mode: Platform Base Charge + max(Base Fare Floor, Distance * Rate per KM) + Halt Charges + Towing
+    const rawDistanceCharge = Math.round(dist * ratePerKm);
+    const applicableDistanceCharge = Math.max(baseFareFloor, rawDistanceCharge);
 
     let totalHaltMinutes = 0;
     if (Array.isArray(routeStops)) {
@@ -5137,9 +5311,48 @@ async function calculateServerSideFare(params) {
         });
     }
     const haltCharge = totalHaltMinutes * haltRate;
-    const totalFare = distanceCharge + haltCharge + towingFee;
-    return Math.max(minFare, Math.round(totalFare * 100) / 100);
+    const totalFare = platformBaseCharge + applicableDistanceCharge + haltCharge + towingFee;
+    return Math.round(totalFare * 100) / 100;
 }
+
+// Unified API endpoint for calculating live customer fare and driver payout
+apiRouter.post('/pricing/calculate', async (req, res) => {
+    try {
+        const {
+            distanceKm = 0,
+            pricingMode = 'distance',
+            estimatedHours = 4,
+            vehicleType = 'car',
+            vehicleCondition = 'Working',
+            routeStops = [],
+            bookingFlow = 'p2p',
+            driverPayoutModel = 'commission'
+        } = req.body;
+
+        const customerFare = await calculateServerSideFare({
+            distanceKm, pricingMode, estimatedHours, vehicleType, vehicleCondition, routeStops, bookingFlow
+        });
+
+        const commRes = await pool.query("SELECT commission_rate_percent FROM payout_model_rates WHERE id = 'current_rates'");
+        const commPct = parseFloat(commRes.rows[0]?.commission_rate_percent !== undefined ? commRes.rows[0].commission_rate_percent : 20.0);
+        
+        const isSubscribed = driverPayoutModel === 'subscription';
+        const driverPayout = isSubscribed ? customerFare : Math.round(customerFare * (1 - (commPct / 100)));
+        const platformCommission = customerFare - driverPayout;
+
+        res.json({
+            success: true,
+            customerFare,
+            driverPayout,
+            commissionRatePercent: commPct,
+            isSubscribed,
+            platformCommission
+        });
+    } catch (err) {
+        console.error('Pricing calculation error:', err);
+        res.status(500).json({ error: 'Failed to calculate pricing: ' + err.message });
+    }
+});
 
 // Atomic helper for activating customer ride advance payment
 async function activateRideAdvancePaymentAtomic(orderId, paymentId, signature, meta = {}) {
@@ -5551,44 +5764,55 @@ const OWNER_DOC_MAP = {
 };
 const ALLOWED_MEDIA_DOC_TYPES = ['gst', 'cheque', 'trade_license', 'workshop_photo', 'banner', 'agreement', 'document', 'pan', 'aadhaar', 'dl', 'profile'];
 
-apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUploadedFiles, (req, res) => {
+apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUploadedFiles, async (req, res) => {
     const { entityId, docType } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const filePath = 'uploads/' + req.file.filename;
+    const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${Date.now()}-${safeName}`;
+    const filePath = 'uploads/' + filename;
     const fileName = req.file.originalname;
 
-    if (docType && docType.startsWith('owner_')) {
-        const field = OWNER_DOC_MAP[docType];
-        if (!field) {
-            fs.unlink(req.file.path, () => {});
-            return res.status(400).json({ error: 'Invalid owner docType: ' + docType });
-        }
-        db.get("SELECT garageId FROM garage_owners WHERE id = ?", [entityId], (err, owner) => {
-            if (err || !owner) {
-                fs.unlink(req.file.path, () => {});
-                return res.status(404).json({ error: 'Owner record not found' });
-            }
-            if (req.user.role !== 'admin' && owner.garageId !== req.user.garageId && owner.garageId !== req.user.id) {
-                fs.unlink(req.file.path, () => {});
-                return res.status(403).json({ error: 'Forbidden: You do not own this garage partner profile.' });
-            }
-            db.run(`UPDATE garage_owners SET ${field} = ? WHERE id = ?`, [filePath, entityId], (errU) => {
-                if (errU) return res.status(500).json({ error: errU.message });
-                res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
+    try {
+        if (isR2Configured()) {
+            await uploadBufferToR2({
+                key: filePath,
+                buffer: req.file.buffer,
+                mimetype: req.file.mimetype,
+                metadata: { entityId: entityId || '', docType: docType || '' }
             });
-        });
-    } else {
-        if (!docType || !ALLOWED_MEDIA_DOC_TYPES.includes(docType)) {
-            fs.unlink(req.file.path, () => {});
-            return res.status(400).json({ error: 'Invalid media docType: ' + docType });
         }
-        if (req.user.role !== 'admin' && entityId !== req.user.garageId && entityId !== req.user.id) {
-            fs.unlink(req.file.path, () => {});
-            return res.status(403).json({ error: 'Forbidden: You do not own this entity.' });
+
+        if (docType && docType.startsWith('owner_')) {
+            const field = OWNER_DOC_MAP[docType];
+            if (!field) {
+                return res.status(400).json({ error: 'Invalid owner docType: ' + docType });
+            }
+            db.get("SELECT garageId FROM garage_owners WHERE id = ?", [entityId], (err, owner) => {
+                if (err || !owner) {
+                    return res.status(404).json({ error: 'Owner record not found' });
+                }
+                if (req.user.role !== 'admin' && owner.garageId !== req.user.garageId && owner.garageId !== req.user.id) {
+                    return res.status(403).json({ error: 'Forbidden: You do not own this garage partner profile.' });
+                }
+                db.run(`UPDATE garage_owners SET ${field} = ? WHERE id = ?`, [filePath, entityId], (errU) => {
+                    if (errU) return res.status(500).json({ error: errU.message });
+                    res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
+                });
+            });
+        } else {
+            if (!docType || !ALLOWED_MEDIA_DOC_TYPES.includes(docType)) {
+                return res.status(400).json({ error: 'Invalid media docType: ' + docType });
+            }
+            if (req.user.role !== 'admin' && entityId !== req.user.garageId && entityId !== req.user.id) {
+                return res.status(403).json({ error: 'Forbidden: You do not own this entity.' });
+            }
+            const id = 'doc_' + Date.now();
+            db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
+                [id, entityId, filePath, fileName, docType], () => res.json({ success: true, filePath: generateSignedUploadUrl(filePath) }));
         }
-        const id = 'doc_' + Date.now();
-        db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
-            [id, entityId, filePath, fileName, docType], () => res.json({ success: true, filePath: generateSignedUploadUrl(filePath) }));
+    } catch (err) {
+        console.error('Upload KYC error:', err.message);
+        res.status(500).json({ error: 'Failed to upload document: ' + err.message });
     }
 });
 
@@ -5596,11 +5820,12 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
     const { referenceId, type } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     if (!referenceId) {
-        if (req.file) fs.unlink(req.file.path, () => {});
         return res.status(400).json({ error: 'referenceId is required' });
     }
 
-    const filePath = 'uploads/' + req.file.filename;
+    const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${Date.now()}-${safeName}`;
+    const filePath = 'uploads/' + filename;
     const fileName = req.file.originalname;
     const id = 'media_' + Date.now();
 
@@ -5649,37 +5874,64 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
     }
 
     if (!isAuthorized) {
-        if (req.file) fs.unlink(req.file.path, () => {});
         return res.status(403).json({ error: 'Forbidden: You do not have permission to upload media for this entity.' });
     }
 
-    db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
-        [id, referenceId, filePath, fileName, type || 'document'], (err) => {
-            if (err) {
-                if (req.file) fs.unlink(req.file.path, () => {});
-                return res.status(500).json({ error: err.message });
-            }
-            res.json({ success: true, id, filePath: generateSignedUploadUrl(filePath) });
-        });
+    try {
+        if (isR2Configured()) {
+            await uploadBufferToR2({
+                key: filePath,
+                buffer: req.file.buffer,
+                mimetype: req.file.mimetype,
+                metadata: { referenceId, type: type || 'document' }
+            });
+        }
+
+        db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
+            [id, referenceId, filePath, fileName, type || 'document'], (err) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+                res.json({ success: true, id, filePath: generateSignedUploadUrl(filePath) });
+            });
+    } catch (err) {
+        console.error('Media upload error:', err.message);
+        res.status(500).json({ error: 'Failed to upload media: ' + err.message });
+    }
 });
 
-apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), validateUploadedFiles, (req, res) => {
+apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), validateUploadedFiles, async (req, res) => {
     const { docType } = req.body;
     const garageId = req.params.id;
     if (req.user.role !== 'admin' && garageId !== req.user.garageId && garageId !== req.user.id) {
-        if (req.file) fs.unlink(req.file.path, () => {});
         return res.status(403).json({ error: 'Forbidden: You do not own this garage profile.' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const filePath = 'uploads/' + req.file.filename;
+    const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${Date.now()}-${safeName}`;
+    const filePath = 'uploads/' + filename;
     const fileName = req.file.originalname;
     const id = 'doc_' + Date.now();
 
-    db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
-        [id, garageId, filePath, fileName, docType], (err) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
-        });
+    try {
+        if (isR2Configured()) {
+            await uploadBufferToR2({
+                key: filePath,
+                buffer: req.file.buffer,
+                mimetype: req.file.mimetype,
+                metadata: { garageId, docType }
+            });
+        }
+
+        db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
+            [id, garageId, filePath, fileName, docType], (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ success: true, filePath: generateSignedUploadUrl(filePath) });
+            });
+    } catch (err) {
+        console.error('Garage document upload error:', err.message);
+        res.status(500).json({ error: 'Failed to upload garage document: ' + err.message });
+    }
 });
 
 apiRouter.delete('/garages/:id/documents/:docType', authMiddleware, (req, res) => {
@@ -5911,8 +6163,29 @@ apiRouter.post('/vehicles', (req, res) => {
 
 apiRouter.put('/vehicles/:id', (req, res) => {
     const { make, model, type, plate, photo, fuel, transmission } = req.body;
-    db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
-        [make, model, type, plate, photo, fuel, transmission, req.params.id], (err) => res.json({ success: true }));
+    db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], (err, existing) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!existing) return res.status(404).json({ error: 'Vehicle not found' });
+
+        const updatedMake = make !== undefined ? make : existing.make;
+        const updatedModel = model !== undefined ? model : existing.model;
+        const updatedType = type !== undefined ? type : existing.type;
+        const updatedPlate = plate !== undefined ? plate : existing.plate;
+        const updatedPhoto = (photo !== undefined && photo !== null && photo !== '') ? photo : existing.photo;
+        const updatedFuel = fuel !== undefined ? fuel : existing.fuel;
+        const updatedTransmission = transmission !== undefined ? transmission : existing.transmission;
+
+        db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
+            [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, req.params.id],
+            (updateErr) => {
+                if (updateErr) {
+                    console.error("PUT /vehicles DB error:", updateErr.message);
+                    return res.status(500).json({ error: updateErr.message });
+                }
+                res.json({ success: true });
+            }
+        );
+    });
 });
 
 apiRouter.delete('/vehicles/:id', (req, res) => {
@@ -6407,34 +6680,64 @@ apiRouter.put('/trips/:id/status', (req, res) => {
     if (status === 'out_for_delivery') expectedMedia = ['360_pickup_garage', 'odometer_pickup_garage'];
     if (status === 'completed') expectedMedia = ['360_delivery', 'odometer_end'];
 
-    verifyHandoverMedia(req.params.id, expectedMedia, (err, isValid) => {
+    verifyHandoverMedia(req.params.id, expectedMedia, async (err, isValid) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!isValid && expectedMedia.length > 0) {
             return res.status(400).json({ error: `Mandatory VehicleStateAudit media (${expectedMedia.join(', ')}) not found. Please upload first.` });
         }
 
-        const fields = ['status = ?'];
-        const params = [status];
-        
-        if (startOdometer !== undefined) { fields.push('startOdometer = ?'); params.push(startOdometer); }
-        if (garageDropOdometer !== undefined) { fields.push('garageDropOdometer = ?'); params.push(garageDropOdometer); }
-        if (endOdometer !== undefined) { fields.push('endOdometer = ?'); params.push(endOdometer); }
-        
-        params.push(req.params.id);
+        try {
+            const tripRes = await pool.query(
+                `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.id as sr_id 
+                 FROM trips t 
+                 LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+                 WHERE t.id = $1`,
+                [req.params.id]
+            );
+            const currentTrip = tripRes.rows[0];
 
-        db.run(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, params, (errU) => {
-            if (errU) return res.status(500).json({ error: errU.message });
+            let rentalStartedAt = currentTrip?.rentalstartedat;
+            let rentalExpiresAt = currentTrip?.rentalexpiresat;
+
+            if (status === 'in_transit' && currentTrip?.pricing_mode === 'hourly' && !rentalStartedAt) {
+                rentalStartedAt = new Date();
+                const estHours = parseFloat(currentTrip.estimated_hours || 1);
+                rentalExpiresAt = new Date(rentalStartedAt.getTime() + estHours * 60 * 60 * 1000);
+            }
+
+            const fields = ['status = ?'];
+            const params = [status];
             
-            db.get("SELECT serviceRequestId FROM trips WHERE id = ?", [req.params.id], (err2, trip) => {
-                if (trip) {
-                    const reqId = trip.serviceRequestId || trip.servicerequestid;
+            if (startOdometer !== undefined) { fields.push('startOdometer = ?'); params.push(startOdometer); }
+            if (garageDropOdometer !== undefined) { fields.push('garageDropOdometer = ?'); params.push(garageDropOdometer); }
+            if (endOdometer !== undefined) { fields.push('endOdometer = ?'); params.push(endOdometer); }
+            if (rentalStartedAt !== undefined) { fields.push('rentalstartedat = ?'); params.push(rentalStartedAt); }
+            if (rentalExpiresAt !== undefined) { fields.push('rentalexpiresat = ?'); params.push(rentalExpiresAt); }
+            
+            params.push(req.params.id);
+
+            db.run(`UPDATE trips SET ${fields.join(', ')} WHERE id = ?`, params, (errU) => {
+                if (errU) return res.status(500).json({ error: errU.message });
+                
+                if (currentTrip && currentTrip.sr_id) {
+                    const reqId = currentTrip.sr_id;
                     let reqStatus = status;
                     if (status === 'completed') reqStatus = 'drop_completed';
-                    db.run("UPDATE service_requests SET status = ? WHERE id = ?", [reqStatus, reqId]);
+
+                    const srFields = ['status = ?'];
+                    const srParams = [reqStatus];
+                    if (rentalStartedAt !== undefined) { srFields.push('rentalstartedat = ?'); srParams.push(rentalStartedAt); }
+                    if (rentalExpiresAt !== undefined) { srFields.push('rentalexpiresat = ?'); srParams.push(rentalExpiresAt); }
+                    srParams.push(reqId);
+
+                    db.run(`UPDATE service_requests SET ${srFields.join(', ')} WHERE id = ?`, srParams);
                 }
+                res.json({ success: true, rentalStartedAt, rentalExpiresAt });
             });
-            res.json({ success: true });
-        });
+        } catch (dbErr) {
+            console.error('Error updating trip status:', dbErr.message);
+            res.status(500).json({ error: dbErr.message });
+        }
     });
 });
 
@@ -6490,19 +6793,556 @@ apiRouter.post('/trips/:id/approve-audit', authMiddleware, async (req, res) => {
 });
 apiRouter.post('/trips/:id/audit', (req, res) => res.json({ success: true, customerEstimate: 600 }));
 
-apiRouter.post('/trips/:id/verify-otp-1', (req, res) => {
+apiRouter.post('/trips/:id/verify-otp-1', async (req, res) => {
     const { otp } = req.body;
-    db.get("SELECT otp1 FROM trips WHERE id = ?", [req.params.id], (err, trip) => {
-        if (err) return res.status(500).json({ error: err.message });
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.id as sr_id 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [req.params.id]
+        );
+        const trip = tripRes.rows[0];
         if (!trip) return res.status(404).json({ error: 'Trip not found' });
         
-        const tripOtp1 = trip.otp1 || trip.otp1;
+        const tripOtp1 = trip.otp1;
         if (tripOtp1 !== otp) {
             return res.status(400).json({ error: 'Invalid Handover OTP' });
         }
+
+        let rentalStartedAt = trip.rentalstartedat;
+        let rentalExpiresAt = trip.rentalexpiresat;
+
+        if (trip.pricing_mode === 'hourly' && !rentalStartedAt) {
+            rentalStartedAt = new Date();
+            const estHours = parseFloat(trip.estimated_hours || 1);
+            rentalExpiresAt = new Date(rentalStartedAt.getTime() + estHours * 60 * 60 * 1000);
+
+            await pool.query(
+                `UPDATE trips SET rentalstartedat = $1, rentalexpiresat = $2 WHERE id = $3`,
+                [rentalStartedAt, rentalExpiresAt, req.params.id]
+            );
+            if (trip.sr_id) {
+                await pool.query(
+                    `UPDATE service_requests SET rentalstartedat = $1, rentalexpiresat = $2 WHERE id = $3`,
+                    [rentalStartedAt, rentalExpiresAt, trip.sr_id]
+                );
+            }
+        }
         
-        res.json({ success: true });
-    });
+        res.json({ success: true, rentalStartedAt, rentalExpiresAt });
+    } catch (err) {
+        console.error('Error verifying OTP 1:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+function calcDistanceKm(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+apiRouter.post('/trips/:id/create-extension-order', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const durationMinutes = parseInt(req.body.durationMinutes || req.body.minutes, 10);
+
+    if (!durationMinutes || isNaN(durationMinutes) || durationMinutes <= 0) {
+        return res.status(400).json({ error: 'durationMinutes must be a positive integer (e.g. 15, 30, 60)' });
+    }
+
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.totalcustomerprice, sr.vehicle_condition, sr.id as sr_id, sr.customerid as customerId 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [tripId]
+        );
+        const trip = tripRes.rows[0];
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        if (trip.pricing_mode !== 'hourly') {
+            return res.status(400).json({ error: 'Trip is not an hourly rental booking' });
+        }
+
+        // Fetch hourly rate from system settings
+        const settingsRes = await pool.query("SELECT key, value FROM system_settings");
+        const settings = {};
+        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+        const hourlyRate = parseFloat(settings['car_hourly_rate'] || '150.0');
+
+        const extensionHours = durationMinutes / 60;
+        const addedAmount = Math.round(extensionHours * hourlyRate);
+
+        const rzp = getRazorpayClient();
+        const rzpOrder = await rzp.orders.create({
+            amount: Math.round(addedAmount * 100), // in paise
+            currency: 'INR',
+            receipt: `ext_${Date.now()}_${tripId.slice(-4)}`,
+            notes: {
+                type: 'rental_extension',
+                tripId,
+                durationMinutes,
+                hourlyRate
+            }
+        });
+
+        res.json({
+            success: true,
+            orderId: rzpOrder.id,
+            amount: rzpOrder.amount,
+            amountInRupees: addedAmount,
+            currency: rzpOrder.currency || 'INR',
+            keyId: process.env.RAZORPAY_KEY_ID,
+            durationMinutes
+        });
+    } catch (err) {
+        console.error('Error creating extension order:', err.message);
+        res.status(500).json({ error: 'Failed to create payment order: ' + err.message });
+    }
+});
+
+apiRouter.post('/trips/:id/verify-extension-payment', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const { orderId, paymentId, signature, durationMinutes: reqMins } = req.body;
+
+    if (!orderId || !paymentId || !signature) {
+        return res.status(400).json({ error: 'orderId, paymentId, and signature are required' });
+    }
+
+    // 1. Verify HMAC-SHA256 signature
+    const expectedSignature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+    if (expectedSignature !== signature) {
+        return res.status(400).json({
+            error: 'Invalid payment signature. Verification failed.',
+            expected: expectedSignature,
+            received: signature
+        });
+    }
+
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.totalcustomerprice, sr.id as sr_id, sr.customerid as customerId 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [tripId]
+        );
+        const trip = tripRes.rows[0];
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        // 2. IDEMPOTENCY CHECK: if paymentId already in rental_extensions, return immediately
+        const currentExtensions = Array.isArray(trip.rental_extensions) ? trip.rental_extensions : [];
+        const existingExtension = currentExtensions.find(e => e.paymentId === paymentId);
+        if (existingExtension) {
+            return res.json({
+                success: true,
+                idempotent: true,
+                rentalExpiresAt: trip.rentalexpiresat,
+                durationMinutes: existingExtension.durationMinutes,
+                addedAmount: existingExtension.addedAmount
+            });
+        }
+
+        const durationMinutes = parseInt(reqMins || 15, 10);
+        const extensionHours = durationMinutes / 60;
+        const settingsRes = await pool.query("SELECT key, value FROM system_settings");
+        const settings = {};
+        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+        const hourlyRate = parseFloat(settings['car_hourly_rate'] || '150.0');
+        const addedAmount = Math.round(extensionHours * hourlyRate);
+
+        // 3. REFUND IF TRIP IS ALREADY COMPLETED OR CANCELLED
+        if (trip.status === 'completed' || trip.status === 'cancelled') {
+            try {
+                const rzp = getRazorpayClient();
+                await rzp.payments.refund(paymentId, {
+                    amount: Math.round(addedAmount * 100),
+                    notes: { reason: 'trip_already_completed', tripId }
+                });
+                return res.status(400).json({
+                    error: 'Trip has already been completed. Payment was automatically refunded.',
+                    refunded: true
+                });
+            } catch (refErr) {
+                console.error('Auto-refund failed:', refErr.message);
+                return res.status(500).json({ error: 'Trip is completed and auto-refund failed: ' + refErr.message });
+            }
+        }
+
+        // 4. Strict Extension Calculation: Add duration to current rentalExpiresAt (NOT Date.now())
+        const currentExpiresAtMs = trip.rentalexpiresat ? new Date(trip.rentalexpiresat).getTime() : Date.now();
+        const newExpiresAt = new Date(currentExpiresAtMs + durationMinutes * 60 * 1000);
+
+        const newExtensionEntry = {
+            extensionId: `ext_${Date.now()}`,
+            paymentId,
+            orderId,
+            durationMinutes,
+            addedAmount,
+            hourlyRate,
+            extendedAt: new Date().toISOString(),
+            previousExpiresAt: trip.rentalexpiresat || new Date().toISOString(),
+            newExpiresAt: newExpiresAt.toISOString()
+        };
+        const updatedExtensions = [...currentExtensions, newExtensionEntry];
+
+        const updatedTotalCustomerPrice = (parseFloat(trip.totalcustomerprice) || 0) + addedAmount;
+        const updatedEstimatedHours = (parseFloat(trip.estimated_hours) || 1) + extensionHours;
+
+        // 5. Update trips & service_requests table
+        await pool.query(
+            `UPDATE trips 
+             SET rentalexpiresat = $1, rental_extensions = $2::jsonb 
+             WHERE id = $3`,
+            [newExpiresAt, JSON.stringify(updatedExtensions), tripId]
+        );
+
+        if (trip.sr_id) {
+            await pool.query(
+                `UPDATE service_requests 
+                 SET rentalexpiresat = $1, 
+                     rental_extensions = $2::jsonb,
+                     totalcustomerprice = $3,
+                     estimated_hours = $4
+                 WHERE id = $5`,
+                [newExpiresAt, JSON.stringify(updatedExtensions), updatedTotalCustomerPrice, updatedEstimatedHours, trip.sr_id]
+            );
+        }
+
+        // 6. Dispute Resolution / Partial Coverage Check
+        const nowMs = Date.now();
+        const isOvertime = newExpiresAt.getTime() <= nowMs;
+        const deficitMinutes = isOvertime ? Math.ceil((nowMs - newExpiresAt.getTime()) / 60000) : 0;
+
+        if (!isOvertime) {
+            // Customer fully covered overtime debt! Auto-resolve open overtime dispute
+            await pool.query(
+                `UPDATE disputes 
+                 SET status = 'resolved_extension', 
+                     resolution_note = $1,
+                     uncovered_deficit_minutes = 0
+                 WHERE (tripid = $2 OR tripId = $2) AND dispute_type = 'overtime_movement' AND status IN ('pending', 'partially_covered')`,
+                [`Auto-resolved: Customer paid ₹${addedAmount} for +${durationMinutes}m extension (Payment ID: ${paymentId})`, tripId]
+            );
+        } else {
+            // Partial coverage: update deficit minutes and note
+            await pool.query(
+                `UPDATE disputes 
+                 SET status = 'partially_covered', 
+                     uncovered_deficit_minutes = $1,
+                     resolution_note = $2
+                 WHERE (tripid = $2 OR tripId = $2) AND dispute_type = 'overtime_movement' AND status = 'pending'`,
+                [deficitMinutes, `Partial Extension: Customer paid ₹${addedAmount} for +${durationMinutes}m. Outstanding deficit: ${deficitMinutes}m remaining`, tripId]
+            );
+        }
+
+        res.json({
+            success: true,
+            rentalExpiresAt: newExpiresAt.toISOString(),
+            durationMinutes,
+            addedAmount,
+            totalCustomerPrice: updatedTotalCustomerPrice,
+            estimatedHours: updatedEstimatedHours,
+            rentalExtensions: updatedExtensions,
+            isOvertime,
+            deficitMinutes
+        });
+    } catch (err) {
+        console.error('Error verifying extension payment:', err.message);
+        res.status(500).json({ error: 'Failed to verify extension payment: ' + err.message });
+    }
+});
+
+apiRouter.post('/trips/:id/extend-rental', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const durationMinutes = parseInt(req.body.durationMinutes || req.body.minutes, 10);
+
+    if (!durationMinutes || isNaN(durationMinutes) || durationMinutes <= 0) {
+        return res.status(400).json({ error: 'durationMinutes must be a positive integer (e.g. 15, 30, 60)' });
+    }
+
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.totalcustomerprice, sr.vehicle_condition, sr.id as sr_id 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [tripId]
+        );
+        const trip = tripRes.rows[0];
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        if (trip.pricing_mode !== 'hourly') {
+            return res.status(400).json({ error: 'Trip is not an hourly rental booking' });
+        }
+
+        // Fetch hourly rate from system settings
+        const settingsRes = await pool.query("SELECT key, value FROM system_settings");
+        const settings = {};
+        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+        const hourlyRate = parseFloat(settings['car_hourly_rate'] || '150.0');
+
+        const extensionHours = durationMinutes / 60;
+        const addedAmount = Math.round(extensionHours * hourlyRate);
+
+        // Strict extension calculation from current rentalExpiresAt
+        const currentExpiresAtMs = trip.rentalexpiresat ? new Date(trip.rentalexpiresat).getTime() : Date.now();
+        const newExpiresAt = new Date(currentExpiresAtMs + durationMinutes * 60 * 1000);
+
+        const currentExtensions = Array.isArray(trip.rental_extensions) ? trip.rental_extensions : [];
+        const newExtensionEntry = {
+            extensionId: `ext_${Date.now()}`,
+            durationMinutes,
+            addedAmount,
+            hourlyRate,
+            extendedAt: new Date().toISOString(),
+            previousExpiresAt: trip.rentalexpiresat || new Date().toISOString(),
+            newExpiresAt: newExpiresAt.toISOString()
+        };
+        const updatedExtensions = [...currentExtensions, newExtensionEntry];
+
+        const updatedTotalCustomerPrice = (parseFloat(trip.totalcustomerprice) || 0) + addedAmount;
+        const updatedEstimatedHours = (parseFloat(trip.estimated_hours) || 1) + extensionHours;
+
+        // Update trips table
+        await pool.query(
+            `UPDATE trips 
+             SET rentalexpiresat = $1, rental_extensions = $2::jsonb 
+             WHERE id = $3`,
+            [newExpiresAt, JSON.stringify(updatedExtensions), tripId]
+        );
+
+        // Update service_requests table
+        if (trip.sr_id) {
+            await pool.query(
+                `UPDATE service_requests 
+                 SET rentalexpiresat = $1, 
+                     rental_extensions = $2::jsonb,
+                     totalcustomerprice = $3,
+                     estimated_hours = $4
+                 WHERE id = $5`,
+                [newExpiresAt, JSON.stringify(updatedExtensions), updatedTotalCustomerPrice, updatedEstimatedHours, trip.sr_id]
+            );
+        }
+
+        // Dispute Resolution Check
+        const nowMs = Date.now();
+        const isOvertime = newExpiresAt.getTime() <= nowMs;
+        const deficitMinutes = isOvertime ? Math.ceil((nowMs - newExpiresAt.getTime()) / 60000) : 0;
+
+        if (!isOvertime) {
+            await pool.query(
+                `UPDATE disputes 
+                 SET status = 'resolved_extension', 
+                     resolution_note = $1,
+                     uncovered_deficit_minutes = 0
+                 WHERE (tripid = $2 OR tripId = $2) AND dispute_type = 'overtime_movement' AND status IN ('pending', 'partially_covered')`,
+                [`Auto-resolved: Customer added +${durationMinutes}m extension for ₹${addedAmount}`, tripId]
+            );
+        } else {
+            await pool.query(
+                `UPDATE disputes 
+                 SET status = 'partially_covered', 
+                     uncovered_deficit_minutes = $1,
+                     resolution_note = $2
+                 WHERE (tripid = $2 OR tripId = $2) AND dispute_type = 'overtime_movement' AND status = 'pending'`,
+                [deficitMinutes, `Partial Extension: Customer added +${durationMinutes}m. Outstanding deficit: ${deficitMinutes}m remaining`, tripId]
+            );
+        }
+
+        res.json({
+            success: true,
+            rentalExpiresAt: newExpiresAt.toISOString(),
+            durationMinutes,
+            addedAmount,
+            totalCustomerPrice: updatedTotalCustomerPrice,
+            estimatedHours: updatedEstimatedHours,
+            rentalExtensions: updatedExtensions,
+            isOvertime,
+            deficitMinutes
+        });
+    } catch (err) {
+        console.error('Error extending rental:', err.message);
+        res.status(500).json({ error: 'Failed to extend rental: ' + err.message });
+    }
+});
+
+apiRouter.post('/trips/:id/location', async (req, res) => {
+    const tripId = req.params.id;
+    const { lat, lng, speed, accuracy } = req.body;
+
+    if (lat === undefined || lng === undefined) {
+        return res.status(400).json({ error: 'lat and lng are required' });
+    }
+
+    const curLat = parseFloat(lat);
+    const curLng = parseFloat(lng);
+    const curAccuracy = accuracy !== undefined && accuracy !== null ? parseFloat(accuracy) : null;
+    const rawSpeed = speed !== undefined && speed !== null ? parseFloat(speed) : null;
+
+    try {
+        const tripRes = await pool.query(
+            `SELECT t.*, sr.pricing_mode, sr.estimated_hours, sr.customerid as customerId 
+             FROM trips t 
+             LEFT JOIN service_requests sr ON t.servicerequestid = sr.id 
+             WHERE t.id = $1`,
+            [tripId]
+        );
+        const trip = tripRes.rows[0];
+        if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        const now = new Date();
+        const lastLat = trip.last_lat ? parseFloat(trip.last_lat) : (trip.pickuplat ? parseFloat(trip.pickuplat) : null);
+        const lastLng = trip.last_lng ? parseFloat(trip.last_lng) : (trip.pickuplng ? parseFloat(trip.pickuplng) : null);
+        const lastTime = trip.last_location_time ? new Date(trip.last_location_time).getTime() : now.getTime();
+        
+        const deltaMs = Math.max(1000, now.getTime() - lastTime);
+        const deltaHours = deltaMs / (1000 * 3600);
+
+        let deltaDistKm = 0;
+        if (lastLat !== null && lastLng !== null) {
+            deltaDistKm = calcDistanceKm(lastLat, lastLng, curLat, curLng);
+        }
+
+        const calcSpeedKmH = deltaHours > 0 ? (deltaDistKm / deltaHours) : 0;
+        
+        // Priority 1: Hardware device GPS speed (in km/h). Priority 2: Calculated velocity
+        let effectiveSpeedKmH = calcSpeedKmH;
+        if (rawSpeed !== null && !isNaN(rawSpeed) && rawSpeed >= 0) {
+            const devSpeedKmH = rawSpeed <= 60 ? (rawSpeed * 3.6) : rawSpeed;
+            if (deltaDistKm >= 0.01 || devSpeedKmH < 10) {
+                effectiveSpeedKmH = devSpeedKmH;
+            }
+        }
+
+        let consecutivePings = trip.consecutive_moving_pings || 0;
+        let overtimeDistanceKm = parseFloat(trip.overtime_distance_km || 0);
+        let disputeFlagged = !!trip.overtime_dispute_flagged;
+        let trail = Array.isArray(trip.overtime_trail) ? trip.overtime_trail : [];
+
+        const isHourly = trip.pricing_mode === 'hourly';
+        const isTransit = trip.status === 'in_transit' || trip.status === 'picked_up' || trip.status === 'pending_delivery' || trip.status === 'out_for_delivery';
+        const expiresAtMs = trip.rentalexpiresat ? new Date(trip.rentalexpiresat).getTime() : null;
+        const isInOvertime = isHourly && isTransit && expiresAtMs && (now.getTime() > expiresAtMs);
+
+        // Safeguards:
+        // 1. Accuracy gate: if accuracy > 35m, reject from distance accumulation
+        const isAccuracyValid = curAccuracy === null || curAccuracy <= 35;
+        // 2. Displacement gate: >= 25 meters (0.025 km)
+        const isDisplacementValid = deltaDistKm >= 0.025;
+        // 3. Speed threshold: > 10 km/h
+        const isSpeedOverThreshold = effectiveSpeedKmH > 10.0;
+
+        if (isInOvertime && isAccuracyValid) {
+            if (isSpeedOverThreshold && isDisplacementValid) {
+                consecutivePings += 1;
+                // Require >= 2 consecutive pings before counting distance
+                if (consecutivePings >= 2) {
+                    overtimeDistanceKm += deltaDistKm;
+                    
+                    // Downsample trail: append if >= 50m displacement or >= 30s elapsed from last point
+                    const lastTrailPoint = trail[trail.length - 1];
+                    const timeSinceLastPointMs = lastTrailPoint ? (now.getTime() - new Date(lastTrailPoint.t).getTime()) : Infinity;
+                    const distSinceLastPointKm = lastTrailPoint ? calcDistanceKm(lastTrailPoint.lat, lastTrailPoint.lng, curLat, curLng) : Infinity;
+
+                    if (distSinceLastPointKm >= 0.05 || timeSinceLastPointMs >= 30000 || trail.length === 0) {
+                        trail.push({
+                            lat: Number(curLat.toFixed(6)),
+                            lng: Number(curLng.toFixed(6)),
+                            speed: Math.round(effectiveSpeedKmH),
+                            t: now.toISOString()
+                        });
+                        // Hard cap at 200 points
+                        if (trail.length > 200) {
+                            trail = [trail[0], ...trail.slice(-199)];
+                        }
+                    }
+
+                    // 3km Dispute Trigger
+                    if (overtimeDistanceKm >= 3.0 && !disputeFlagged) {
+                        disputeFlagged = true;
+                        const dispId = `disp_ot_${Date.now()}`;
+                        await pool.query(
+                            `INSERT INTO disputes (
+                                id, tripid, customerid, marshalid, dispute_type, 
+                                booked_duration_hours, rental_expires_at, overtime_distance_km, 
+                                location_trail, reason, status, createdat
+                            ) VALUES ($1, $2, $3, $4, 'overtime_movement', $5, $6, $7, $8::jsonb, $9, 'pending', NOW())
+                            ON CONFLICT (id) DO NOTHING`,
+                            [
+                                dispId,
+                                tripId,
+                                trip.customerId || trip.customerid || null,
+                                trip.marshalId || trip.marshalid || null,
+                                parseFloat(trip.estimated_hours || 1),
+                                trip.rentalexpiresat,
+                                overtimeDistanceKm,
+                                JSON.stringify(trail),
+                                `Trip time exceeded by ${overtimeDistanceKm.toFixed(1)} km at >10 km/h without extension`
+                            ]
+                        );
+                        // NOTE: NEVER set is_payment_on_hold = 1 for the driver!
+                    } else if (disputeFlagged) {
+                        // Update existing dispute distance & trail
+                        await pool.query(
+                            `UPDATE disputes 
+                             SET overtime_distance_km = $1, location_trail = $2::jsonb 
+                             WHERE (tripid = $3 OR tripId = $3) AND dispute_type = 'overtime_movement'`,
+                            [overtimeDistanceKm, JSON.stringify(trail), tripId]
+                        );
+                    }
+                }
+            } else if (!isSpeedOverThreshold || deltaDistKm < 0.01) {
+                // Stationary dwell or crawl: reset consecutive moving streak
+                consecutivePings = 0;
+            }
+        }
+
+        // Update trip state
+        await pool.query(
+            `UPDATE trips 
+             SET marshalLat = $1, marshalLng = $2, 
+                 last_lat = $1, last_lng = $2, last_speed = $3, last_location_time = $4,
+                 consecutive_moving_pings = $5, overtime_distance_km = $6, 
+                 overtime_dispute_flagged = $7, overtime_trail = $8::jsonb 
+             WHERE id = $9`,
+            [curLat, curLng, effectiveSpeedKmH, now, consecutivePings, overtimeDistanceKm, disputeFlagged, JSON.stringify(trail), tripId]
+        );
+
+        if (trip.servicerequestid) {
+            await pool.query(
+                `UPDATE service_requests 
+                 SET overtime_distance_km = $1, overtime_dispute_flagged = $2 
+                 WHERE id = $3`,
+                [overtimeDistanceKm, disputeFlagged, trip.servicerequestid]
+            );
+        }
+
+        res.json({
+            success: true,
+            speedKmH: Math.round(effectiveSpeedKmH),
+            overtimeDistanceKm: Number(overtimeDistanceKm.toFixed(2)),
+            overtimeDisputeFlagged: disputeFlagged,
+            isInOvertime
+        });
+    } catch (err) {
+        console.error('Error processing trip location:', err.message);
+        res.status(500).json({ error: 'Failed to process location: ' + err.message });
+    }
 });
 
 apiRouter.post('/trips/:id/verify-garage-dropoff', (req, res) => {
@@ -6608,16 +7448,17 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
             return res.status(400).json({ error: 'Mandatory VehicleStateAudit media (360_delivery, odometer_end) not found. Please upload first.' });
         }
         
-        db.get("SELECT trips.status, trips.deliveryOtp, trips.startOdometer, trips.endOdometer, trips.deliveryMarshalId, trips.marshalId, trips.serviceRequestId, service_requests.totalcustomerprice, service_requests.marshalcommission, u.rating as marshal_rating FROM trips JOIN service_requests ON trips.serviceRequestId = service_requests.id LEFT JOIN users u ON trips.marshalId = u.id WHERE trips.id = ?", [req.params.id], (err, trip) => {
+        db.get("SELECT trips.status, trips.deliveryOtp, trips.startOdometer, trips.endOdometer, trips.deliveryMarshalId, trips.marshalId, trips.serviceRequestId, service_requests.totalcustomerprice, service_requests.marshalcommission, service_requests.pricing_mode, service_requests.estimated_hours, service_requests.vehicle_type, service_requests.unextended_overtime_cost, u.rating as marshal_rating FROM trips JOIN service_requests ON trips.serviceRequestId = service_requests.id LEFT JOIN users u ON trips.marshalId = u.id WHERE trips.id = ?", [req.params.id], (err, trip) => {
             if (err) return res.status(500).json({ error: err.message });
             if (!trip) return res.status(404).json({ error: 'Trip not found' });
             
             const tripDeliveryOtp = trip.deliveryOtp || trip.deliveryotp;
-            const tripDeliveryMarshalId = trip.deliveryMarshalId || trip.deliverymarshalid;
+            const tripDeliveryMarshalId = trip.deliveryMarshalId || trip.deliverymarshalid || trip.marshalId || trip.marshalid;
             const tripMarshalId = trip.marshalId || trip.marshalid;
             const tripServiceRequestId = trip.serviceRequestId || trip.servicerequestid;
             const totalCustomerPrice = trip.totalcustomerprice || trip.totalCustomerPrice || 0;
             const marshalRating = trip.marshal_rating !== null && trip.marshal_rating !== undefined ? parseFloat(trip.marshal_rating) : 5.0;
+            const isHourly = trip.pricing_mode === 'hourly' || trip.pricingmode === 'hourly';
 
             if (trip.status !== 'pending_delivery' && trip.status !== 'out_for_delivery') {
                 return res.status(400).json({ error: 'Trip cannot be completed from status: ' + trip.status });
@@ -6629,187 +7470,296 @@ apiRouter.post('/trips/:id/complete-delivery', (req, res) => {
         db.run("UPDATE trips SET status = 'completed', endOdometer = COALESCE(?, endOdometer) WHERE id = ?", [odometer || null, req.params.id], (err2) => {
             if (err2) return res.status(500).json({ error: err2.message });
             
-            db.run("UPDATE service_requests SET status = 'drop_completed' WHERE id = ?", [tripServiceRequestId], (errSR) => {
+            db.run("UPDATE service_requests SET status = 'drop_completed' WHERE id = ?", [tripServiceRequestId], async (errSR) => {
                 if (errSR) console.error("Failed to update service request status:", errSR.message);
                 
-                db.all("SELECT key, value FROM system_settings WHERE key IN ('marshal_rating_threshold', 'commission_high_tier', 'commission_low_tier', 'base_fare', 'customer_rate_per_km')", [], (err3, rows) => {
+                db.all("SELECT key, value FROM system_settings WHERE key IN ('marshal_rating_threshold', 'commission_high_tier', 'commission_low_tier', 'base_fare', 'customer_rate_per_km', 'car_hourly_rate', 'bike_hourly_rate')", [], async (err3, rows) => {
                     const settings = {};
                     (rows || []).forEach(r => { settings[r.key] = r.value; });
                     
                     const baseFare = parseFloat(settings['base_fare'] || '50.0');
+                    const vType = (trip.vehicle_type || trip.vehicletype || 'car').toLowerCase();
                     
-                    db.all("SELECT maxDistance, ratePerKm FROM incentive_slabs ORDER BY maxDistance ASC", [], (errSlabs, slabsList) => {
-                        if (errSlabs) console.error("Failed to fetch slabs:", errSlabs.message);
+                    try {
+                        const ratesRes = await pool.query("SELECT commission_rate_percent FROM payout_model_rates WHERE id = 'current_rates'");
+                        const commissionRatePercent = ratesRes.rows[0] ? parseFloat(ratesRes.rows[0].commission_rate_percent) : 20.0;
                         
-                        const slabs = (slabsList || []).map(s => ({
-                            maxDistance: s.maxDistance !== undefined ? s.maxDistance : s.maxdistance,
-                            ratePerKm: s.ratePerKm !== undefined ? s.ratePerKm : s.rateperkm
-                        }));
+                        // Fetch driver plan
+                        const driverRes = await pool.query("SELECT payout_model, subscription_valid_until FROM users WHERE id = $1", [tripMarshalId]);
+                        const driver = driverRes.rows[0] || { payout_model: 'commission' };
+                        const isSubscribed = driver.payout_model === 'subscription' && 
+                                             driver.subscription_valid_until && 
+                                             new Date(driver.subscription_valid_until) >= new Date();
                         
-                        const endOdm = odometer || trip.endOdometer || trip.endodometer || 0;
-                        const startOdm = trip.startOdometer || trip.startodometer || 0;
-                        const distance = Math.max(0, endOdm - startOdm);
-                        
-                        let rate = 15.0; // default rate
-                        if (slabs.length > 0) {
-                            const matchingSlab = slabs.find(s => distance <= s.maxDistance);
-                            if (matchingSlab) {
-                                rate = matchingSlab.ratePerKm;
+                        const payoutMultiplier = isSubscribed ? 1.0 : Math.max(0, (1 - (commissionRatePercent / 100)));
+                        let inserts = [];
+                        let baseAmount = 0;
+                        let extraAmount = 0;
+                        let distance = 0;
+                        let rate = 0;
+                        let baseRatePerKm = 0;
+                        let totalCredited = 0;
+
+                        if (isHourly) {
+                            // --- HOURLY RENTAL DRIVER PAYOUT (FLOOR-UNDER-COMMISSION MODEL) ---
+                            const hslabsRes = await pool.query(
+                                "SELECT maxhours as \"maxHours\", rateperhour as \"ratePerHour\" FROM hourly_incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1 ORDER BY maxhours ASC",
+                                [vType]
+                            );
+                            const hslabs = hslabsRes.rows || [];
+                            const authorizedHours = Math.max(0.5, parseFloat(trip.estimated_hours || trip.estimatedhours || 1.0));
+                            
+                            const matchingHslab = hslabs.find(s => authorizedHours <= Number(s.maxHours)) || hslabs[hslabs.length - 1];
+                            const defaultSlabRate = vType === 'bike' ? 40.0 : 80.0;
+                            const slabRatePerHour = matchingHslab ? Number(matchingHslab.ratePerHour) : defaultSlabRate;
+                            const slabFloor = Math.round(authorizedHours * slabRatePerHour);
+
+                            const custPriceTotal = parseFloat(trip.totalcustomerprice || trip.totalCustomerPrice || 0);
+                            const unextOt = parseFloat(trip.unextended_overtime_cost || trip.unextendedovertimecost || 0);
+                            const customerAuthorizedFare = Math.max(0, custPriceTotal - unextOt);
+                            const defaultHourlyCustomerRate = vType === 'bike' ? 75.0 : 150.0;
+                            const baseCustFare = customerAuthorizedFare > 0 ? customerAuthorizedFare : Math.round(authorizedHours * defaultHourlyCustomerRate);
+
+                            const standardPayout = Math.round(baseCustFare * payoutMultiplier);
+                            const finalAuthorizedPayout = Math.max(standardPayout, isSubscribed ? baseCustFare : slabFloor);
+                            totalCredited = finalAuthorizedPayout;
+                            baseAmount = finalAuthorizedPayout;
+
+                            const insId = `inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_1_base`;
+                            if (tripMarshalId === tripDeliveryMarshalId) {
+                                inserts.push([insId, tripMarshalId, req.params.id, finalAuthorizedPayout, 'hourly_booking_base', 'pending']);
                             } else {
-                                rate = slabs[slabs.length - 1].ratePerKm;
+                                inserts.push([insId, tripMarshalId, req.params.id, finalAuthorizedPayout / 2, 'hourly_booking_base', 'pending']);
+                                inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_2_base`, tripDeliveryMarshalId, req.params.id, finalAuthorizedPayout / 2, 'hourly_booking_base', 'pending']);
+                            }
+                        } else {
+                            // --- DISTANCE RIDE DRIVER PAYOUT ---
+                            const slabsRes = await pool.query(
+                                "SELECT maxDistance, ratePerKm FROM incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1 ORDER BY maxDistance ASC",
+                                [vType]
+                            );
+                            const slabs = (slabsRes.rows || []).map(s => ({
+                                maxDistance: s.maxDistance !== undefined ? s.maxDistance : s.maxdistance,
+                                ratePerKm: s.ratePerKm !== undefined ? s.ratePerKm : s.rateperkm
+                            }));
+
+                            const endOdm = odometer || trip.endOdometer || trip.endodometer || 0;
+                            const startOdm = trip.startOdometer || trip.startodometer || 0;
+                            distance = Math.max(0, endOdm - startOdm);
+
+                            rate = 15.0;
+                            if (slabs.length > 0) {
+                                const matchingSlab = slabs.find(s => distance <= s.maxDistance);
+                                rate = matchingSlab ? matchingSlab.ratePerKm : slabs[slabs.length - 1].ratePerKm;
+                            }
+
+                            baseRatePerKm = parseFloat(settings['customer_rate_per_km'] || '25.0');
+                            baseAmount = distance * baseRatePerKm;
+                            extraAmount = distance * Math.max(0, rate - baseRatePerKm);
+
+                            if (baseAmount + extraAmount < baseFare) {
+                                baseAmount = baseFare;
+                                extraAmount = 0;
+                            }
+
+                            const finalBase = baseAmount * payoutMultiplier;
+                            const finalExtra = extraAmount * payoutMultiplier;
+                            totalCredited = finalBase + finalExtra;
+
+                            if (tripMarshalId === tripDeliveryMarshalId) {
+                                inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_1_base`, tripMarshalId, req.params.id, finalBase, 'trip_bonus_base', 'pending']);
+                                if (finalExtra > 0) {
+                                    inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_1_extra`, tripMarshalId, req.params.id, finalExtra, 'trip_bonus_extra', 'pending']);
+                                }
+                            } else {
+                                inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_1_base`, tripMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
+                                if (finalExtra > 0) {
+                                    inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_1_extra`, tripMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
+                                }
+                                inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_2_base`, tripDeliveryMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
+                                if (finalExtra > 0) {
+                                    inserts.push([`inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_2_extra`, tripDeliveryMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
+                                }
                             }
                         }
-                        
-                        const baseRatePerKm = parseFloat(settings['customer_rate_per_km'] || '25.0');
-                        
-                        let baseAmount = distance * baseRatePerKm;
-                        let extraAmount = distance * Math.max(0, rate - baseRatePerKm);
-                        
-                        if (baseAmount + extraAmount < baseFare) {
-                            baseAmount = baseFare;
-                            extraAmount = 0;
-                        }
 
-                        // Sourced from payout_model_rates (Single Source of Truth)
-                        pool.query("SELECT commission_rate_percent FROM payout_model_rates WHERE id = 'current_rates'").then(ratesRes => {
-                            const commissionRatePercent = ratesRes.rows[0] ? parseFloat(ratesRes.rows[0].commission_rate_percent) : 20.0;
-                            
-                            // Fetch driver plan
-                            pool.query("SELECT payout_model, subscription_valid_until FROM users WHERE id = $1", [tripMarshalId]).then(driverRes => {
-                                const driver = driverRes.rows[0] || { payout_model: 'commission' };
-                                const isSubscribed = driver.payout_model === 'subscription' && 
-                                                     driver.subscription_valid_until && 
-                                                     new Date(driver.subscription_valid_until) >= new Date();
-                                
-                                const payoutMultiplier = isSubscribed ? 1.0 : Math.max(0, (1 - (commissionRatePercent / 100)));
-                                const finalBase = baseAmount * payoutMultiplier;
-                                const finalExtra = extraAmount * payoutMultiplier;
-                                const totalCredited = finalBase + finalExtra;
+                        let completed = 0;
+                        const onInsertsFinished = async () => {
+                            try {
+                                // 1. HOURLY RENTAL OVERTIME SETTLEMENT & DISPUTE AUTO-RESOLUTION
+                                let overtimeSettlement = { overtimeMinutes: 0, overtimeCost: 0, driverOvertimePayout: 0, disputeResolved: false };
+                                const tripInfoRes = await pool.query(
+                                    `SELECT t.rentalexpiresat, t.rentalstartedat, sr.pricing_mode, sr.totalcustomerprice, sr.customerid, sr.vehicle_type 
+                                     FROM trips t 
+                                     JOIN service_requests sr ON t.servicerequestid = sr.id 
+                                     WHERE t.id = $1`,
+                                    [req.params.id]
+                                );
+                                const tripInfo = tripInfoRes.rows[0];
 
-                                let inserts = [];
-                                if (tripMarshalId === tripDeliveryMarshalId) {
-                                    inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, finalBase, 'trip_bonus_base', 'pending']);
-                                    if (finalExtra > 0) {
-                                        inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, finalExtra, 'trip_bonus_extra', 'pending']);
-                                    }
-                                } else {
-                                    inserts.push([`inc_${Date.now()}_1_base`, tripMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
-                                    if (finalExtra > 0) {
-                                        inserts.push([`inc_${Date.now()}_1_extra`, tripMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
-                                    }
-                                    
-                                    inserts.push([`inc_${Date.now()}_2_base`, tripDeliveryMarshalId, req.params.id, finalBase / 2, 'trip_bonus_base', 'pending']);
-                                    if (finalExtra > 0) {
-                                        inserts.push([`inc_${Date.now()}_2_extra`, tripDeliveryMarshalId, req.params.id, finalExtra / 2, 'trip_bonus_extra', 'pending']);
+                                if (tripInfo && tripInfo.pricing_mode === 'hourly' && tripInfo.rentalexpiresat) {
+                                    const expiresAtMs = new Date(tripInfo.rentalexpiresat).getTime();
+                                    const nowMs = Date.now();
+                                    if (nowMs > expiresAtMs) {
+                                        const overtimeMinutes = Math.ceil((nowMs - expiresAtMs) / (60 * 1000));
+                                        const vt = (tripInfo.vehicle_type || 'car').toLowerCase();
+                                        const rateSettingKey = vt === 'bike' ? 'bike_hourly_rate' : 'car_hourly_rate';
+                                        const settingsRes = await pool.query("SELECT value FROM system_settings WHERE key = $1", [rateSettingKey]);
+                                        const defaultRate = vt === 'bike' ? '75.0' : '150.0';
+                                        const hourlyRate = parseFloat(settingsRes.rows[0]?.value || defaultRate);
+                                        const overtimeCost = Math.round((overtimeMinutes / 60) * hourlyRate);
+
+                                        if (overtimeCost > 0) {
+                                            await pool.query(
+                                                `UPDATE service_requests 
+                                                 SET unextended_overtime_cost = $1, 
+                                                     totalcustomerprice = COALESCE(totalcustomerprice, 0) + $1 
+                                                 WHERE id = $2`,
+                                                [overtimeCost, tripServiceRequestId]
+                                            );
+
+                                            if (tripInfo.customerid) {
+                                                await pool.query(
+                                                    `UPDATE customers 
+                                                     SET outstanding_balance = COALESCE(outstanding_balance, 0) + $1 
+                                                     WHERE id = $2`,
+                                                    [overtimeCost, tripInfo.customerid]
+                                                );
+                                            }
+
+                                            await pool.query(
+                                                `UPDATE disputes 
+                                                 SET status = 'resolved_paid_at_checkout',
+                                                     resolution_note = $1,
+                                                     uncovered_deficit_minutes = 0
+                                                 WHERE (tripid = $2 OR tripId = $2) AND dispute_type = 'overtime_movement' AND status IN ('pending', 'partially_covered')`,
+                                                [`Auto-billed ₹${overtimeCost} for ${overtimeMinutes}m unextended overtime at trip completion`, req.params.id]
+                                            );
+
+                                            // Itemized Overtime Driver Payout Insert
+                                            const driverOtPayout = Math.round(overtimeCost * payoutMultiplier);
+                                            if (driverOtPayout > 0) {
+                                                const otInsId = `inc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_ot`;
+                                                await pool.query(
+                                                    "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, $5, $6)",
+                                                    [otInsId, tripMarshalId, req.params.id, driverOtPayout, 'hourly_overtime_payout', 'pending']
+                                                ).catch(e => console.error("Error inserting hourly_overtime_payout:", e.message));
+
+                                                db.run(
+                                                    "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
+                                                    [otInsId, tripMarshalId, req.params.id, driverOtPayout, 'hourly_overtime_payout', 'pending'],
+                                                    () => {}
+                                                );
+                                            }
+
+                                            overtimeSettlement = { overtimeMinutes, overtimeCost, driverOvertimePayout: driverOtPayout, disputeResolved: true };
+                                        }
                                     }
                                 }
-                                
-                                let completed = 0;
+
+                                        // 2. POST-TRIP FARE RECONCILIATION
+                                        let reconciliationInfo = { status: 'none' };
+                                        const rpRes = await pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1", [tripServiceRequestId]);
+                                        if (rpRes.rows.length > 0) {
+                                            const payment = rpRes.rows[0];
+                                            const advancePaid = parseFloat(payment.amount_paid);
+                                            const actualCustomerFare = Math.max(baseFare, baseAmount + extraAmount);
+                                            const diff = actualCustomerFare - advancePaid;
+
+                                            const graceRes = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_shortfall_grace_buffer'");
+                                            const graceBuffer = parseFloat(graceRes.rows[0]?.value || '50.0');
+
+                                            if (diff < 0) {
+                                                const refundAmt = Math.round(Math.abs(diff) * 100) / 100;
+                                                let rzpRef = null;
+                                                if (payment.gateway_payment_id) {
+                                                    try {
+                                                        const rzp = getRazorpayClient();
+                                                        rzpRef = await rzp.payments.refund(payment.gateway_payment_id, {
+                                                            amount: Math.round(refundAmt * 100),
+                                                            notes: { reason: 'post_trip_overpayment_refund', tripId: req.params.id }
+                                                        });
+                                                    } catch (eRef) {
+                                                        console.error('[AUTO_REFUND_ERROR]', eRef.message);
+                                                    }
+                                                }
+                                                await pool.query(`
+                                                    UPDATE ride_payments 
+                                                    SET status = 'partially_refunded', actual_fare = $1, refund_amount = $2,
+                                                        refund_id = $3, fare_difference = $4, updated_at = NOW()
+                                                    WHERE id = $5
+                                                `, [actualCustomerFare, refundAmt, rzpRef?.id || 'auto_refund', diff, payment.id]);
+                                                reconciliationInfo = { status: 'overpayment_refunded', refundAmount: refundAmt, refundId: rzpRef?.id };
+                                            } else if (diff > 0) {
+                                                if (diff <= graceBuffer) {
+                                                    await pool.query(`
+                                                        UPDATE ride_payments 
+                                                        SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
+                                                        WHERE id = $3
+                                                    `, [actualCustomerFare, diff, payment.id]);
+                                                    reconciliationInfo = { status: 'grace_absorbed', shortfall: diff };
+                                                } else {
+                                                    await pool.query("UPDATE customers SET outstanding_balance = COALESCE(outstanding_balance, 0) + $1 WHERE id = $2", [diff, payment.customer_id]);
+                                                    await pool.query(`
+                                                        UPDATE ride_payments 
+                                                        SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
+                                                        WHERE id = $3
+                                                    `, [actualCustomerFare, diff, payment.id]);
+                                                    reconciliationInfo = { status: 'shortfall_recorded_to_ledger', shortfall: diff };
+                                                }
+                                            } else {
+                                                await pool.query("UPDATE ride_payments SET status = 'settled', actual_fare = $1, updated_at = NOW() WHERE id = $2", [actualCustomerFare, payment.id]);
+                                                reconciliationInfo = { status: 'exact_match' };
+                                            }
+                                        }
+
+                                        res.json({ 
+                                            success: true, 
+                                            message: 'Delivery completed and commission credited', 
+                                            commissionCredited: totalCredited, 
+                                            distanceUsed: distance, 
+                                            rateUsed: rate, 
+                                            baseFareUsed: baseRatePerKm,
+                                            payoutModelApplied: isSubscribed ? 'subscription (100% payout)' : `commission (${commissionRatePercent}% deducted)`,
+                                            reconciliation: reconciliationInfo,
+                                            overtimeSettlement
+                                        });
+                                    } catch (eFin) {
+                                        console.error('Finalization error:', eFin);
+                                        res.json({ success: true, message: 'Delivery completed (warning: ' + eFin.message + ')' });
+                                    }
+                                };
+
                                 if (inserts.length === 0) {
-                                    return res.json({ success: true, message: 'Delivery completed' });
+                                    return onInsertsFinished();
                                 }
                                 inserts.forEach(insert => {
                                     db.run(
                                         "INSERT INTO incentives (id, userId, tripId, amount, type, status) VALUES (?, ?, ?, ?, ?, ?)",
                                         insert,
                                         () => {
-                                            // Also sync to PostgreSQL database
                                             pool.query(
                                                 "INSERT INTO incentives (id, userid, tripid, amount, type, status) VALUES ($1, $2, $3, $4, $5, $6)",
                                                 [insert[0], insert[1], insert[2], insert[3], insert[4], insert[5]]
                                             ).catch(e => console.error("PG Sync Error:", e));
 
                                             completed++;
-                                             if (completed === inserts.length) {
-                                                 // POST-TRIP FARE RECONCILIATION
-                                                 pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1", [tripServiceRequestId]).then(async (rpRes) => {
-                                                     let reconciliationInfo = { status: 'none' };
-                                                     if (rpRes.rows.length > 0) {
-                                                         const payment = rpRes.rows[0];
-                                                         const advancePaid = parseFloat(payment.amount_paid);
-                                                         const actualCustomerFare = Math.max(baseFare, baseAmount + extraAmount);
-                                                         const diff = actualCustomerFare - advancePaid;
-
-                                                         const graceRes = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_shortfall_grace_buffer'");
-                                                         const graceBuffer = parseFloat(graceRes.rows[0]?.value || '50.0');
-
-                                                         if (diff < 0) {
-                                                             // OVERPAYMENT -> Auto-refund difference to customer
-                                                             const refundAmt = Math.round(Math.abs(diff) * 100) / 100;
-                                                             let rzpRef = null;
-                                                             if (payment.gateway_payment_id) {
-                                                                 try {
-                                                                     const rzp = getRazorpayClient();
-                                                                     rzpRef = await rzp.payments.refund(payment.gateway_payment_id, {
-                                                                         amount: Math.round(refundAmt * 100),
-                                                                         notes: { reason: 'post_trip_overpayment_refund', tripId: req.params.id }
-                                                                     });
-                                                                 } catch (eRef) {
-                                                                     console.error('[AUTO_REFUND_ERROR]', eRef.message);
-                                                                 }
-                                                             }
-                                                             await pool.query(`
-                                                                 UPDATE ride_payments 
-                                                                 SET status = 'partially_refunded', actual_fare = $1, refund_amount = $2,
-                                                                     refund_id = $3, fare_difference = $4, updated_at = NOW()
-                                                                 WHERE id = $5
-                                                             `, [actualCustomerFare, refundAmt, rzpRef?.id || 'auto_refund', diff, payment.id]);
-                                                             reconciliationInfo = { status: 'overpayment_refunded', refundAmount: refundAmt, refundId: rzpRef?.id };
-                                                         } else if (diff > 0) {
-                                                             // UNDERPAYMENT (Shortfall)
-                                                             if (diff <= graceBuffer) {
-                                                                 await pool.query(`
-                                                                     UPDATE ride_payments 
-                                                                     SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
-                                                                     WHERE id = $3
-                                                                 `, [actualCustomerFare, diff, payment.id]);
-                                                                 reconciliationInfo = { status: 'grace_absorbed', shortfall: diff };
-                                                             } else {
-                                                                 // Exceeds grace buffer -> Record onto customer outstanding balance
-                                                                 await pool.query("UPDATE customers SET outstanding_balance = COALESCE(outstanding_balance, 0) + $1 WHERE id = $2", [diff, payment.customer_id]);
-                                                                 await pool.query(`
-                                                                     UPDATE ride_payments 
-                                                                     SET status = 'settled', actual_fare = $1, fare_difference = $2, updated_at = NOW()
-                                                                     WHERE id = $3
-                                                                 `, [actualCustomerFare, diff, payment.id]);
-                                                                 reconciliationInfo = { status: 'shortfall_recorded_to_ledger', shortfall: diff };
-                                                             }
-                                                         } else {
-                                                             await pool.query("UPDATE ride_payments SET status = 'settled', actual_fare = $1, updated_at = NOW() WHERE id = $2", [actualCustomerFare, payment.id]);
-                                                             reconciliationInfo = { status: 'exact_match' };
-                                                         }
-                                                     }
-
-                                                     res.json({ 
-                                                         success: true, 
-                                                         message: 'Delivery completed and commission credited', 
-                                                         commissionCredited: totalCredited, 
-                                                         distanceUsed: distance, 
-                                                         rateUsed: rate, 
-                                                         baseFareUsed: baseRatePerKm,
-                                                         payoutModelApplied: isSubscribed ? 'subscription (100% payout)' : `commission (${commissionRatePercent}% deducted)`,
-                                                         reconciliation: reconciliationInfo
-                                                     });
-                                                 }).catch(eRp => {
-                                                     console.error('Reconciliation error:', eRp);
-                                                     res.json({ success: true, message: 'Delivery completed (reconciliation error: ' + eRp.message + ')' });
-                                                 });
-                                             }
+                                            if (completed === inserts.length) {
+                                                onInsertsFinished();
+                                            }
                                         }
                                     );
                                 });
-                            });
-                        }).catch(e => {
-                            console.error('Settlement calculation error:', e);
-                            res.status(500).json({ error: 'Failed to settle trip payout: ' + e.message });
+                            } catch (e) {
+                                console.error('Settlement calculation error:', e);
+                                res.status(500).json({ error: 'Failed to settle trip payout: ' + e.message });
+                            }
                         });
                     });
                 });
             });
         });
-        });
     });
-});
 
 // Helper function for Driver Wallet & Earnings Summary
 async function getDriverWalletSummary(userId) {
@@ -7438,10 +8388,11 @@ apiRouter.get('/disputes', authMiddleware, requireRole('admin'), async (req, res
 // POST resolve a dispute
 apiRouter.post('/disputes/:id/resolve', authMiddleware, requireRole('admin'), async (req, res) => {
     const disputeId = req.params.id;
-    const { action, deductionAmount } = req.body;
+    const { action, deductionAmount, resolutionNote } = req.body;
     
-    if (!action || !['dismissed', 'penalized'].includes(action)) {
-        return res.status(400).json({ error: 'Action must be dismissed or penalized' });
+    const allowedActions = ['dismissed', 'penalized', 'acknowledged', 'waived', 'resolved_extension', 'resolved_paid_at_checkout'];
+    if (!action || !allowedActions.includes(action)) {
+        return res.status(400).json({ error: `Action must be one of: ${allowedActions.join(', ')}` });
     }
     
     try {
@@ -7454,10 +8405,11 @@ apiRouter.post('/disputes/:id/resolve', authMiddleware, requireRole('admin'), as
         const marshalId = dispute.marshalid || dispute.marshalId;
         const tripId = dispute.tripid || dispute.tripId;
         const finalDeduction = action === 'penalized' ? parseFloat(deductionAmount || 0) : 0;
+        const note = resolutionNote || dispute.resolution_note || `Resolved as ${action.toUpperCase()}`;
         
         await pool.query(
-            "UPDATE disputes SET status = $1, deductionAmount = $2 WHERE id = $3",
-            [action, finalDeduction, disputeId]
+            "UPDATE disputes SET status = $1, deductionAmount = $2, resolution_note = $3 WHERE id = $4",
+            [action, finalDeduction, note, disputeId]
         );
         
         if (marshalId) {
@@ -7473,7 +8425,7 @@ apiRouter.post('/disputes/:id/resolve', authMiddleware, requireRole('admin'), as
             }
         }
         
-        res.json({ success: true });
+        res.json({ success: true, status: action, resolutionNote: note });
     } catch (err) {
         console.error('Dispute resolution error:', err.message);
         res.status(500).json({ error: err.message });
@@ -7840,8 +8792,7 @@ apiRouter.get('/traction/live-metrics', authMiddleware, requireRole('investor', 
 
 app.use('/api', apiRouter);
 
-// Secure /uploads route with short-lived HMAC signature verification
-app.get('/uploads/:filename', (req, res) => {
+app.get('/uploads/:filename', async (req, res) => {
     const { exp, sig } = req.query;
     if (!exp || !sig) {
         return res.status(401).json({ error: 'Access denied: Authentication credentials missing.' });
@@ -7862,13 +8813,31 @@ app.get('/uploads/:filename', (req, res) => {
         return res.status(403).json({ error: 'Access denied: Invalid signature.' });
     }
 
-    const targetPath = path.join(activeUploadsDir, filename);
-    if (!fs.existsSync(targetPath)) {
-        return res.status(404).json({ error: 'File not found.' });
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+
+    // 1. Try Cloudflare R2 first
+    if (isR2Configured()) {
+        try {
+            const r2Key = `uploads/${filename}`;
+            const r2Obj = await getR2ObjectStream(r2Key);
+            if (r2Obj && r2Obj.Body) {
+                if (r2Obj.ContentType) res.setHeader('Content-Type', r2Obj.ContentType);
+                if (r2Obj.ContentLength) res.setHeader('Content-Length', r2Obj.ContentLength);
+                res.setHeader('Cache-Control', 'private, max-age=900');
+                return r2Obj.Body.pipe(res);
+            }
+        } catch (r2Err) {
+            // If not found in R2, proceed to local disk fallback
+        }
     }
 
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-    return res.sendFile(targetPath);
+    // 2. Fallback to local disk if file exists
+    const targetPath = path.join(activeUploadsDir, filename);
+    if (fs.existsSync(targetPath)) {
+        return res.sendFile(targetPath);
+    }
+
+    return res.status(404).json({ error: 'File not found.' });
 });
 
 // --- DOMAIN-SPECIFIC PATH ISOLATION (DEFENSE IN DEPTH) ---
