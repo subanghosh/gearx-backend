@@ -7748,6 +7748,7 @@ async function renderIncentives(container) {
                 const custRateKey = `${type}_customer_rate_per_km`;
                 const haltKey = `${type}_halt_rate_per_min`;
                 const hourlyKey = `${type}_hourly_rate`;
+                const baseChargeKey = `${type}_platform_base_charge`;
 
                 const bonusVal = window._sysSettings?.[bonusKey] !== undefined ? window._sysSettings[bonusKey] : (window._globalSettings?.[bonusKey] !== undefined ? window._globalSettings[bonusKey] : (type === 'car' ? 50 : 30));
                 const payoutVal = window._sysSettings?.[payoutKey] !== undefined ? window._sysSettings[payoutKey] : (window._globalSettings?.[payoutKey] !== undefined ? window._globalSettings[payoutKey] : 3);
@@ -7756,6 +7757,7 @@ async function renderIncentives(container) {
                 const custRateVal = window._sysSettings?.[custRateKey] !== undefined ? window._sysSettings[custRateKey] : (type === 'car' ? 30.0 : 8.0);
                 const haltVal = window._sysSettings?.[haltKey] !== undefined ? window._sysSettings[haltKey] : (window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3));
                 const hourlyVal = window._sysSettings?.[hourlyKey] !== undefined ? window._sysSettings[hourlyKey] : (window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80));
+                const baseChargeVal = window._sysSettings?.[baseChargeKey] !== undefined ? window._sysSettings[baseChargeKey] : (window._globalSettings?.[baseChargeKey] !== undefined ? window._globalSettings[baseChargeKey] : (type === 'car' ? 99 : 49));
 
                 html += `
                 <div class="card" style="margin-top:0;">
@@ -7780,6 +7782,12 @@ async function renderIncentives(container) {
                             <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Minimum Base Fare (₹)</label>
                             <input type="number" id="global-base-fare" value="${baseFareVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Starting threshold for any booking</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Platform Base Charge (₹)</label>
+                            <input type="number" step="1" id="global-platform-base-charge" value="${baseChargeVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Fixed platform booking charge collected per trip</span>
                         </div>
 
                         <div>
@@ -7950,6 +7958,7 @@ async function renderIncentives(container) {
             const customerRatePerKm = document.getElementById('global-customer-rate-per-km').value;
             const haltRate = document.getElementById('global-halt-rate-per-min').value;
             const hourlyRate = document.getElementById('global-hourly-rate').value;
+            const platformBaseCharge = document.getElementById('global-platform-base-charge').value;
             
             const type = window._incentiveVehicleType;
             
@@ -7962,7 +7971,8 @@ async function renderIncentives(container) {
                         { key: `${type}_payout_days`, value: payout },
                         { key: `${type}_base_fare`, value: baseFare },
                         { key: `${type}_halt_rate_per_min`, value: haltRate },
-                        { key: `${type}_hourly_rate`, value: hourlyRate }
+                        { key: `${type}_hourly_rate`, value: hourlyRate },
+                        { key: `${type}_platform_base_charge`, value: platformBaseCharge }
                     ]})
                 });
                 
