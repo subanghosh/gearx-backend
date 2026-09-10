@@ -7457,7 +7457,8 @@ async function renderIncentives(container) {
                 driver_noshow_timeout_minutes: 60,
                 driver_noshow_penalty: 49.0,
                 customer_noshow_wait_minutes: 10,
-                customer_noshow_penalty: 99.0
+                customer_noshow_penalty: 99.0,
+                gps_arrival_geofence_meters: 300
             };
         }
         if (window._slabsEditMode === undefined) window._slabsEditMode = false;
@@ -7965,6 +7966,7 @@ async function renderIncentives(container) {
                 const driverPenalty = c.driver_noshow_penalty !== undefined ? c.driver_noshow_penalty : 49.0;
                 const custWait = c.customer_noshow_wait_minutes !== undefined ? c.customer_noshow_wait_minutes : 10;
                 const custPenalty = c.customer_noshow_penalty !== undefined ? c.customer_noshow_penalty : 99.0;
+                const geofenceMeters = c.gps_arrival_geofence_meters !== undefined ? c.gps_arrival_geofence_meters : 300;
 
                 html += `
                 <div class="card" style="margin-top:0;">
@@ -7975,7 +7977,7 @@ async function renderIncentives(container) {
                                 Symmetric Cancellation & No-Show Policy Engine
                             </h2>
                             <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">
-                                Configure free cancellation windows, standard cancellation fees, driver arrival timeouts, and customer no-show parameters.
+                                Configure free cancellation windows, standard cancellation fees, driver arrival timeouts, customer no-show parameters, and GPS arrival geofences.
                             </p>
                         </div>
                         <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Loss Prevention & Driver Protection</span>
@@ -8010,7 +8012,7 @@ async function renderIncentives(container) {
                         <div style="background: rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.25); border-radius:10px; padding:14px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                                 <span style="font-weight:800; font-size:0.82rem; color:#c084fc;">TIER 4 &bull; CUST NO-SHOW</span>
-                                <span style="font-size:0.7rem; background:rgba(168,85,247,0.15); color:#c084fc; padding:2px 6px; border-radius:4px; font-weight:700;">Arrived + ${custWait}m</span>
+                                <span style="font-size:0.7rem; background:rgba(168,85,247,0.15); color:#c084fc; padding:2px 6px; border-radius:4px; font-weight:700;">Arrived (${geofenceMeters}m) + ${custWait}m</span>
                             </div>
                             <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.4;">Customer charged <b>₹${custPenalty}</b>. Driver paid <b>₹${(custPenalty * 0.8).toFixed(2)}</b> (₹${custPenalty} for sub). Zero deficit.</div>
                         </div>
@@ -8053,6 +8055,12 @@ async function renderIncentives(container) {
                             <input type="number" step="1" id="crm-cancel-cust-penalty" value="${custPenalty}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 4: Penalty charged to customer. Driver gets commission split (₹${(custPenalty * 0.8).toFixed(2)})</span>
                         </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">GPS Arrival Geofence Radius (Meters)</label>
+                            <input type="number" step="10" id="crm-cancel-geofence" value="${geofenceMeters}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:#38bdf8;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 4: Maximum distance from pickup pin to allow driver arrival mark (default 300m)</span>
+                        </div>
                     </div>
 
                     <div>
@@ -8077,6 +8085,7 @@ async function renderIncentives(container) {
             const driverPenalty = document.getElementById('crm-cancel-driver-penalty')?.value;
             const custWait = document.getElementById('crm-cancel-cust-wait')?.value;
             const custPenalty = document.getElementById('crm-cancel-cust-penalty')?.value;
+            const geofenceMeters = document.getElementById('crm-cancel-geofence')?.value;
 
             const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
             try {
@@ -8093,7 +8102,8 @@ async function renderIncentives(container) {
                             driver_noshow_timeout_minutes: parseInt(driverTimeout) || 60,
                             driver_noshow_penalty: parseFloat(driverPenalty) || 49.0,
                             customer_noshow_wait_minutes: parseInt(custWait) || 10,
-                            customer_noshow_penalty: parseFloat(custPenalty) || 99.0
+                            customer_noshow_penalty: parseFloat(custPenalty) || 99.0,
+                            gps_arrival_geofence_meters: parseInt(geofenceMeters) || 300
                         }
                     })
                 });

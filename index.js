@@ -5750,14 +5750,15 @@ apiRouter.post('/customer/booking/timeout-refund', async (req, res) => {
 // Cancellation Settings: GET
 apiRouter.get('/settings/cancellation', async (req, res) => {
     try {
-        const sRes = await pool.query("SELECT key, value FROM system_settings WHERE key IN ('customer_free_cancel_window_seconds', 'customer_cancellation_fee', 'driver_noshow_timeout_minutes', 'driver_noshow_penalty', 'customer_noshow_wait_minutes', 'customer_noshow_penalty')");
+        const sRes = await pool.query("SELECT key, value FROM system_settings WHERE key IN ('customer_free_cancel_window_seconds', 'customer_cancellation_fee', 'driver_noshow_timeout_minutes', 'driver_noshow_penalty', 'customer_noshow_wait_minutes', 'customer_noshow_penalty', 'gps_arrival_geofence_meters')");
         const settings = {
             customer_free_cancel_window_seconds: 180,
             customer_cancellation_fee: 50.0,
             driver_noshow_timeout_minutes: 60,
             driver_noshow_penalty: 49.0,
             customer_noshow_wait_minutes: 10,
-            customer_noshow_penalty: 99.0
+            customer_noshow_penalty: 99.0,
+            gps_arrival_geofence_meters: 300
         };
         (sRes.rows || []).forEach(r => {
             const num = Number(r.value);
@@ -5782,7 +5783,8 @@ apiRouter.post('/settings/cancellation', authMiddleware, requireRole('admin'), a
             'driver_noshow_timeout_minutes',
             'driver_noshow_penalty',
             'customer_noshow_wait_minutes',
-            'customer_noshow_penalty'
+            'customer_noshow_penalty',
+            'gps_arrival_geofence_meters'
         ];
         for (const k of keys) {
             if (settings[k] !== undefined) {
@@ -5813,12 +5815,17 @@ apiRouter.post('/trips/:id/mark-arrived', authMiddleware, async (req, res) => {
         if (tripRes.rows.length === 0) return res.status(404).json({ error: 'Trip not found' });
         const trip = tripRes.rows[0];
 
+        // Fetch dynamic arrival geofence setting (default 300m)
+        const sRes = await pool.query("SELECT value FROM system_settings WHERE key = 'gps_arrival_geofence_meters'");
+        const geofenceMeters = sRes.rows[0] ? parseInt(sRes.rows[0].value || '300', 10) : 300;
+        const geofenceKm = geofenceMeters / 1000;
+
         // Geofence check if coordinates supplied
         if (lat && lng && trip.pickuplat && trip.pickuplng) {
             const distKm = calcDistanceKm(parseFloat(lat), parseFloat(lng), parseFloat(trip.pickuplat), parseFloat(trip.pickuplng));
-            if (distKm > 0.5) { // 500m tolerance for urban drift
+            if (distKm > geofenceKm) {
                 return res.status(400).json({
-                    error: `Arrival verification failed: You are ${Math.round(distKm * 1000)}m from the pickup pin. Please move closer (within 500m) to mark arrival.`
+                    error: `Arrival verification failed: You are ${Math.round(distKm * 1000)}m from the pickup pin. Please move closer (within ${geofenceMeters}m) to mark arrival.`
                 });
             }
         }
