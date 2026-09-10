@@ -7758,6 +7758,7 @@ async function renderIncentives(container) {
                 const haltVal = window._sysSettings?.[haltKey] !== undefined ? window._sysSettings[haltKey] : (window._globalSettings?.[haltKey] !== undefined ? window._globalSettings[haltKey] : (type === 'car' ? 5 : 3));
                 const hourlyVal = window._sysSettings?.[hourlyKey] !== undefined ? window._sysSettings[hourlyKey] : (window._globalSettings?.[hourlyKey] !== undefined ? window._globalSettings[hourlyKey] : (type === 'car' ? 150 : 80));
                 const baseChargeVal = window._sysSettings?.[baseChargeKey] !== undefined ? window._sysSettings[baseChargeKey] : (window._globalSettings?.[baseChargeKey] !== undefined ? window._globalSettings[baseChargeKey] : (type === 'car' ? 99 : 49));
+                const advancePaymentVal = (window._sysSettings?.['enable_customer_advance_payment'] === 'true' || window._sysSettings?.['enable_customer_advance_payment'] === true);
 
                 html += `
                 <div class="card" style="margin-top:0;">
@@ -7824,6 +7825,36 @@ async function renderIncentives(container) {
                             <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Payout Clearance Window (Days)</label>
                             <input type="number" id="global-payout" value="${payoutVal}" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
                             <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Settlement grace period</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:24px; margin-bottom:24px; padding:18px; background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+                            <div style="max-width:640px;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                                    <span style="font-size:0.95rem; font-weight:700; color:var(--text-main);">Customer Advance Payment Collection (Razorpay Gateway)</span>
+                                    <span class="badge" style="background:${advancePaymentVal ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'}; color:${advancePaymentVal ? 'var(--success)' : 'var(--danger)'}; border:1px solid ${advancePaymentVal ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}; font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:700;">
+                                        ${advancePaymentVal ? 'ENABLED (ONLINE PREPAY)' : 'DISABLED (DIRECT SETTLEMENT)'}
+                                    </span>
+                                </div>
+                                <p style="font-size:0.82rem; color:var(--text-muted); margin:0 0 10px 0;">
+                                    Master kill-switch for platform checkout: controls whether customers must prepay estimated trip fares upfront via Razorpay before driver dispatch, or pay the driver directly upon completion via Cash / UPI.
+                                </p>
+                                <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:6px; padding:8px 12px; display:flex; align-items:flex-start; gap:8px;">
+                                    <i data-lucide="alert-triangle" style="color:var(--primary); width:16px; height:16px; flex-shrink:0; margin-top:2px;"></i>
+                                    <span style="font-size:0.75rem; color:#FACC15; line-height:1.4;">
+                                        <strong>Important:</strong> Enabling this requires live Razorpay API keys (<code>rzp_live_...</code>) to be configured in production environment variables, or real customer checkout payments will fail.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style="min-width:220px;">
+                                <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Advance Payment Status</label>
+                                <select id="global-advance-payment" ${disabledGlobal} style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                                    <option value="false" ${!advancePaymentVal ? 'selected' : ''}>Disabled (Direct Settlement)</option>
+                                    <option value="true" ${advancePaymentVal ? 'selected' : ''}>Enabled (Razorpay Upfront)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -7959,6 +7990,7 @@ async function renderIncentives(container) {
             const haltRate = document.getElementById('global-halt-rate-per-min').value;
             const hourlyRate = document.getElementById('global-hourly-rate').value;
             const platformBaseCharge = document.getElementById('global-platform-base-charge').value;
+            const advancePayment = document.getElementById('global-advance-payment') ? document.getElementById('global-advance-payment').value : 'false';
             
             const type = window._incentiveVehicleType;
             
@@ -7988,7 +8020,13 @@ async function renderIncentives(container) {
                     body: JSON.stringify({ key: `${type}_customer_rate_per_km`, value: customerRatePerKm })
                 });
 
-                if(res1.ok && res2.ok && res3.ok) {
+                const res4 = await fetch(`${API_URL}/system-settings`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ key: 'enable_customer_advance_payment', value: advancePayment })
+                });
+
+                if(res1.ok && res2.ok && res3.ok && res4.ok) {
                     window._globalEditMode = false;
                     alert('Global settings saved successfully!');
                     renderIncentives(container);
