@@ -7269,6 +7269,80 @@ async function renderBackendSurveys(container) {
     }
 }
 
+window.formatSlabAvgCost = function(from, to, rate) {
+    const f = parseFloat(from) || 0;
+    const t = parseFloat(to) || 0;
+    const r = parseFloat(rate) || 0;
+    const minCost = Math.round(f * r);
+    if (t >= 999 || t <= 0) {
+        return `₹${minCost.toLocaleString('en-IN')}+`;
+    }
+    const maxCost = Math.round(t * r);
+    return `₹${minCost.toLocaleString('en-IN')} - ₹${maxCost.toLocaleString('en-IN')}`;
+};
+
+window.recalcDistanceSlabRow = function(index) {
+    if (!window._currentSlabs || !window._currentSlabs[index]) return;
+    const toInput = document.getElementById(`dist-to-${index}`);
+    const rateInput = document.getElementById(`dist-rate-${index}`);
+    const avgCostEl = document.getElementById(`dist-avg-cost-${index}`);
+    
+    const toVal = toInput ? (parseFloat(toInput.value) || 0) : window._currentSlabs[index].maxDistance;
+    const rateVal = rateInput ? (parseFloat(rateInput.value) || 0) : window._currentSlabs[index].ratePerKm;
+    
+    window._currentSlabs[index].maxDistance = toVal;
+    window._currentSlabs[index].ratePerKm = rateVal;
+    
+    let fromVal = 0;
+    if (index > 0 && window._currentSlabs[index - 1]) {
+        fromVal = parseFloat(window._currentSlabs[index - 1].maxDistance) || 0;
+    }
+    
+    if (avgCostEl) {
+        avgCostEl.textContent = window.formatSlabAvgCost(fromVal, toVal, rateVal);
+    }
+    
+    // Cascade update to next row's fromVal and its avgCost
+    if (index + 1 < window._currentSlabs.length) {
+        const nextFromCell = document.getElementById(`dist-from-${index + 1}`);
+        if (nextFromCell) {
+            nextFromCell.textContent = (toVal + 0.1).toFixed(1) + ' KM';
+        }
+        window.recalcDistanceSlabRow(index + 1);
+    }
+};
+
+window.recalcHourlySlabRow = function(index) {
+    if (!window._currentHourlySlabs || !window._currentHourlySlabs[index]) return;
+    const toInput = document.getElementById(`hourly-to-${index}`);
+    const rateInput = document.getElementById(`hourly-rate-${index}`);
+    const avgCostEl = document.getElementById(`hourly-avg-cost-${index}`);
+    
+    const toVal = toInput ? (parseFloat(toInput.value) || 0) : window._currentHourlySlabs[index].maxHours;
+    const rateVal = rateInput ? (parseFloat(rateInput.value) || 0) : window._currentHourlySlabs[index].ratePerHour;
+    
+    window._currentHourlySlabs[index].maxHours = toVal;
+    window._currentHourlySlabs[index].ratePerHour = rateVal;
+    
+    let fromVal = 0;
+    if (index > 0 && window._currentHourlySlabs[index - 1]) {
+        fromVal = parseFloat(window._currentHourlySlabs[index - 1].maxHours) || 0;
+    }
+    
+    if (avgCostEl) {
+        avgCostEl.textContent = window.formatSlabAvgCost(fromVal, toVal, rateVal);
+    }
+    
+    // Cascade update to next row's fromVal and its avgCost
+    if (index + 1 < window._currentHourlySlabs.length) {
+        const nextFromCell = document.getElementById(`hourly-from-${index + 1}`);
+        if (nextFromCell) {
+            nextFromCell.textContent = (toVal + 0.1).toFixed(1) + ' Hrs';
+        }
+        window.recalcHourlySlabRow(index + 1);
+    }
+};
+
 async function renderIncentives(container) {
     try {
         window._driverOpsTab = window._driverOpsTab || 'withdrawals';
@@ -7551,6 +7625,7 @@ async function renderIncentives(container) {
                                 <th style="padding:10px;">From (KM)</th>
                                 <th style="padding:10px;">To (KM)</th>
                                 <th style="padding:10px;">Driver Payout Rate (₹/KM)</th>
+                                <th style="padding:10px; color:#FACC15;">Avg Cost (₹) — Est.</th>
                                 ${window._slabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
                             </tr>
                         </thead>
@@ -7559,15 +7634,19 @@ async function renderIncentives(container) {
 
                 window._currentSlabs.forEach((slab, index) => {
                     let fromVal = 0.0;
+                    let fromDisplay = '0.0';
                     if (index > 0) {
-                        fromVal = (Number(window._currentSlabs[index - 1].maxDistance) + 0.1).toFixed(1);
+                        fromVal = Number(window._currentSlabs[index - 1].maxDistance) || 0.0;
+                        fromDisplay = (fromVal + 0.1).toFixed(1);
                     }
                     const disabledAttr = window._slabsEditMode ? '' : 'disabled';
+                    const avgCostDisplay = window.formatSlabAvgCost(fromVal, slab.maxDistance, slab.ratePerKm);
                     html += `
                         <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                            <td style="padding:10px; color:var(--text-muted); font-weight:600;">${fromVal} KM</td>
-                            <td style="padding:10px;"><input type="number" value="${slab.maxDistance}" onchange="window._currentSlabs[${index}].maxDistance=Number(this.value); window.drawIncentivesUI()" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
-                            <td style="padding:10px;"><input type="number" value="${slab.ratePerKm}" onchange="window._currentSlabs[${index}].ratePerKm=Number(this.value)" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            <td id="dist-from-${index}" style="padding:10px; color:var(--text-muted); font-weight:600;">${fromDisplay} KM</td>
+                            <td style="padding:10px;"><input type="number" id="dist-to-${index}" value="${slab.maxDistance}" oninput="window.recalcDistanceSlabRow(${index})" onchange="window.recalcDistanceSlabRow(${index})" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                            <td style="padding:10px;"><input type="number" id="dist-rate-${index}" value="${slab.ratePerKm}" oninput="window.recalcDistanceSlabRow(${index})" onchange="window.recalcDistanceSlabRow(${index})" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            <td id="dist-avg-cost-${index}" style="padding:10px; font-weight:700; color:#FACC15; font-family:monospace; font-size:0.92rem;">${avgCostDisplay}</td>
                             ${window._slabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentSlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
                         </tr>
                     `;
@@ -7615,6 +7694,7 @@ async function renderIncentives(container) {
                                 <th style="padding:10px;">From (Hours)</th>
                                 <th style="padding:10px;">To (Hours)</th>
                                 <th style="padding:10px;">Driver Payout Rate (₹/HR)</th>
+                                <th style="padding:10px; color:#FACC15;">Avg Cost (₹) — Est.</th>
                                 ${window._hourlySlabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
                             </tr>
                         </thead>
@@ -7623,15 +7703,19 @@ async function renderIncentives(container) {
 
                 (window._currentHourlySlabs || []).forEach((slab, index) => {
                     let fromVal = 0.0;
+                    let fromDisplay = '0.0';
                     if (index > 0) {
-                        fromVal = (Number(window._currentHourlySlabs[index - 1].maxHours) + 0.1).toFixed(1);
+                        fromVal = Number(window._currentHourlySlabs[index - 1].maxHours) || 0.0;
+                        fromDisplay = (fromVal + 0.1).toFixed(1);
                     }
                     const disabledAttr = window._hourlySlabsEditMode ? '' : 'disabled';
+                    const avgCostDisplay = window.formatSlabAvgCost(fromVal, slab.maxHours, slab.ratePerHour);
                     html += `
                         <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                            <td style="padding:10px; color:var(--text-muted); font-weight:600;">${fromVal} Hrs</td>
-                            <td style="padding:10px;"><input type="number" step="0.5" value="${slab.maxHours}" onchange="window._currentHourlySlabs[${index}].maxHours=Number(this.value); window.drawIncentivesUI()" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
-                            <td style="padding:10px;"><input type="number" step="1" value="${slab.ratePerHour}" onchange="window._currentHourlySlabs[${index}].ratePerHour=Number(this.value)" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            <td id="hourly-from-${index}" style="padding:10px; color:var(--text-muted); font-weight:600;">${fromDisplay} Hrs</td>
+                            <td style="padding:10px;"><input type="number" step="0.5" id="hourly-to-${index}" value="${slab.maxHours}" oninput="window.recalcHourlySlabRow(${index})" onchange="window.recalcHourlySlabRow(${index})" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                            <td style="padding:10px;"><input type="number" step="1" id="hourly-rate-${index}" value="${slab.ratePerHour}" oninput="window.recalcHourlySlabRow(${index})" onchange="window.recalcHourlySlabRow(${index})" ${disabledAttr} style="width:120px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                            <td id="hourly-avg-cost-${index}" style="padding:10px; font-weight:700; color:#FACC15; font-family:monospace; font-size:0.92rem;">${avgCostDisplay}</td>
                             ${window._hourlySlabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentHourlySlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
                         </tr>
                     `;
