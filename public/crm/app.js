@@ -6,7 +6,22 @@ window.fetch = async function(resource, init) {
     if (token) {
         init.headers['Authorization'] = `Bearer ${token}`;
     }
-    return nativeFetch(resource, init);
+    const response = await nativeFetch(resource, init);
+    if (response.status === 401 && typeof resource === 'string' && resource.startsWith('/api/') && !resource.includes('/api/auth/')) {
+        console.warn('[CRM Auth] 401 Unauthorized received, session expired. Redirecting to login.');
+        localStorage.removeItem('redrivo_token');
+        localStorage.removeItem('redrivo_current_user');
+        if (typeof PROTOTYPE_STATE !== 'undefined') {
+            PROTOTYPE_STATE.currentUser = null;
+        }
+        if (typeof router !== 'undefined' && router.navigate && router.currentPage !== 'login') {
+            if (typeof window.showToast === 'function') {
+                window.showToast('Session expired. Please log in again.', 'warning');
+            }
+            router.navigate('login');
+        }
+    }
+    return response;
 };
 
 window.initialDataLoaded = false;
@@ -550,7 +565,8 @@ const router = {
             window.providerTabs['rental-partners'] = 'fleet';
             page = 'rental-partners';
         }
-        if (!PROTOTYPE_STATE.currentUser && page !== 'login' && page !== 'public-survey') {
+        const token = localStorage.getItem('redrivo_token');
+        if ((!token || !PROTOTYPE_STATE.currentUser) && page !== 'login' && page !== 'public-survey') {
             page = 'login';
         }
 
@@ -5690,9 +5706,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const viewParam = urlParams.get('view');
     const savedPage = localStorage.getItem('redrivo_crm_page');
+    const token = localStorage.getItem('redrivo_token');
     
     if (window.location.hash === '#public-survey') {
         router.navigate('public-survey');
+    } else if (!token || !PROTOTYPE_STATE.currentUser) {
+        router.navigate('login');
     } else if (viewParam) {
         router.navigate(viewParam);
     } else if (savedPage && savedPage !== 'login' && savedPage !== 'public-survey') {
