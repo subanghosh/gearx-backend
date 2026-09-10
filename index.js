@@ -713,7 +713,28 @@ function initializeDatabase() {
             db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_five_star_bonus', '30.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('car_payout_days', '3') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('bike_payout_days', '3') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_free_cancel_window_seconds', '180') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_cancellation_fee', '50.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('driver_noshow_timeout_minutes', '60') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('driver_noshow_penalty', '49.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_wait_minutes', '10') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_penalty', '99.0') ON CONFLICT(key) DO NOTHING`);
         });
+
+        // Async PostgreSQL migrations for cancellation & arrival tracking
+        pool.query(`
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrived_at TIMESTAMP;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS cancellation_tier TEXT;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS cancellation_fee REAL DEFAULT 0;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS refund_amount REAL DEFAULT 0;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS penalty_amount REAL DEFAULT 0;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS pickup_eta_minutes REAL DEFAULT 15;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS arrived_at TIMESTAMP;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS cancellation_tier TEXT;
+        `).catch(e => console.warn("Postgres cancellation migration notice:", e.message));
 
         // Disputes Table
         db.run(`CREATE TABLE IF NOT EXISTS disputes (
@@ -5719,6 +5740,452 @@ apiRouter.post('/customer/booking/timeout-refund', async (req, res) => {
     } catch (err) {
         console.error('[TIMEOUT_REFUND_ERROR]', err);
         res.status(500).json({ error: 'Timeout refund failed: ' + (err.error?.description || err.message) });
+    }
+});
+
+// =========================================================================
+// SYMMETRIC CANCELLATION & NO-SHOW ENGINE (TIER 1 - TIER 4)
+// =========================================================================
+
+// Cancellation Settings: GET
+apiRouter.get('/settings/cancellation', async (req, res) => {
+    try {
+        const sRes = await pool.query("SELECT key, value FROM system_settings WHERE key IN ('customer_free_cancel_window_seconds', 'customer_cancellation_fee', 'driver_noshow_timeout_minutes', 'driver_noshow_penalty', 'customer_noshow_wait_minutes', 'customer_noshow_penalty')");
+        const settings = {
+            customer_free_cancel_window_seconds: 180,
+            customer_cancellation_fee: 50.0,
+            driver_noshow_timeout_minutes: 60,
+            driver_noshow_penalty: 49.0,
+            customer_noshow_wait_minutes: 10,
+            customer_noshow_penalty: 99.0
+        };
+        (sRes.rows || []).forEach(r => {
+            const num = Number(r.value);
+            settings[r.key] = isNaN(num) ? r.value : num;
+        });
+        res.json(settings);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Cancellation Settings: POST (Admin)
+apiRouter.post('/settings/cancellation', authMiddleware, requireRole('admin'), async (req, res) => {
+    const { settings } = req.body;
+    if (!settings || typeof settings !== 'object') {
+        return res.status(400).json({ error: 'Settings object is required' });
+    }
+    try {
+        const keys = [
+            'customer_free_cancel_window_seconds',
+            'customer_cancellation_fee',
+            'driver_noshow_timeout_minutes',
+            'driver_noshow_penalty',
+            'customer_noshow_wait_minutes',
+            'customer_noshow_penalty'
+        ];
+        for (const k of keys) {
+            if (settings[k] !== undefined) {
+                await pool.query(
+                    "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value",
+                    [k, String(settings[k])]
+                );
+                try {
+                    db.run(
+                        "INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value",
+                        [k, String(settings[k])]
+                    );
+                } catch(e) {}
+            }
+        }
+        res.json({ success: true, message: 'Cancellation settings updated successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Mark Driver Arrived at Pickup (GPS + Timestamp)
+apiRouter.post('/trips/:id/mark-arrived', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const { lat, lng } = req.body;
+    try {
+        const tripRes = await pool.query("SELECT * FROM trips WHERE id = $1", [tripId]);
+        if (tripRes.rows.length === 0) return res.status(404).json({ error: 'Trip not found' });
+        const trip = tripRes.rows[0];
+
+        // Geofence check if coordinates supplied
+        if (lat && lng && trip.pickuplat && trip.pickuplng) {
+            const distKm = calcDistanceKm(parseFloat(lat), parseFloat(lng), parseFloat(trip.pickuplat), parseFloat(trip.pickuplng));
+            if (distKm > 0.5) { // 500m tolerance for urban drift
+                return res.status(400).json({
+                    error: `Arrival verification failed: You are ${Math.round(distKm * 1000)}m from the pickup pin. Please move closer (within 500m) to mark arrival.`
+                });
+            }
+        }
+
+        const now = new Date();
+        await pool.query(`
+            UPDATE trips
+            SET status = 'arrived',
+                arrived_at = $1,
+                marshallat = COALESCE($2, marshallat),
+                marshallng = COALESCE($3, marshallng)
+            WHERE id = $4
+        `, [now, lat || null, lng || null, tripId]);
+
+        if (trip.servicerequestid) {
+            await pool.query("UPDATE service_requests SET status = 'arrived', arrived_at = $1 WHERE id = $2", [now, trip.servicerequestid]);
+        }
+
+        res.json({ success: true, message: 'Driver arrival recorded successfully', arrivedAt: now });
+    } catch (err) {
+        console.error('[MARK_ARRIVED_ERROR]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Cancellation Quote: Confirm-Before-Action calculation
+apiRouter.post('/trips/:id/cancellation-quote', authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const { requestedBy } = req.body; // 'customer' or 'driver' or 'admin'
+    try {
+        const tripRes = await pool.query(`
+            SELECT t.*, sr.created_at as sr_created_at, sr.assigned_at as sr_assigned_at,
+                   sr.totalcustomerprice, sr.workerid
+            FROM trips t
+            LEFT JOIN service_requests sr ON t.servicerequestid = sr.id
+            WHERE t.id = $1
+        `, [tripId]);
+        if (tripRes.rows.length === 0) return res.status(404).json({ error: 'Trip not found' });
+        const trip = tripRes.rows[0];
+
+        const sRes = await pool.query("SELECT key, value FROM system_settings WHERE key IN ('customer_free_cancel_window_seconds', 'customer_cancellation_fee', 'driver_noshow_timeout_minutes', 'driver_noshow_penalty', 'customer_noshow_wait_minutes', 'customer_noshow_penalty')");
+        const settings = {};
+        sRes.rows.forEach(r => { settings[r.key] = r.value; });
+
+        const freeWindowSec = parseInt(settings['customer_free_cancel_window_seconds'] || '180');
+        const standardCancelFee = parseFloat(settings['customer_cancellation_fee'] || '50.0');
+        const driverNoshowTimeoutMin = parseInt(settings['driver_noshow_timeout_minutes'] || '60');
+        const driverNoshowPenalty = parseFloat(settings['driver_noshow_penalty'] || '49.0');
+        const customerNoshowWaitMin = parseInt(settings['customer_noshow_wait_minutes'] || '10');
+        const customerNoshowPenalty = parseFloat(settings['customer_noshow_penalty'] || '99.0');
+
+        const payRes = await pool.query("SELECT * FROM ride_payments WHERE service_request_id = $1 OR trip_id = $2", [trip.servicerequestid, tripId]);
+        const payment = payRes.rows[0];
+        const prepaidAmount = payment ? parseFloat(payment.amount_paid || 0) : parseFloat(trip.totalcustomerprice || 0);
+
+        const driverId = trip.marshalid || trip.workerid;
+        let isSubscribed = false;
+        if (driverId) {
+            const subRes = await pool.query("SELECT payout_model, subscription_valid_until FROM users WHERE id = $1", [driverId]);
+            const drv = subRes.rows[0];
+            isSubscribed = drv && drv.payout_model === 'subscription' && drv.subscription_valid_until && new Date(drv.subscription_valid_until) >= new Date();
+        }
+
+        const now = Date.now();
+        const assignedAt = new Date(trip.assigned_at || trip.sr_assigned_at || trip.createdat || now).getTime();
+        const arrivedAt = trip.arrived_at ? new Date(trip.arrived_at).getTime() : null;
+        const elapsedSinceAssignmentSec = Math.floor((now - assignedAt) / 1000);
+        const elapsedSinceArrivalSec = arrivedAt ? Math.floor((now - arrivedAt) / 1000) : 0;
+
+        const pickupEtaMin = parseFloat(trip.pickup_eta_minutes || 15);
+        const effectiveDriverTimeoutSec = Math.max(driverNoshowTimeoutMin, Math.ceil(pickupEtaMin * 1.5)) * 60;
+
+        let tier = 'tier1_free_cancel';
+        let tierName = 'Free Cancellation Window';
+        let customerFee = 0;
+        let refundAmount = prepaidAmount;
+        let driverPayout = 0;
+        let driverPenalty = 0;
+        let canCancel = true;
+        let waitRemainingSeconds = 0;
+        let description = '';
+
+        if (requestedBy === 'driver' || trip.status === 'arrived') {
+            if (arrivedAt) {
+                const requiredWaitSec = customerNoshowWaitMin * 60;
+                if (elapsedSinceArrivalSec < requiredWaitSec) {
+                    canCancel = false;
+                    waitRemainingSeconds = requiredWaitSec - elapsedSinceArrivalSec;
+                    tier = 'waiting_customer';
+                    tierName = 'Driver Waiting at Pickup';
+                    description = `Driver must wait ${Math.ceil(waitRemainingSeconds / 60)} more minute(s) before reporting customer no-show.`;
+                } else {
+                    tier = 'tier4_customer_noshow';
+                    tierName = 'Tier 4: Customer No-Show';
+                    customerFee = customerNoshowPenalty;
+                    refundAmount = Math.max(0, prepaidAmount - customerNoshowPenalty);
+                    driverPayout = isSubscribed ? customerNoshowPenalty : Math.round(customerNoshowPenalty * 0.8 * 100) / 100;
+                    description = `Customer did not arrive after ${customerNoshowWaitMin} mins wait. Customer is charged ₹${customerFee} penalty, driver receives ₹${driverPayout} compensation.`;
+                }
+            }
+        } else {
+            if (elapsedSinceAssignmentSec >= effectiveDriverTimeoutSec && !arrivedAt) {
+                tier = 'tier3_driver_noshow';
+                tierName = 'Tier 3: Driver No-Show';
+                customerFee = 0;
+                refundAmount = prepaidAmount;
+                driverPenalty = driverNoshowPenalty;
+                description = `Driver did not arrive within ${Math.round(effectiveDriverTimeoutSec / 60)} minutes. Customer receives 100% full refund (₹${refundAmount}), driver assessed ₹${driverPenalty} penalty.`;
+            } else if (arrivedAt) {
+                tier = 'tier4_customer_noshow';
+                tierName = 'Cancellation After Driver Arrival';
+                customerFee = customerNoshowPenalty;
+                refundAmount = Math.max(0, prepaidAmount - customerNoshowPenalty);
+                driverPayout = isSubscribed ? customerNoshowPenalty : Math.round(customerNoshowPenalty * 0.8 * 100) / 100;
+                description = `Driver has already reached pickup location. Cancellation fee ₹${customerFee} applies. Driver receives ₹${driverPayout}.`;
+            } else if (elapsedSinceAssignmentSec > freeWindowSec) {
+                tier = 'tier2_standard_cancel';
+                tierName = 'Tier 2: Standard Cancellation';
+                customerFee = Math.min(standardCancelFee, prepaidAmount > 0 ? prepaidAmount : standardCancelFee);
+                refundAmount = Math.max(0, prepaidAmount - customerFee);
+                driverPayout = Math.round(customerFee * 0.8 * 100) / 100;
+                description = `Free cancellation window (${Math.round(freeWindowSec / 60)} mins) has passed. Cancellation fee of ₹${customerFee} applies.`;
+            } else {
+                tier = 'tier1_free_cancel';
+                tierName = 'Tier 1: Free Cancellation';
+                customerFee = 0;
+                refundAmount = prepaidAmount;
+                description = `Within free cancellation window (${Math.round(freeWindowSec / 60)} mins). ₹0 charge, 100% refund (₹${refundAmount}).`;
+            }
+        }
+
+        res.json({
+            success: true,
+            tripId,
+            tier,
+            tierName,
+            customerFee,
+            refundAmount,
+            driverPayout,
+            driverPenalty,
+            canCancel,
+            waitRemainingSeconds,
+            prepaidAmount,
+            description
+        });
+    } catch (err) {
+        console.error('[CANCEL_QUOTE_ERROR]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Cancel Symmetric: Atomic, idempotent execution across all 4 tiers
+apiRouter.post(['/trips/:id/cancel-symmetric', '/trips/:id/cancel'], authMiddleware, async (req, res) => {
+    const tripId = req.params.id;
+    const { reason, requestedBy } = req.body;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Lock trip atomically
+        const tripRes = await client.query(`
+            SELECT t.*, sr.created_at as sr_created_at, sr.assigned_at as sr_assigned_at,
+                   sr.totalcustomerprice, sr.workerid, sr.id as sr_id, sr.customerid
+            FROM trips t
+            LEFT JOIN service_requests sr ON t.servicerequestid = sr.id
+            WHERE t.id = $1
+            FOR UPDATE
+        `, [tripId]);
+
+        if (tripRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Trip not found' });
+        }
+        const trip = tripRes.rows[0];
+
+        // Idempotency check: if already completed or cancelled
+        if (['cancelled', 'completed', 'customer_noshow', 'driver_noshow'].includes(trip.status)) {
+            await client.query('ROLLBACK');
+            return res.json({
+                success: true,
+                message: `Trip is already marked as ${trip.status}. No additional penalty or refund was processed.`,
+                status: trip.status,
+                alreadyProcessed: true
+            });
+        }
+
+        // Fetch settings
+        const sRes = await client.query("SELECT key, value FROM system_settings WHERE key IN ('customer_free_cancel_window_seconds', 'customer_cancellation_fee', 'driver_noshow_timeout_minutes', 'driver_noshow_penalty', 'customer_noshow_wait_minutes', 'customer_noshow_penalty')");
+        const settings = {};
+        sRes.rows.forEach(r => { settings[r.key] = r.value; });
+
+        const freeWindowSec = parseInt(settings['customer_free_cancel_window_seconds'] || '180');
+        const standardCancelFee = parseFloat(settings['customer_cancellation_fee'] || '50.0');
+        const driverNoshowTimeoutMin = parseInt(settings['driver_noshow_timeout_minutes'] || '60');
+        const driverNoshowPenalty = parseFloat(settings['driver_noshow_penalty'] || '49.0');
+        const customerNoshowWaitMin = parseInt(settings['customer_noshow_wait_minutes'] || '10');
+        const customerNoshowPenalty = parseFloat(settings['customer_noshow_penalty'] || '99.0');
+
+        // Fetch payment
+        const payRes = await client.query("SELECT * FROM ride_payments WHERE service_request_id = $1 OR trip_id = $2 FOR UPDATE", [trip.servicerequestid, tripId]);
+        const payment = payRes.rows[0];
+        const prepaidAmount = payment ? parseFloat(payment.amount_paid || 0) : parseFloat(trip.totalcustomerprice || 0);
+
+        // Fetch driver subscription rate
+        const driverId = trip.marshalid || trip.workerid;
+        let isSubscribed = false;
+        if (driverId) {
+            const subRes = await client.query("SELECT payout_model, subscription_valid_until FROM users WHERE id = $1", [driverId]);
+            const drv = subRes.rows[0];
+            isSubscribed = drv && drv.payout_model === 'subscription' && drv.subscription_valid_until && new Date(drv.subscription_valid_until) >= new Date();
+        }
+
+        const now = Date.now();
+        const assignedAt = new Date(trip.assigned_at || trip.sr_assigned_at || trip.createdat || now).getTime();
+        const arrivedAt = trip.arrived_at ? new Date(trip.arrived_at).getTime() : null;
+        const elapsedSinceAssignmentSec = Math.floor((now - assignedAt) / 1000);
+        const elapsedSinceArrivalSec = arrivedAt ? Math.floor((now - arrivedAt) / 1000) : 0;
+        const pickupEtaMin = parseFloat(trip.pickup_eta_minutes || 15);
+        const effectiveDriverTimeoutSec = Math.max(driverNoshowTimeoutMin, Math.ceil(pickupEtaMin * 1.5)) * 60;
+
+        let finalTier = 'tier1_free_cancel';
+        let customerFee = 0;
+        let refundAmount = prepaidAmount;
+        let driverPayout = 0;
+        let driverPenalty = 0;
+        let newTripStatus = 'cancelled';
+
+        if (requestedBy === 'driver' && arrivedAt) {
+            const requiredWaitSec = customerNoshowWaitMin * 60;
+            if (elapsedSinceArrivalSec < requiredWaitSec) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    error: `Cannot report customer no-show yet. Must wait full ${customerNoshowWaitMin} minutes. ${Math.ceil((requiredWaitSec - elapsedSinceArrivalSec) / 60)} min remaining.`
+                });
+            }
+            finalTier = 'tier4_customer_noshow';
+            newTripStatus = 'customer_noshow';
+            customerFee = customerNoshowPenalty;
+            refundAmount = Math.max(0, prepaidAmount - customerNoshowPenalty);
+            driverPayout = isSubscribed ? customerNoshowPenalty : Math.round(customerNoshowPenalty * 0.8 * 100) / 100;
+        } else {
+            if (elapsedSinceAssignmentSec >= effectiveDriverTimeoutSec && !arrivedAt) {
+                finalTier = 'tier3_driver_noshow';
+                newTripStatus = 'driver_noshow';
+                customerFee = 0;
+                refundAmount = prepaidAmount;
+                driverPenalty = driverNoshowPenalty;
+            } else if (arrivedAt) {
+                finalTier = 'tier4_customer_noshow';
+                newTripStatus = 'customer_noshow';
+                customerFee = customerNoshowPenalty;
+                refundAmount = Math.max(0, prepaidAmount - customerNoshowPenalty);
+                driverPayout = isSubscribed ? customerNoshowPenalty : Math.round(customerNoshowPenalty * 0.8 * 100) / 100;
+            } else if (elapsedSinceAssignmentSec > freeWindowSec) {
+                finalTier = 'tier2_standard_cancel';
+                newTripStatus = 'cancelled';
+                customerFee = Math.min(standardCancelFee, prepaidAmount > 0 ? prepaidAmount : standardCancelFee);
+                refundAmount = Math.max(0, prepaidAmount - customerFee);
+                driverPayout = Math.round(customerFee * 0.8 * 100) / 100;
+            } else {
+                finalTier = 'tier1_free_cancel';
+                newTripStatus = 'cancelled';
+                customerFee = 0;
+                refundAmount = prepaidAmount;
+            }
+        }
+
+        // Razorpay refund execution
+        let rzpRefund = null;
+        if (payment && payment.gateway_payment_id && refundAmount > 0 && payment.status !== 'refunded') {
+            try {
+                const rzp = getRazorpayClient();
+                rzpRefund = await rzp.payments.refund(payment.gateway_payment_id, {
+                    amount: Math.round(refundAmount * 100),
+                    notes: {
+                        tripId,
+                        tier: finalTier,
+                        customerFee,
+                        reason: reason || finalTier
+                    }
+                });
+            } catch (rErr) {
+                console.warn('[RAZORPAY_REFUND_NOTICE]', rErr.message);
+            }
+        }
+
+        // Update ride_payments
+        if (payment) {
+            const payStatus = refundAmount === prepaidAmount ? 'refunded' : (refundAmount > 0 ? 'partially_refunded' : payment.status);
+            await client.query(`
+                UPDATE ride_payments
+                SET status = $1,
+                    refund_id = $2,
+                    refund_amount = $3,
+                    fare_difference = $4,
+                    updated_at = NOW()
+                WHERE id = $5
+            `, [payStatus, rzpRefund?.id || 'refund_' + Date.now(), refundAmount, customerFee, payment.id]);
+        }
+
+        // Ledger entries in incentives table
+        if (driverId) {
+            if (driverPenalty > 0) {
+                const penaltyId = `pen_noshow_${Date.now()}`;
+                await client.query(`
+                    INSERT INTO incentives (id, userid, tripid, amount, type, status)
+                    VALUES ($1, $2, $3, $4, 'driver_noshow_penalty', 'completed')
+                `, [penaltyId, driverId, tripId, -driverPenalty]);
+
+                // Create appealable Dispute record
+                const dispId = `disp_${Date.now()}`;
+                await client.query(`
+                    INSERT INTO disputes (id, tripId, customerId, marshalId, reason, status, deductionAmount)
+                    VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+                `, [dispId, tripId, trip.customerid || null, driverId, `Driver No-Show Penalty (${driverNoshowTimeoutMin}m threshold exceeded)`, driverPenalty]);
+            }
+
+            if (driverPayout > 0) {
+                const payoutId = `inc_payout_${Date.now()}`;
+                await client.query(`
+                    INSERT INTO incentives (id, userid, tripid, amount, type, status)
+                    VALUES ($1, $2, $3, $4, 'cancellation_compensation', 'completed')
+                `, [payoutId, driverId, tripId, driverPayout]);
+            }
+        }
+
+        // Update trips table
+        await client.query(`
+            UPDATE trips
+            SET status = $1,
+                cancellation_tier = $2,
+                cancellation_reason = $3,
+                cancellation_fee = $4,
+                refund_amount = $5,
+                penalty_amount = $6
+            WHERE id = $7
+        `, [newTripStatus, finalTier, reason || finalTier, customerFee, refundAmount, driverPenalty, tripId]);
+
+        if (trip.sr_id) {
+            await client.query(`
+                UPDATE service_requests
+                SET status = $1,
+                    cancellation_tier = $2
+                WHERE id = $3
+            `, [newTripStatus, finalTier, trip.sr_id]);
+        }
+
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            tripId,
+            tier: finalTier,
+            status: newTripStatus,
+            customerFee,
+            refundAmount,
+            driverPayout,
+            driverPenalty,
+            refundId: rzpRefund?.id || null,
+            message: `Trip cancelled under ${finalTier}. Refund: ₹${refundAmount.toFixed(2)}, Fee: ₹${customerFee.toFixed(2)}.`
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[CANCEL_SYMMETRIC_ERROR]', err);
+        res.status(500).json({ error: 'Cancellation failed: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 

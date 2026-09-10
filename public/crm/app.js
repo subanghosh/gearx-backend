@@ -7360,7 +7360,8 @@ async function renderIncentives(container) {
                 fetch(`${API_URL}/settings/incentives?type=${window._incentiveVehicleType}`).catch(() => null),
                 fetch(`${API_URL}/settings/hourly-slabs?type=${window._hourlySlabsVehicleType}`).catch(() => null),
                 fetch(`${API_URL}/settings/global`).catch(() => null),
-                fetch(`${API_URL}/payout-model-rates`).catch(() => null)
+                fetch(`${API_URL}/payout-model-rates`).catch(() => null),
+                fetch(`${API_URL}/settings/cancellation`).catch(() => null)
             ]);
 
             if (wRes && wRes.ok) {
@@ -7397,6 +7398,9 @@ async function renderIncentives(container) {
             if (ratesRes && ratesRes.ok) {
                 const ratesData = await ratesRes.json();
                 if (ratesData && ratesData.rates) window._payoutRates = ratesData.rates;
+            }
+            if (cancelRes && cancelRes.ok) {
+                window._cancellationSettings = await cancelRes.json();
             }
         } catch (eWdr) {
             console.error("Failed to load settings/withdrawals in renderIncentives:", eWdr);
@@ -7446,10 +7450,21 @@ async function renderIncentives(container) {
                 demandBookingWeight: 3.0
             };
         }
+        if (!window._cancellationSettings) {
+            window._cancellationSettings = {
+                customer_free_cancel_window_seconds: 180,
+                customer_cancellation_fee: 50.0,
+                driver_noshow_timeout_minutes: 60,
+                driver_noshow_penalty: 49.0,
+                customer_noshow_wait_minutes: 10,
+                customer_noshow_penalty: 99.0
+            };
+        }
         if (window._slabsEditMode === undefined) window._slabsEditMode = false;
         if (window._hourlySlabsEditMode === undefined) window._hourlySlabsEditMode = false;
         if (window._globalEditMode === undefined) window._globalEditMode = false;
         if (window._payoutRatesEditMode === undefined) window._payoutRatesEditMode = false;
+        if (window._cancellationEditMode === undefined) window._cancellationEditMode = false;
 
         const renderSlabsUI = () => {
             let html = '<div class="header"><h1 class="page-title">Driver Operations & Fare Engine</h1></div>';
@@ -7472,6 +7487,9 @@ async function renderIncentives(container) {
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'pricing_model' ? 'active' : ''}" onclick="window._driverOpsTab='pricing_model'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'pricing_model' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'pricing_model' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="percent" style="width:16px; height:16px;"></i> Commission & Subscriptions
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'cancellation' ? 'active' : ''}" onclick="window._driverOpsTab='cancellation'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'cancellation' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'cancellation' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="shield-alert" style="width:16px; height:16px;"></i> Cancellation
                 </button>
             </div>
             `;
@@ -7936,9 +7954,161 @@ async function renderIncentives(container) {
                 </div>
                 `;
             }
+
+            // TAB 6: CANCELLATION & NO-SHOW POLICY ENGINE
+            else if (window._driverOpsTab === 'cancellation') {
+                const disabledCancel = window._cancellationEditMode ? '' : 'disabled';
+                const c = window._cancellationSettings || {};
+                const freeWindow = c.customer_free_cancel_window_seconds !== undefined ? c.customer_free_cancel_window_seconds : 180;
+                const cancelFee = c.customer_cancellation_fee !== undefined ? c.customer_cancellation_fee : 50.0;
+                const driverTimeout = c.driver_noshow_timeout_minutes !== undefined ? c.driver_noshow_timeout_minutes : 60;
+                const driverPenalty = c.driver_noshow_penalty !== undefined ? c.driver_noshow_penalty : 49.0;
+                const custWait = c.customer_noshow_wait_minutes !== undefined ? c.customer_noshow_wait_minutes : 10;
+                const custPenalty = c.customer_noshow_penalty !== undefined ? c.customer_noshow_penalty : 99.0;
+
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+                                <i data-lucide="shield-alert" style="color:var(--primary); width:20px; height:20px;"></i>
+                                Symmetric Cancellation & No-Show Policy Engine
+                            </h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">
+                                Configure free cancellation windows, standard cancellation fees, driver arrival timeouts, and customer no-show parameters.
+                            </p>
+                        </div>
+                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.75rem;">Loss Prevention & Driver Protection</span>
+                    </div>
+
+                    <!-- 4-Tier Visual Summary Bar -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:24px;">
+                        <div style="background: rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.25); border-radius:10px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-weight:800; font-size:0.82rem; color:#22c55e;">TIER 1 &bull; FREE WINDOW</span>
+                                <span style="font-size:0.7rem; background:rgba(34,197,94,0.15); color:#22c55e; padding:2px 6px; border-radius:4px; font-weight:700;">Within ${freeWindow}s</span>
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.4;">Customer gets <b>100% refund</b>. Driver is released to available pool without penalty.</div>
+                        </div>
+
+                        <div style="background: rgba(250,204,21,0.06); border:1px solid rgba(250,204,21,0.25); border-radius:10px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-weight:800; font-size:0.82rem; color:#FACC15;">TIER 2 &bull; STANDARD CANCEL</span>
+                                <span style="font-size:0.7rem; background:rgba(250,204,21,0.15); color:#FACC15; padding:2px 6px; border-radius:4px; font-weight:700;">En Route</span>
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.4;">Customer charged <b>₹${cancelFee}</b> fee. Driver receives <b>80% (₹${(cancelFee * 0.8).toFixed(2)})</b> en-route compensation.</div>
+                        </div>
+
+                        <div style="background: rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-weight:800; font-size:0.82rem; color:#ef4444;">TIER 3 &bull; DRIVER NO-SHOW</span>
+                                <span style="font-size:0.7rem; background:rgba(239,68,68,0.15); color:#ef4444; padding:2px 6px; border-radius:4px; font-weight:700;">&ge; ${driverTimeout}m</span>
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.4;">Customer gets <b>100% refund</b>. Driver penalized <b>₹${driverPenalty}</b> (appealable on Dispute Board).</div>
+                        </div>
+
+                        <div style="background: rgba(168,85,247,0.06); border:1px solid rgba(168,85,247,0.25); border-radius:10px; padding:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-weight:800; font-size:0.82rem; color:#c084fc;">TIER 4 &bull; CUST NO-SHOW</span>
+                                <span style="font-size:0.7rem; background:rgba(168,85,247,0.15); color:#c084fc; padding:2px 6px; border-radius:4px; font-weight:700;">Arrived + ${custWait}m</span>
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.4;">Customer charged <b>₹${custPenalty}</b>. Driver paid <b>₹${(custPenalty * 0.8).toFixed(2)}</b> (₹${custPenalty} for sub). Zero deficit.</div>
+                        </div>
+                    </div>
+
+                    <!-- Inputs Grid -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px; margin-bottom:24px;">
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Customer Free Cancel Window (Seconds)</label>
+                            <input type="number" step="1" id="crm-cancel-free-window" value="${freeWindow}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 1: 100% refund if cancelled within this window (e.g. 180s = 3 mins)</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Customer Cancellation Fee (₹)</label>
+                            <input type="number" step="1" id="crm-cancel-standard-fee" value="${cancelFee}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 2: Deducted if cancelled after free window but before driver arrives</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Driver No-Show Timeout (Minutes)</label>
+                            <input type="number" step="1" id="crm-cancel-driver-timeout" value="${driverTimeout}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 3: Max arrival threshold before auto-refund (scales: max(timeout, ETA &times; 1.5))</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Driver No-Show Penalty (₹)</label>
+                            <input type="number" step="1" id="crm-cancel-driver-penalty" value="${driverPenalty}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:#ef4444;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 3: Debited from driver wallet. Automatically appealable on Dispute Board</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Customer No-Show Wait Time (Minutes)</label>
+                            <input type="number" step="1" id="crm-cancel-cust-wait" value="${custWait}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 4: Required driver waiting time at pickup before reporting customer no-show</span>
+                        </div>
+
+                        <div>
+                            <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">Customer No-Show Penalty (₹)</label>
+                            <input type="number" step="1" id="crm-cancel-cust-penalty" value="${custPenalty}" ${disabledCancel} style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">Tier 4: Penalty charged to customer. Driver gets commission split (₹${(custPenalty * 0.8).toFixed(2)})</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        ${window._cancellationEditMode ? `
+                            <button onclick="saveCancellationSettings()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; border-radius:6px; font-weight:700; cursor:pointer;">Save Cancellation Rules</button>
+                        ` : `
+                            <button onclick="window._cancellationEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700; cursor:pointer;">Edit Rules</button>
+                        `}
+                    </div>
+                </div>
+                `;
+            }
             
             container.innerHTML = html;
             if (window.lucide) lucide.createIcons();
+        };
+
+        window.saveCancellationSettings = async function() {
+            const freeWindow = document.getElementById('crm-cancel-free-window')?.value;
+            const standardFee = document.getElementById('crm-cancel-standard-fee')?.value;
+            const driverTimeout = document.getElementById('crm-cancel-driver-timeout')?.value;
+            const driverPenalty = document.getElementById('crm-cancel-driver-penalty')?.value;
+            const custWait = document.getElementById('crm-cancel-cust-wait')?.value;
+            const custPenalty = document.getElementById('crm-cancel-cust-penalty')?.value;
+
+            const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
+            try {
+                const res = await fetch(`${API_URL}/settings/cancellation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({
+                        settings: {
+                            customer_free_cancel_window_seconds: parseInt(freeWindow) || 180,
+                            customer_cancellation_fee: parseFloat(standardFee) || 50.0,
+                            driver_noshow_timeout_minutes: parseInt(driverTimeout) || 60,
+                            driver_noshow_penalty: parseFloat(driverPenalty) || 49.0,
+                            customer_noshow_wait_minutes: parseInt(custWait) || 10,
+                            customer_noshow_penalty: parseFloat(custPenalty) || 99.0
+                        }
+                    })
+                });
+
+                if (res.ok) {
+                    window._cancellationEditMode = false;
+                    alert('Cancellation and no-show rules updated successfully!');
+                    renderIncentives(container);
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert('Failed to save cancellation settings: ' + (err.error || res.statusText));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
         };
 
         window.savePayoutRates = async function() {

@@ -11832,3 +11832,121 @@ window.confirmSelectedDriverFromMatchScreen = function() {
     }
     window.selectMarshalForRequest(window.currentMatchRequestId, window.selectedDriverMarshalId, window.currentMatchPaidAmount);
 };
+
+// --- SYMMETRIC CANCELLATION HANDLERS (CONFIRM-BEFORE-ACTION) ---
+window.requestCustomerTripCancellation = async function() {
+    const trip = window._lastEnRouteTrip || window._activeTrip;
+    const tripId = trip ? trip.id : null;
+    if (!tripId) {
+        showToast('No active trip found to cancel.', 'error');
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token') || localStorage.getItem('customer_token');
+        const qRes = await fetch(`${API_URL}/trips/${tripId}/cancellation-quote`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ requestedBy: 'customer' })
+        });
+        const quote = await qRes.json();
+
+        if (!qRes.ok || !quote.success) {
+            showToast(quote.error || 'Unable to retrieve cancellation quote.', 'error');
+            return;
+        }
+
+        const tierName = quote.tierName || 'Cancellation Policy';
+        const fee = parseFloat(quote.customerFee || 0);
+        const refund = parseFloat(quote.refundAmount || 0);
+        const desc = quote.description || '';
+
+        let feeRefundSummary = '';
+        if (fee === 0) {
+            feeRefundSummary = `
+                <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:12px; padding:14px; margin:14px 0; text-align:center;">
+                    <div style="font-size:0.75rem; color:#22c55e; font-weight:700; text-transform:uppercase;">100% Full Refund</div>
+                    <div style="font-size:1.6rem; font-weight:900; color:#22c55e; margin:2px 0;">₹${refund.toFixed(2)}</div>
+                    <div style="font-size:0.72rem; color:#a1a1aa;">₹0.00 cancellation fee</div>
+                </div>
+            `;
+        } else {
+            feeRefundSummary = `
+                <div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:12px; padding:14px; margin:14px 0; text-align:center;">
+                    <div style="font-size:0.75rem; color:#ef4444; font-weight:700; text-transform:uppercase;">Cancellation Fee: ₹${fee.toFixed(2)}</div>
+                    <div style="font-size:1.6rem; font-weight:900; color:#FACC15; margin:2px 0;">Refund: ₹${refund.toFixed(2)}</div>
+                    <div style="font-size:0.72rem; color:#a1a1aa;">Deducted from prepaid ride fare</div>
+                </div>
+            `;
+        }
+
+        const modalHtml = `
+            <div id="customer-cancel-confirm-modal" style="position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(6px);">
+                <div style="max-width:420px; width:100%; background:#18181b; border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:22px; box-shadow:0 12px 40px rgba(0,0,0,0.8);">
+                    <div style="text-align:center; margin-bottom:12px;">
+                        <span style="display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px; border-radius:50%; background:rgba(239,68,68,0.15); color:#ef4444; margin-bottom:8px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        </span>
+                        <h3 style="margin:0; font-size:1.15rem; color:#fff; font-weight:800;">Cancel Trip Booking</h3>
+                        <div style="font-size:0.78rem; color:#FACC15; font-weight:700; margin-top:4px;">${tierName}</div>
+                    </div>
+
+                    ${feeRefundSummary}
+
+                    <p style="font-size:0.8rem; color:#a1a1aa; margin-bottom:18px; line-height:1.4; text-align:center;">
+                        ${desc}
+                    </p>
+
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="document.getElementById('customer-cancel-confirm-modal').remove()" style="flex:1; padding:12px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:12px; font-weight:700; cursor:pointer;">Keep Booking</button>
+                        <button onclick="window.executeCustomerTripCancellation('${tripId}')" style="flex:1; padding:12px; background:#ef4444; border:none; color:#fff; border-radius:12px; font-weight:800; cursor:pointer;">Confirm Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('customer-cancel-confirm-modal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    } catch (err) {
+        showToast('Error requesting quote: ' + err.message, 'error');
+    }
+};
+
+window.executeCustomerTripCancellation = async function(tripId) {
+    const modal = document.getElementById('customer-cancel-confirm-modal');
+    if (modal) modal.remove();
+
+    try {
+        const token = localStorage.getItem('token') || localStorage.getItem('customer_token');
+        const res = await fetch(`${API_URL}/trips/${tripId}/cancel-symmetric`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+                requestedBy: 'customer',
+                reason: 'Customer cancelled booking via app'
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            showToast(data.message || 'Trip cancelled successfully.', 'success');
+            const enRouteScreen = document.getElementById('marshal-en-route-screen');
+            if (enRouteScreen) enRouteScreen.style.display = 'none';
+            if (typeof loadCustomerDashboard === 'function') loadCustomerDashboard();
+            else location.reload();
+        } else {
+            showToast(data.error || 'Failed to cancel trip.', 'error');
+        }
+    } catch (err) {
+        showToast('Cancellation error: ' + err.message, 'error');
+    }
+};
+

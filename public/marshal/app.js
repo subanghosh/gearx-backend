@@ -9304,6 +9304,72 @@ window.callKycSupport = function() {
     showToast('Calling driver support helpline...', 'info');
 };
 
+// --- DRIVER CUSTOMER NO-SHOW REPORTING (TIER 4 CONFIRM-BEFORE-ACTION) ---
+window.reportCustomerNoshow = async function(tripId) {
+    if (!tripId) {
+        showToast('No active trip specified.', 'error');
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token') || localStorage.getItem('marshal_token');
+        const qRes = await fetch(`${API_URL}/trips/${tripId}/cancellation-quote`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ requestedBy: 'driver' })
+        });
+        const quote = await qRes.json();
+
+        if (!qRes.ok || !quote.success) {
+            showToast(quote.error || 'Unable to fetch cancellation quote.', 'error');
+            return;
+        }
+
+        if (!quote.canCancel) {
+            alert(quote.description || 'You must wait at the pickup location before reporting a customer no-show.');
+            return;
+        }
+
+        const payout = parseFloat(quote.driverPayout || 0);
+        const fee = parseFloat(quote.customerFee || 0);
+        const desc = quote.description || '';
+
+        const confirmed = confirm(
+            `CONFIRM CUSTOMER NO-SHOW:\n\n${desc}\n\n• Customer Penalty: ₹${fee.toFixed(2)}\n• Your Payout: ₹${payout.toFixed(2)}\n\nDo you want to report this customer no-show and release your booking?`
+        );
+
+        if (confirmed) {
+            const cancelRes = await fetch(`${API_URL}/trips/${tripId}/cancel-symmetric`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({
+                    requestedBy: 'driver',
+                    reason: 'Customer No-Show at pickup location'
+                })
+            });
+
+            const cData = await cancelRes.json();
+            if (cancelRes.ok && cData.success) {
+                showToast(`Customer no-show recorded. Compensation: ₹${payout.toFixed(2)}`, 'success');
+                localStorage.removeItem('trip_state_' + tripId);
+                if (typeof loadMyTrips === 'function') loadMyTrips();
+                else location.reload();
+            } else {
+                showToast(cData.error || 'Failed to report customer no-show.', 'error');
+            }
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+};
+
+
 
 
 
