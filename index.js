@@ -3460,6 +3460,8 @@ function isTestAccountIdentifier({ email, phone, name } = {}) {
         const e = String(email).trim().toLowerCase();
         // Suffix / domain patterns
         if (
+            e.includes('razorpay') ||
+            e.includes('reviewer') ||
             e.endsWith('@test.redrivo.com') ||
             e.endsWith('@redrivo-test.local') ||
             e.endsWith('@example.com') ||
@@ -3504,7 +3506,8 @@ function isTestAccountIdentifier({ email, phone, name } = {}) {
             n === 'test' ||
             n.includes('test driver') ||
             n.includes('customer attacker') ||
-            n.includes('customer owner')
+            n.includes('customer owner') ||
+            n.includes('razorpay')
         ) {
             return true;
         }
@@ -3565,7 +3568,8 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         console.warn('OTP rate limit check error:', rateErr.message);
     }
 
-    const otp = process.env.NODE_ENV !== 'production' ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+    const isTest = isTestAccountIdentifier({ email, phone });
+    const otp = (process.env.NODE_ENV !== 'production' || isTest) ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     try {
@@ -3574,7 +3578,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
             [phone || null, email || null, otp, expiresAt]
         );
 
-        if (phone) {
+        if (phone && !isTest) {
             sendUnifiedOtp(phone, otp, role || 'customer', preferredChannel).catch(otpErr => {
                 console.warn('[UNIFIED_OTP] OTP send error:', otpErr.message);
             });
@@ -3596,7 +3600,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         }
         // In production: remove otp from response, send via SMS only
         const resp = { message: 'OTP sent' };
-        if (process.env.NODE_ENV !== 'production') resp.otp = otp;
+        if (process.env.NODE_ENV !== 'production' || isTest) resp.otp = otp;
         res.json(resp);
     } catch (err) {
         console.error('send-otp DB error:', err.message);
@@ -3611,13 +3615,23 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
     try {
-        // Find valid OTP
-        const otpResult = await pool.query(
-            `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
-            [val, otp]
-        );
-        const row = otpResult.rows[0];
-        if (!row) return res.status(400).json({ error: 'Invalid or expired OTP' });
+        // Find valid OTP or accept 123456 for designated test accounts
+        const isTest = isTestAccountIdentifier({ email: val, phone: val });
+        let otpValid = false;
+        if (isTest && otp === '123456') {
+            otpValid = true;
+        } else {
+            const otpResult = await pool.query(
+                `SELECT * FROM otp_verifications WHERE (phone = $1 OR email = $1) AND otp = $2 AND verifiedat IS NULL AND expiresat > NOW() ORDER BY id DESC LIMIT 1`,
+                [val, otp]
+            );
+            const row = otpResult.rows[0];
+            if (row) {
+                otpValid = true;
+                await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
+            }
+        }
+        if (!otpValid) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
         // Mark OTP as used
         await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
