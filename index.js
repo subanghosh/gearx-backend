@@ -11187,7 +11187,26 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- DYNAMIC PORTAL HTML HANDLER (AUTOMATED CACHE-BUSTING & ZERO-STALE DEPLOYMENTS) ---
+// --- DYNAMIC PORTAL HTML HANDLER (AUTOMATED CONTENT-HASH CACHE-BUSTING & ZERO-STALE DEPLOYMENTS) ---
+const portalAssetHashCache = new Map();
+
+function getAssetContentHash(diskPath) {
+    try {
+        if (!fs.existsSync(diskPath)) return null;
+        const stat = fs.statSync(diskPath);
+        const cacheKey = `${diskPath}_${stat.mtimeMs}_${stat.size}`;
+        if (portalAssetHashCache.has(cacheKey)) {
+            return portalAssetHashCache.get(cacheKey);
+        }
+        const content = fs.readFileSync(diskPath);
+        const hash = crypto.createHash('md5').update(content).digest('hex').slice(0, 10);
+        portalAssetHashCache.set(cacheKey, hash);
+        return hash;
+    } catch (_) {
+        return null;
+    }
+}
+
 function servePortalHtml(portalFolder, req, res) {
     try {
         const portalDir = path.join(__dirname, 'public', portalFolder);
@@ -11198,17 +11217,12 @@ function servePortalHtml(portalFolder, req, res) {
 
         let html = fs.readFileSync(indexPath, 'utf8');
 
-        // Dynamically replace relative script / stylesheet references with live mtime query parameters
+        // Dynamically replace relative script / stylesheet references with live content hashes
         html = html.replace(/(?:src|href)=["'](\.?\/?(?:js\/|css\/)?([a-zA-Z0-9_\-]+\.(?:js|css)))(\?v=[^"']*)?["']/g, (match, fullRelPath, filename) => {
             const attr = match.startsWith('src') ? 'src' : 'href';
             const cleanRelPath = fullRelPath.replace(/^\.?\//, '');
             const diskPath = path.join(portalDir, cleanRelPath);
-            let version = Date.now();
-            try {
-                if (fs.existsSync(diskPath)) {
-                    version = Math.floor(fs.statSync(diskPath).mtimeMs);
-                }
-            } catch (_) {}
+            const version = getAssetContentHash(diskPath) || Math.floor(Date.now() / 1000);
             return `${attr}="${fullRelPath.split('?')[0]}?v=${version}"`;
         });
 

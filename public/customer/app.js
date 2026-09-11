@@ -12171,3 +12171,5 @@ function checkAndRenderSettlementModal(myTrips) {
 
 
 // Auto-cache-busting verified: 2026-09-11
+
+// Individual portal isolation test: 2026-09-11
