@@ -3633,9 +3633,6 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
         }
         if (!otpValid) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
-        // Mark OTP as used
-        await pool.query(`UPDATE otp_verifications SET verifiedat = NOW() WHERE id = $1`, [row.id]);
-
         const cleanVal = val.replace('+91', '');
         const prefixedVal = val.startsWith('+91') ? val : '+91' + val;
         const isEmailInput = val.includes('@') || (email && email.includes('@'));
