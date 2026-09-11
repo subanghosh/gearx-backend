@@ -9111,6 +9111,11 @@ async function renderOffers(container) {
 // MODAL & CLIENT ACTION HANDLERS FOR OFFERS
 // ----------------------------------------------------------------------------
 
+window.closeCrmModal = function() {
+    const modalHost = document.getElementById('crm-modal-host');
+    if (modalHost) modalHost.innerHTML = '';
+};
+
 window.filterOffersUsageLedger = function(query) {
     window._offersUsageSearchQuery = query;
     renderOffers(document.getElementById('app'));
