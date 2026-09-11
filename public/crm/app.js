@@ -5890,22 +5890,35 @@ function saveNewVehicle(customerId) {
         return;
     }
 
-    const saveVehicleData = async (base64Photo = null) => {
+    const saveVehicleData = async () => {
         try {
-            await fetch(`${API_URL}/vehicles`, {
+            const formData = new FormData();
+            formData.append('id', generateId());
+            formData.append('customerId', customerId);
+            formData.append('plate', regNumber);
+            formData.append('make', make);
+            formData.append('model', model);
+            formData.append('type', type);
+            formData.append('makeModel', `${make} ${model}`);
+
+            if (photoInput && photoInput.files && photoInput.files[0]) {
+                formData.append('photo', photoInput.files[0]);
+            }
+
+            const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`${API_URL}/vehicles`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: generateId(),
-                    customerId: customerId,
-                    plate: regNumber,
-                    make: make,
-                    model: model,
-                    type: type,
-                    makeModel: `${make} ${model}`,
-                    photo: base64Photo
-                })
+                headers,
+                body: formData
             });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to save vehicle');
+            }
 
             await fetchRealtimeData();
             closeModal('modal-add-vehicle');
@@ -5915,22 +5928,7 @@ function saveNewVehicle(customerId) {
         }
     };
 
-    if (photoInput.files && photoInput.files[0]) {
-        const file = photoInput.files[0];
-        if (file.size > 2 * 1024 * 1024) {
-            if (!confirm('This image is large (>2MB) and might fill up local storage. Continue?')) {
-                return;
-            }
-        }
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            saveVehicleData(e.target.result);
-        };
-        reader.readAsDataURL(file);
-    } else {
-        saveVehicleData();
-    }
+    saveVehicleData();
 }
 
 function closeModal(id) {

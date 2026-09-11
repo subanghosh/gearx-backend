@@ -8006,71 +8006,163 @@ apiRouter.get('/vehicles/:id', authMiddleware, (req, res) => {
     });
 });
 
-apiRouter.post('/vehicles', (req, res) => {
-    let { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body;
-    const cleanCustId = (customerId || '').replace('_user', '');
-    const vehId = id || `veh_${Date.now()}`;
-    db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo, fuel, transmission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [vehId, cleanCustId, make, model, type, plate, photo, fuel, transmission], (err) => {
-            if (err) {
-                console.error("POST /vehicles DB error:", err.message);
-                return res.status(500).json({ error: err.message });
-            }
-            res.json({ success: true, id: vehId });
-        });
-});
+apiRouter.post('/vehicles', upload.single('photo'), async (req, res) => {
+    try {
+        let { id, customerId, make, model, type, plate, photo, fuel, transmission } = req.body || {};
+        const cleanCustId = (customerId || req.user?.id || '').replace('_user', '');
+        const vehId = id || `veh_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-apiRouter.put('/vehicles/:id', async (req, res) => {
-    const { make, model, type, plate, photo, fuel, transmission } = req.body;
-    db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], async (err, existing) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!existing) return res.status(404).json({ error: 'Vehicle not found' });
-
-        // Check if vehicle plate is locked due to ride history
-        if (plate !== undefined && existing.plate && normalizeVehiclePlate(plate) !== normalizeVehiclePlate(existing.plate)) {
+        // Handle binary file upload via Multer -> Cloudflare R2
+        if (req.file) {
+            const ext = path.extname(req.file.originalname) || (req.file.mimetype === 'image/png' ? '.png' : (req.file.mimetype === 'image/webp' ? '.webp' : '.jpg'));
+            const key = `uploads/${Date.now()}-${vehId}${ext}`;
+            await uploadBufferToR2({
+                key,
+                buffer: req.file.buffer,
+                mimetype: req.file.mimetype,
+                metadata: { vehicleId: vehId, customerId: cleanCustId, type: 'vehicle_photo' }
+            });
+            photo = key;
+        } else if (typeof photo === 'string' && photo.startsWith('data:image/')) {
+            // Defensive fallback: Auto-decode incoming Base64 payload and store in Cloudflare R2 as binary
             try {
-                const histRes = await pool.query(
-                    `SELECT COUNT(*)::int as count FROM trips WHERE (vehicleid = $1 OR servicerequestid IN (SELECT id FROM service_requests WHERE vehicleid = $1)) AND status != 'cancelled'`,
-                    [req.params.id]
-                ).catch(() => ({ rows: [{ count: 0 }] }));
-                const hasRides = parseInt(histRes.rows[0]?.count || 0, 10) > 0;
-                if (hasRides) {
-                    return res.status(400).json({
-                        error: 'This vehicle is linked to completed ride history. Direct plate changes are locked. Please submit a Plate Change Request with RC and Insurance documents for verification.',
-                        locked: true,
-                        requirePlateChangeRequest: true
+                const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+                if (matches && matches.length === 3) {
+                    const mimeType = matches[1];
+                    const base64Data = matches[2];
+                    const buffer = Buffer.from(base64Data, 'base64');
+                    const ext = mimeType.split('/')[1] === 'jpeg' ? '.jpg' : (mimeType.split('/')[1] === 'png' ? '.png' : (mimeType.split('/')[1] === 'webp' ? '.webp' : '.jpg'));
+                    const key = `uploads/${Date.now()}-${vehId}.${ext}`;
+                    await uploadBufferToR2({
+                        key,
+                        buffer,
+                        mimetype: mimeType,
+                        metadata: { vehicleId: vehId, customerId: cleanCustId, type: 'vehicle_photo_b64_fallback' }
                     });
+                    photo = key;
                 }
-            } catch (e) {
-                console.warn('[VEHICLE_LOCK_CHECK_WARN]', e.message);
+            } catch (b64Err) {
+                console.error('[POST /vehicles Base64 Upload Warning]', b64Err.message);
             }
         }
 
-        const updatedMake = make !== undefined ? make : existing.make;
-        const updatedModel = model !== undefined ? model : existing.model;
-        const updatedType = type !== undefined ? type : existing.type;
-        const updatedPlate = plate !== undefined ? plate : existing.plate;
-        const updatedPhoto = (photo !== undefined && photo !== null && photo !== '') ? photo : existing.photo;
-        const updatedFuel = fuel !== undefined ? fuel : existing.fuel;
-        const updatedTransmission = transmission !== undefined ? transmission : existing.transmission;
-
-        db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
-            [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, req.params.id],
-            async (updateErr) => {
-                if (updateErr) {
-                    console.error("PUT /vehicles DB error:", updateErr.message);
-                    return res.status(500).json({ error: updateErr.message });
+        db.run("INSERT INTO vehicles (id, customerId, make, model, type, plate, photo, fuel, transmission) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [vehId, cleanCustId, make, model, type, plate, photo || null, fuel || 'Petrol', transmission || 'Manual'], async (err) => {
+                if (err) {
+                    console.error("POST /vehicles DB error:", err.message);
+                    return res.status(500).json({ error: err.message });
                 }
                 try {
                     await pool.query(
-                        `UPDATE vehicles SET make=$1, model=$2, type=$3, plate=$4, photo=$5, fuel=$6, transmission=$7 WHERE id=$8`,
-                        [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, req.params.id]
+                        `INSERT INTO vehicles (id, customerid, make, model, type, plate, photo, fuel, transmission) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET customerid=$2, make=$3, model=$4, type=$5, plate=$6, photo=$7, fuel=$8, transmission=$9`,
+                        [vehId, cleanCustId, make, model, type, plate, photo || null, fuel || 'Petrol', transmission || 'Manual']
                     );
-                } catch (pgE) {}
-                res.json({ success: true });
+                } catch (pgE) {
+                    console.error("POST /vehicles PG error:", pgE.message);
+                }
+                res.json({ success: true, id: vehId, photo: photo ? generateSignedUploadUrl(photo) : null, rawPhoto: photo });
+            });
+    } catch (routeErr) {
+        console.error("POST /vehicles server error:", routeErr);
+        res.status(500).json({ error: routeErr.message || 'Failed to create vehicle' });
+    }
+});
+
+apiRouter.put('/vehicles/:id', upload.single('photo'), async (req, res) => {
+    try {
+        const { make, model, type, plate, fuel, transmission } = req.body || {};
+        let photo = req.body?.photo;
+        const vehId = req.params.id;
+
+        db.get("SELECT * FROM vehicles WHERE id = ?", [vehId], async (err, existing) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (!existing) return res.status(404).json({ error: 'Vehicle not found' });
+
+            // Check if vehicle plate is locked due to ride history
+            if (plate !== undefined && existing.plate && normalizeVehiclePlate(plate) !== normalizeVehiclePlate(existing.plate)) {
+                try {
+                    const histRes = await pool.query(
+                        `SELECT COUNT(*)::int as count FROM trips WHERE (vehicleid = $1 OR servicerequestid IN (SELECT id FROM service_requests WHERE vehicleid = $1)) AND status != 'cancelled'`,
+                        [vehId]
+                    ).catch(() => ({ rows: [{ count: 0 }] }));
+                    const hasRides = parseInt(histRes.rows[0]?.count || 0, 10) > 0;
+                    if (hasRides) {
+                        return res.status(400).json({
+                            error: 'This vehicle is linked to completed ride history. Direct plate changes are locked. Please submit a Plate Change Request with RC and Insurance documents for verification.',
+                            locked: true,
+                            requirePlateChangeRequest: true
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[VEHICLE_LOCK_CHECK_WARN]', e.message);
+                }
             }
-        );
-    });
+
+            // Handle binary file upload via Multer -> Cloudflare R2
+            if (req.file) {
+                const ext = path.extname(req.file.originalname) || (req.file.mimetype === 'image/png' ? '.png' : (req.file.mimetype === 'image/webp' ? '.webp' : '.jpg'));
+                const key = `uploads/${Date.now()}-${vehId}${ext}`;
+                await uploadBufferToR2({
+                    key,
+                    buffer: req.file.buffer,
+                    mimetype: req.file.mimetype,
+                    metadata: { vehicleId: vehId, customerId: existing.customerId || existing.customerid, type: 'vehicle_photo_update' }
+                });
+                photo = key;
+            } else if (typeof photo === 'string' && photo.startsWith('data:image/')) {
+                // Defensive fallback: Auto-decode incoming Base64 payload and store in Cloudflare R2 as binary
+                try {
+                    const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+                    if (matches && matches.length === 3) {
+                        const mimeType = matches[1];
+                        const base64Data = matches[2];
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        const ext = mimeType.split('/')[1] === 'jpeg' ? '.jpg' : (mimeType.split('/')[1] === 'png' ? '.png' : (mimeType.split('/')[1] === 'webp' ? '.webp' : '.jpg'));
+                        const key = `uploads/${Date.now()}-${vehId}.${ext}`;
+                        await uploadBufferToR2({
+                            key,
+                            buffer,
+                            mimetype: mimeType,
+                            metadata: { vehicleId: vehId, customerId: existing.customerId || existing.customerid, type: 'vehicle_photo_update_b64' }
+                        });
+                        photo = key;
+                    }
+                } catch (b64Err) {
+                    console.error('[PUT /vehicles Base64 Upload Warning]', b64Err.message);
+                }
+            }
+
+            const updatedMake = make !== undefined ? make : existing.make;
+            const updatedModel = model !== undefined ? model : existing.model;
+            const updatedType = type !== undefined ? type : existing.type;
+            const updatedPlate = plate !== undefined ? plate : existing.plate;
+            const updatedPhoto = (photo !== undefined && photo !== null && photo !== '') ? photo : existing.photo;
+            const updatedFuel = fuel !== undefined ? fuel : existing.fuel;
+            const updatedTransmission = transmission !== undefined ? transmission : existing.transmission;
+
+            db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
+                [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, vehId],
+                async (updateErr) => {
+                    if (updateErr) {
+                        console.error("PUT /vehicles DB error:", updateErr.message);
+                        return res.status(500).json({ error: updateErr.message });
+                    }
+                    try {
+                        await pool.query(
+                            `UPDATE vehicles SET make=$1, model=$2, type=$3, plate=$4, photo=$5, fuel=$6, transmission=$7 WHERE id=$8`,
+                            [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, vehId]
+                        );
+                    } catch (pgE) {
+                        console.error("PUT /vehicles PG error:", pgE.message);
+                    }
+                    res.json({ success: true, photo: updatedPhoto ? generateSignedUploadUrl(updatedPhoto) : null, rawPhoto: updatedPhoto });
+                }
+            );
+        });
+    } catch (routeErr) {
+        console.error("PUT /vehicles server error:", routeErr);
+        res.status(500).json({ error: routeErr.message || 'Failed to update vehicle' });
+    }
 });
 
 apiRouter.delete('/vehicles/:id', (req, res) => {

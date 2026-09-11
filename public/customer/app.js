@@ -4610,11 +4610,22 @@ function showVehicleForm(preSelectedCategory = 'Car') {
 }
 
 function hideVehicleForm() {
+    window.activePhotoFile = null;
     const addMoreContainer = document.getElementById('add-more-container');
     if (addMoreContainer && userVehicles.length > 0) addMoreContainer.style.display = 'block';
     
     const formEls = document.getElementById('vehicle-form-elements');
     if (formEls) formEls.style.display = 'none';
+
+    const photoPreview = document.getElementById('v-photo-preview');
+    if (photoPreview) {
+        photoPreview.style.display = 'none';
+        photoPreview.src = '';
+    }
+    const photoText = document.getElementById('photo-label-text');
+    if (photoText) photoText.textContent = 'Click to upload a photo';
+    const photoInput = document.getElementById('v-photo');
+    if (photoInput) photoInput.value = '';
 }
 
 function renderRequests(reqs) {
@@ -5440,16 +5451,6 @@ async function saveVehicle() {
         return;
     }
 
-    // Read photo as base64 if provided
-    let photoBase64 = null;
-    if (photoFile) {
-        photoBase64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.readAsDataURL(photoFile);
-        });
-    }
-
     // Double-click guard
     const saveBtn = document.querySelector('.vehicle-form-container .btn');
     const origBtnText = saveBtn ? saveBtn.innerHTML : 'Save Vehicle';
@@ -5471,32 +5472,78 @@ async function saveVehicle() {
         }
 
         const cleanCustId = (currentUser.id || '').replace('_user', '');
-        const payload = {
-            customerId: cleanCustId,
-            plate, make, model, type, fuel, transmission, color, seats,
-            makeModel: `${make} ${model}`,
-        };
-        if (photoBase64) {
-            payload.photo = photoBase64;
+        const vehId = editId || `veh_${generateId()}`;
+
+        // Build multipart FormData payload for direct binary streaming to Cloudflare R2
+        const formData = new FormData();
+        formData.append('id', vehId);
+        formData.append('customerId', cleanCustId);
+        formData.append('plate', plate);
+        formData.append('make', make);
+        formData.append('model', model);
+        formData.append('type', type);
+        formData.append('fuel', fuel);
+        formData.append('transmission', transmission);
+        formData.append('color', color);
+        formData.append('seats', seats);
+        formData.append('makeModel', `${make} ${model}`);
+
+        if (photoFile) {
+            formData.append('photo', photoFile);
         } else if (editId) {
             const existingVeh = userVehicles.find(v => v.id === editId);
             if (existingVeh && existingVeh.photo) {
-                payload.photo = existingVeh.photo;
+                formData.append('photo', existingVeh.photo);
             }
         }
 
+        const token = (typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('token') || localStorage.getItem('auth_token')));
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        let savedPhoto = null;
         if (editId) {
-            await apiPut(`/vehicles/${editId}`, payload);
-            showToast('Vehicle updated successfully!', 'success');
-            // Update local array
+            const res = await fetch(`${API_URL}/vehicles/${editId}`, {
+                method: 'PUT',
+                headers,
+                body: formData
+            });
+            if (!res.ok) await handleApiError(res);
+            const resData = await res.json();
+            savedPhoto = resData.photo || (userVehicles.find(v => v.id === editId)?.photo || null);
+
+            const updatedVehicle = {
+                id: editId,
+                customerId: cleanCustId,
+                plate, make, model, type, fuel, transmission, color, seats,
+                makeModel: `${make} ${model}`,
+                photo: savedPhoto
+            };
             const idx = userVehicles.findIndex(v => v.id === editId);
-            if (idx !== -1) Object.assign(userVehicles[idx], payload);
+            if (idx !== -1) Object.assign(userVehicles[idx], updatedVehicle);
+            showToast('Vehicle updated successfully!', 'success');
         } else {
-            payload.id = `veh_${generateId()}`;
-            await apiPost('/vehicles', payload);
-            userVehicles.push(payload);
+            const res = await fetch(`${API_URL}/vehicles`, {
+                method: 'POST',
+                headers,
+                body: formData
+            });
+            if (!res.ok) await handleApiError(res);
+            const resData = await res.json();
+            savedPhoto = resData.photo || null;
+
+            const newVehicle = {
+                id: vehId,
+                customerId: cleanCustId,
+                plate, make, model, type, fuel, transmission, color, seats,
+                makeModel: `${make} ${model}`,
+                photo: savedPhoto
+            };
+            userVehicles.push(newVehicle);
             showToast('Vehicle added successfully!', 'success');
         }
+
+        window.activePhotoFile = null;
 
         // Optimistic immediate UI render
         renderVehicles();
@@ -5504,7 +5551,7 @@ async function saveVehicle() {
 
         hideVehicleForm();
         if (!editId && (!currentUser.name || currentUser.name === 'New Partner' || !currentUser.email)) {
-            document.getElementById('ud-pending-vehicle-id').value = payload.id;
+            document.getElementById('ud-pending-vehicle-id').value = vehId;
             window.userProfileTriggeredByBooking = false;
             document.getElementById('user-details-modal').style.display = 'flex';
         } else {
