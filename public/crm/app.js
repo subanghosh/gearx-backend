@@ -9177,7 +9177,7 @@ window.showTargetCustomersDetails = async function(offerId) {
         }
 
         const modalHtml = `
-            <div class="modal-overlay" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
+            <div class="modal-overlay open" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
                 <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:540px; padding:24px; max-height:85vh; overflow-y:auto;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                         <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
@@ -9234,7 +9234,7 @@ window.openOfferModal = function(encodedOfferStr = null) {
     const endVal = offer && offer.end_date ? new Date(new Date(offer.end_date).getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : defaultEnd;
 
     const modalHtml = `
-        <div class="modal-overlay" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
+        <div class="modal-overlay open" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
             <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:640px; padding:28px; max-height:90vh; overflow-y:auto;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:12px;">
                     <div>
