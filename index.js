@@ -11187,24 +11187,71 @@ app.use((req, res, next) => {
     next();
 });
 
+// --- DYNAMIC PORTAL HTML HANDLER (AUTOMATED CACHE-BUSTING & ZERO-STALE DEPLOYMENTS) ---
+function servePortalHtml(portalFolder, req, res) {
+    try {
+        const portalDir = path.join(__dirname, 'public', portalFolder);
+        const indexPath = path.join(portalDir, 'index.html');
+        if (!fs.existsSync(indexPath)) {
+            return res.status(404).send('Portal index not found');
+        }
+
+        let html = fs.readFileSync(indexPath, 'utf8');
+
+        // Dynamically replace relative script / stylesheet references with live mtime query parameters
+        html = html.replace(/(?:src|href)=["'](\.?\/?(?:js\/|css\/)?([a-zA-Z0-9_\-]+\.(?:js|css)))(\?v=[^"']*)?["']/g, (match, fullRelPath, filename) => {
+            const attr = match.startsWith('src') ? 'src' : 'href';
+            const cleanRelPath = fullRelPath.replace(/^\.?\//, '');
+            const diskPath = path.join(portalDir, cleanRelPath);
+            let version = Date.now();
+            try {
+                if (fs.existsSync(diskPath)) {
+                    version = Math.floor(fs.statSync(diskPath).mtimeMs);
+                }
+            } catch (_) {}
+            return `${attr}="${fullRelPath.split('?')[0]}?v=${version}"`;
+        });
+
+        // Set strict no-cache headers on the HTML document itself
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+        return res.send(html);
+    } catch (err) {
+        console.error(`[PORTAL_HTML_ERR] Failed to serve ${portalFolder} HTML:`, err);
+        return res.status(500).send('Error rendering portal');
+    }
+}
+
 app.use('/uploads', (req, res) => {
     res.status(401).json({ error: 'Access denied: Invalid or unauthenticated request.' });
 });
 
-// Garage Portal (api.redrivo.in)
+// Dynamic Portal HTML Entrypoints (Intercepts index.html and root requests with live mtime cache busters)
+// 1. CRM Portal (api.redrivo.in/crm and /admin)
+app.get(['/crm', '/crm/', '/crm/index.html', '/admin', '/admin/', '/admin/index.html'], (req, res) => servePortalHtml('crm', req, res));
+
+// 2. Customer Portal (api.redrivo.in/customer and aliases)
+app.get(['/customer', '/customer/', '/customer/index.html', '/vroomly-customer-app', '/vroomly-customer-app/', '/vroomly-customer-app/index.html'], (req, res) => servePortalHtml('customer', req, res));
+
+// 3. Garage Partner Portal (api.redrivo.in/garage and aliases)
+app.get(['/garage', '/garage/', '/garage/index.html', '/garages', '/garages/', '/garages/index.html', '/redrivo-garage-portal', '/redrivo-garage-portal/', '/redrivo-garage-portal/index.html', '/vroomly-garage-portal', '/vroomly-garage-portal/', '/vroomly-garage-portal/index.html'], (req, res) => servePortalHtml('garage', req, res));
+
+// 4. Marshal / Driver App (api.redrivo.in/marshal and aliases)
+app.get(['/marshal', '/marshal/', '/marshal/index.html', '/drivers', '/drivers/', '/drivers/index.html', '/vroomly-marshal-app', '/vroomly-marshal-app/', '/vroomly-marshal-app/index.html'], (req, res) => servePortalHtml('marshal', req, res));
+
+// Static Asset Serving (Images, Fonts, Media, JS/CSS bundles)
 app.use('/garage', express.static(path.join(__dirname, 'public/garage')));
 app.use('/redrivo-garage-portal', express.static(path.join(__dirname, 'public/garage')));
 app.use('/vroomly-garage-portal', express.static(path.join(__dirname, 'public/garage')));
 
-// Customer App (api.redrivo.in)
 app.use('/customer', express.static(path.join(__dirname, 'public/customer')));
 app.use('/vroomly-customer-app', express.static(path.join(__dirname, 'public/customer')));
 
-// Marshal App (api.redrivo.in)
 app.use('/marshal', express.static(path.join(__dirname, 'public/marshal')));
 app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/marshal')));
 
-// CRM (Admin) (api.redrivo.in)
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
@@ -11259,13 +11306,26 @@ app.use((err, req, res, next) => {
 
 app.get('/', (req, res) => {
     if (isCustomerDomain(req)) {
-        return res.sendFile(path.join(__dirname, 'public/customer/index.html'));
+        return servePortalHtml('customer', req, res);
     }
     if (isGarageDomain(req)) {
-        return res.sendFile(path.join(__dirname, 'public/garage/index.html'));
+        return servePortalHtml('garage', req, res);
     }
     if (isDriverDomain(req)) {
-        return res.sendFile(path.join(__dirname, 'public/marshal/index.html'));
+        return servePortalHtml('marshal', req, res);
+    }
+    res.redirect('/customer/');
+});
+
+app.get('/index.html', (req, res) => {
+    if (isCustomerDomain(req)) {
+        return servePortalHtml('customer', req, res);
+    }
+    if (isGarageDomain(req)) {
+        return servePortalHtml('garage', req, res);
+    }
+    if (isDriverDomain(req)) {
+        return servePortalHtml('marshal', req, res);
     }
     res.redirect('/customer/');
 });
