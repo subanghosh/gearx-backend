@@ -1656,7 +1656,7 @@ apiRouter.get('/customers', authMiddleware, requireRole('admin'), (req, res) => 
 });
 
 apiRouter.get('/vehicles', authMiddleware, (req, res) => {
-    db.all("SELECT * FROM vehicles", (err, rows) => {
+    db.all("SELECT * FROM vehicles WHERE (is_test = FALSE OR is_test IS NULL)", (err, rows) => {
         if (err) {
             console.error("GET /vehicles DB error:", err.message);
             return res.status(500).json({ error: err.message });
@@ -1670,20 +1670,20 @@ apiRouter.get('/vehicles', authMiddleware, (req, res) => {
 });
 
 apiRouter.get('/requests', authMiddleware, (req, res) => {
-    let query = "SELECT * FROM service_requests";
+    let query = "SELECT * FROM service_requests WHERE (is_test = FALSE OR is_test IS NULL)";
     let params = [];
 
     if (req.user && req.user.role === 'customer') {
         const custId = req.user.id.replace('_user', '');
-        query += " WHERE customerId = ? OR customerId = ?";
+        query += " AND (customerId = ? OR customerId = ?)";
         params = [custId, `${custId}_user`];
     } else if (req.user && req.user.role === 'marshal') {
         const marshalId = req.user.id;
-        query += " WHERE workerId = ? OR status IN ('pending', 'scheduled', 'marshal_assigned', 'searching')";
+        query += " AND (workerId = ? OR status IN ('pending', 'scheduled', 'marshal_assigned', 'searching'))";
         params = [marshalId];
     } else if (req.user && req.user.role === 'garage') {
         const garageId = req.user.garageId || req.user.id;
-        query += " WHERE garageId = ?";
+        query += " AND garageId = ?";
         params = [garageId];
     }
 
@@ -1726,7 +1726,7 @@ apiRouter.get('/garages/nearby', (req, res) => {
     const lat = parseFloat(req.query.lat);
     const lng = parseFloat(req.query.lng);
     
-    db.all("SELECT * FROM garages WHERE status = 'active'", (err, rows) => {
+    db.all("SELECT * FROM garages WHERE status = 'active' AND (is_test = FALSE OR is_test IS NULL)", (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         
         let result = rows || [];
@@ -8442,7 +8442,7 @@ function calcDistanceKm(lat1, lng1, lat2, lng2) {
 }
 
 function findClosestActiveGarage(lat, lng, callback) {
-    db.all("SELECT id, lat, lng, name FROM garages WHERE status = 'active'", (err, rows) => {
+    db.all("SELECT id, lat, lng, name FROM garages WHERE status = 'active' AND (is_test = FALSE OR is_test IS NULL)", (err, rows) => {
         if (err || !rows || rows.length === 0) {
             return callback(null);
         }
