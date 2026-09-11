@@ -23,12 +23,28 @@
       boxes.forEach(function (box, idx) {
         box.addEventListener('input', function () {
           var v = box.value.replace(/[^0-9]/g, '');
-          box.value = v ? v[v.length - 1] : '';
-          syncHidden();
-          if (box.value && idx < boxes.length - 1) {
-            boxes[idx + 1].focus();
+          if (v.length > 1) {
+            // Multi-digit input (e.g. OS autofill / keyboard suggestion)
+            var digits = v.split('');
+            digits.forEach(function (d, i) {
+              var targetIdx = idx + i;
+              if (boxes[targetIdx]) {
+                boxes[targetIdx].value = d;
+                boxes[targetIdx].classList.add('otp-box--filled');
+              }
+            });
+            syncHidden();
+            var nextEmpty = boxes.find(function (b) { return !b.value; });
+            (nextEmpty || boxes[boxes.length - 1]).focus();
+          } else {
+            // Single-digit input
+            box.value = v;
+            syncHidden();
+            if (box.value && idx < boxes.length - 1) {
+              boxes[idx + 1].focus();
+            }
+            box.classList.toggle('otp-box--filled', !!box.value);
           }
-          box.classList.toggle('otp-box--filled', !!box.value);
         });
 
         box.addEventListener('keydown', function (e) {

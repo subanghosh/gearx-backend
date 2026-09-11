@@ -130,7 +130,7 @@
                         <label id="su-phone-label" style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Mobile Number</label>
                         <div class="phone-input-group" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; height: 56px; transition: all 0.3s ease;">
                             <span class="prefix" id="su-phone-prefix" style="background: transparent; border-right: 1px solid rgba(255, 255, 255, 0.1); color: #8B949E; font-weight: 600; padding: 0 20px; display: flex; align-items: center;">+91</span>
-                            <input type="tel" id="su-phone" placeholder="Enter your 10-digit number" maxlength="10" style="background: transparent; border: none; outline: none; padding-left: 20px; font-size: 1.1rem; letter-spacing: 1px; color: #FFFFFF; font-weight: 500; width: 100%;">
+                            <input type="tel" id="su-phone" placeholder="Enter your 10-digit number" maxlength="10" inputmode="numeric" autocomplete="tel tel-national" style="background: transparent; border: none; outline: none; padding-left: 20px; font-size: 1.1rem; letter-spacing: 1px; color: #FFFFFF; font-weight: 500; width: 100%;">
                         </div>
                         <!-- OTP Channel Selector (WhatsApp / SMS) -->
                         <div id="cust-otp-channel-group" style="display: flex; gap: 8px; margin-top: 14px;">
@@ -145,7 +145,7 @@
                                 <span id="cust-label-sms" style="font-size: 0.88rem; font-weight: 600; color: #8B949E;">SMS</span>
                             </label>
                         </div>
-                        <button id="btn-signup-step1" class="btn btn-primary" style="width:100%; margin-top:16px; padding: 14px; font-size: 1rem; font-weight: 700; border-radius: 14px; background: #FFD700; color: #000000; border: none; cursor: pointer; display:none; transition: transform 0.2s, background 0.2s;" onclick="handleSignupStep1()">Send Verification OTP</button>
+                        <button id="btn-signup-step1" class="btn btn-primary" style="width:100%; margin-top:16px; padding: 14px; font-size: 1rem; font-weight: 700; border-radius: 14px; background: #FFD700; color: #000000; border: none; cursor: pointer; display: block; transition: all 0.2s ease;" onclick="handleSignupStep1()">Send Verification OTP</button>
                         <div id="phone-retry-container" style="display: none; margin-top: 10px; text-align: right;">
                             <a href="javascript:void(0)" onclick="handleSignupStep1()" style="color: #FFD700; font-size: 0.85rem; font-weight: 600; text-decoration: none;">Tap to retry</a>
                         </div>
@@ -168,7 +168,7 @@
                     </div>
                 </div>
 
-                <button id="btn-signup-step2" class="btn btn-primary" style="width:100%; margin-top:20px; padding: 16px; font-size: 1.1rem; font-weight: 700; border-radius: 16px; background: #FFD700; color: #000000; border: none; cursor: pointer; display:none; transition: transform 0.2s, background 0.2s;" onclick="handleSignupStep2()">Verify & Secure Login</button>
+                <button id="btn-signup-step2" class="btn btn-primary" style="width:100%; margin-top:20px; padding: 16px; font-size: 1.1rem; font-weight: 700; border-radius: 16px; background: #FFD700; color: #000000; border: none; cursor: pointer; display:none; transition: all 0.2s ease;" onclick="handleSignupStep2()">Verify & Login</button>
 
                 <!-- Google Sign-In Option -->
                 <div id="google-auth-divider" style="display: flex; align-items: center; margin: 24px 0 16px 0; text-align: center; color: #8B949E; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">
@@ -281,7 +281,7 @@
                 <div class="profile-section-top" style="display: flex; align-items: center; gap: 12px; cursor: pointer;" onclick="switchTab('profile')" title="Profile">
                     <span id="header-user-name" style="font-size: 0.95rem; font-weight: 600; color: var(--text-main); display: none;">User</span>
                     <div style="width: 42px; height: 42px; border-radius: 50%; overflow: hidden; border: 2.5px solid var(--primary); box-shadow: 0 0 12px rgba(250, 204, 21, 0.4); background: var(--bg-card); display: flex; align-items: center; justify-content: center;">
-                        <img id="header-user-avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABsEd33qhqnOLpk4D-DvhoQSiDTBFX884YwiFnEmv8FI7WNP0YINcLLkw6Dyu_ACVjZw4NqX97j1x080R3P0YEKEiau4OnGVHPu8cXTMAsWagtF8VpSUQR2DcCDUwUJmONpDbD6L4FyqHqsXgbAG54l3AAYf5eJiVy4iTC6eTKhlCRenXtqnFoWQpakSUms4capxEdm3gLHbuMzb0NlOqF9IxJlojFeLh5opMYXEZctKCZ5FaHtXk_JLl0FCzCjC3ZXe9TEAgxK1g" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                        <img id="header-user-avatar" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22yg%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23FBBF24%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23D97706%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22url(%23yg)%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%2255%22%20font-family%3D%22-apple-system%2C%20BlinkMacSystemFont%2C%20Segoe%20UI%2C%20Roboto%2C%20sans-serif%22%20font-size%3D%2238%22%20font-weight%3D%22800%22%20fill%3D%22%23000%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3EU%3C%2Ftext%3E%3C%2Fsvg%3E" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
                     </div>
                 </div>
             </div>
@@ -332,23 +332,15 @@
                         >
                         <div id="pickup-suggestions-global" class="suggestions-dropdown" style="top: 100%; z-index: 100;"></div>
                     </div>
+                    <div id="pickup-helper-hint" style="display: none; font-size: 0.72rem; color: #facc15; margin-top: 4px; align-items: center; gap: 4px; font-weight: 600;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        Enter pickup location to start
+                    </div>
 
                 </div>
                 
                 <!-- Flex Spacer to push garage container to the bottom and expose the map -->
                 <div style="flex-grow: 1; pointer-events: none; min-height: 25vh;"></div>
-
-
- 
-                <section class="card" id="location-placeholder-card" style="background: rgba(18, 22, 29, 0.85); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-radius: 24px; padding: 24px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: all 0.3s ease;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 10px 0;">
-                        <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); border: 1.5px solid rgba(250, 204, 21, 0.3); display: flex; align-items: center; justify-content: center; color: #facc15; font-size: 1.4rem; box-shadow: 0 0 15px rgba(250, 204, 21, 0.15);">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #facc15;"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        </div>
-                        <h3 style="font-size: 1.25rem; font-weight: 800; color: #ffffff; margin: 0; font-family: 'Manrope', sans-serif;">Set Your Route</h3>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; max-width: 300px; line-height: 1.4;">Enter pickup location at the top and drop location below to view available vehicles and book your service.</p>
-                    </div>
-                </section>
 
                 <!-- Drop Location Selector just above welcome back user -->
                 <div class="drop-location-select-container" style="position: relative; width: 100%; z-index: 999; display: flex; flex-direction: column; gap: 6px; background: rgba(18, 22, 29, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 14px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); margin-bottom: 20px;">
@@ -358,7 +350,7 @@
                             Where to drop?
                         </label>
                         <button onclick="openRouteSearchModal('stop')" style="background: none; border: none; color: #facc15; font-size: 0.78rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none;">
-                            <span class="material-symbols-outlined" style="font-size: 1rem; font-weight: 800;">add</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             Add route
                         </button>
                     </div>
@@ -380,6 +372,10 @@
                             oninput="handleLocationInput('global-drop')"
                         >
                         <div id="drop-suggestions-global" class="suggestions-dropdown" style="top: 100%; z-index: 100;"></div>
+                    </div>
+                    <div id="drop-helper-hint" style="display: none; font-size: 0.72rem; color: #22c55e; margin-top: 4px; align-items: center; gap: 4px; font-weight: 600;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        Enter drop location to complete route & view fare
                     </div>
                     <div id="route-stats-badge" style="display: none; align-items: center; gap: 8px; margin-top: 8px; font-family: 'Inter', sans-serif; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); width: fit-content;">
                         <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Est. Route:</span>
@@ -590,7 +586,7 @@
                 <div class="dashboard-header" style="margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="position: relative; margin: 0 auto 16px auto; width: 80px; height: 80px; cursor: pointer;" onclick="document.getElementById('profile-avatar-input').click()">
                         <div style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); box-shadow: 0 0 16px rgba(250, 204, 21, 0.4); background: #1D1D1D; display: flex; align-items: center; justify-content: center;">
-                            <img id="profile-modal-avatar" src="" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                            <img id="profile-modal-avatar" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22yg%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%22100%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23FBBF24%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23D97706%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22url(%23yg)%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%2255%22%20font-family%3D%22-apple-system%2C%20BlinkMacSystemFont%2C%20Segoe%20UI%2C%20Roboto%2C%20sans-serif%22%20font-size%3D%2238%22%20font-weight%3D%22800%22%20fill%3D%22%23000%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%3EU%3C%2Ftext%3E%3C%2Fsvg%3E" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
                         <div style="position: absolute; bottom: 0; right: 0; background: var(--primary); border: 2px solid #1D1D1D; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4);">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>

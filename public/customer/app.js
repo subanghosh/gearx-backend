@@ -968,11 +968,30 @@ async function handleSignupStep1() {
 
         document.getElementById('su-otp-area').style.display = 'block';
         if (btn) btn.style.display = 'none';
-        document.getElementById('btn-signup-step2').style.display = 'block';
+        const btn2 = document.getElementById('btn-signup-step2');
+        if (btn2) {
+            btn2.style.display = 'block';
+            btn2.disabled = false;
+            btn2.innerHTML = 'Verify & Login';
+        }
 
         // Start 60-second cooldown on resend link
         const resendLink = document.getElementById('resend-otp-link');
         startOtpCooldown(resendLink);
+
+        // WebOTP API listener for automatic SMS code detection on mobile Chrome/Android
+        if ('OTPCredential' in window && navigator.credentials && currentCustomerAuthMode === 'phone') {
+            const ac = new AbortController();
+            setTimeout(() => { try { ac.abort(); } catch(e){} }, 60000);
+            navigator.credentials.get({
+                otp: { transport: ['sms'] },
+                signal: ac.signal
+            }).then(otp => {
+                if (otp && otp.code && window.fillOtpBoxes) {
+                    fillOtpBoxes('su-otp', otp.code);
+                }
+            }).catch(() => {});
+        }
 
         showToast(currentCustomerAuthMode === 'email' ? 'OTP sent to your email!' : 'OTP sent to your mobile number!', 'success');
         if (data.otp) { console.log('DEV OTP:', data.otp); if (window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp); }
@@ -1050,7 +1069,7 @@ async function handleSignupStep2() {
     if (btn && btn.disabled) return; // Prevent double-triggering if already verifying
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = 'Verifying...';
+        btn.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;gap:8px;"><span class="spinner" style="width:16px;height:16px;border:2px solid #000;border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin 0.8s linear infinite;"></span> Verifying & Logging In...</span>';
     }
 
     try {
@@ -1114,7 +1133,7 @@ async function handleSignupStep2() {
         const btn = document.getElementById('btn-signup-step2');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = 'Verify OTP';
+            btn.innerHTML = 'Verify & Login';
         }
     }
 }
@@ -2549,7 +2568,7 @@ async function loadDashboard() {
             return;
         }
         if (typeof showToast === 'function') {
-            showToast("Dashboard load error: " + err.message, "error");
+            showToast("Unable to load latest data. Please swipe or refresh.", "error");
         }
     }
 }
@@ -3236,7 +3255,6 @@ function renderVehicles() {
     const formElements = document.getElementById('vehicle-form-elements');
     const addMoreContainer = document.getElementById('add-more-container');
     const garageContainer = document.getElementById('garage-container');
-    const placeholderCard = document.getElementById('location-placeholder-card');
 
     if (userVehicles.length === 0) {
         if (list) {
@@ -5479,6 +5497,10 @@ async function saveVehicle() {
             userVehicles.push(payload);
             showToast('Vehicle added successfully!', 'success');
         }
+
+        // Optimistic immediate UI render
+        renderVehicles();
+        if (typeof renderProfileVehicles === 'function') renderProfileVehicles();
 
         hideVehicleForm();
         if (!editId && (!currentUser.name || currentUser.name === 'New Partner' || !currentUser.email)) {
@@ -8284,27 +8306,26 @@ function focusGarage() {
 }
 
 function getInitialsAvatar(name) {
-    const initials = (name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
-            <defs>
-                <linearGradient id="yellow-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#FBBF24" />
-                    <stop offset="50%" stop-color="#F59E0B" />
-                    <stop offset="100%" stop-color="#D97706" />
-                </linearGradient>
-            </defs>
-            <circle cx="50" cy="50" r="50" fill="url(#yellow-gold-grad)" />
-            <text x="50" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="36" font-weight="bold" fill="#000000" text-anchor="middle" dominant-baseline="middle">${initials}</text>
-        </svg>
-    `.trim().replace(/\s+/g, ' ');
-    
-    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    const initials = (name || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs><linearGradient id="yg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FBBF24"/><stop offset="100%" stop-color="#D97706"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#yg)"/><text x="50" y="55" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="38" font-weight="800" fill="#000" text-anchor="middle" dominant-baseline="middle">${initials}</text></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 function updateUserAvatar() {
     if (!currentUser) return;
-    let avatarUrl = currentUser.photo || currentUser.facePhotoUrl || getInitialsAvatar(currentUser.name);
+    let rawPhoto = currentUser.profilePictureUrl || 
+                   currentUser.profilepictureurl || 
+                   currentUser.facePhotoUrl || 
+                   currentUser.facephotourl || 
+                   currentUser.photo || 
+                   null;
+    
+    // If Google avatar has low resolution param like =s96-c, upgrade to =s512-c
+    if (rawPhoto && rawPhoto.includes('googleusercontent.com') && rawPhoto.includes('=s')) {
+        rawPhoto = rawPhoto.replace(/=s\d+(-c)?/, '=s512-c');
+    }
+
+    let avatarUrl = rawPhoto || getInitialsAvatar(currentUser.name);
     
     if (avatarUrl && !avatarUrl.startsWith('http') && !avatarUrl.startsWith('data:')) {
         const baseUrl = API_URL.replace('/api', '');
@@ -8312,10 +8333,16 @@ function updateUserAvatar() {
     }
     
     const headerAvatar = document.getElementById('header-user-avatar');
-    if (headerAvatar) headerAvatar.src = avatarUrl;
+    if (headerAvatar) {
+        headerAvatar.src = avatarUrl;
+        headerAvatar.onerror = () => { headerAvatar.src = getInitialsAvatar(currentUser.name); };
+    }
     
     const modalAvatar = document.getElementById('profile-modal-avatar');
-    if (modalAvatar) modalAvatar.src = avatarUrl;
+    if (modalAvatar) {
+        modalAvatar.src = avatarUrl;
+        modalAvatar.onerror = () => { modalAvatar.src = getInitialsAvatar(currentUser.name); };
+    }
 }
 
 function openProfileModal() {
@@ -8485,33 +8512,28 @@ async function uploadProfilePicture(input) {
     if (!input.files || !input.files[0]) return;
     let file = input.files[0];
     
-    // Client-side compression to ~50kb
-    if (file.size > 50 * 1024) {
-        showToast("Compressing image...", "info");
-        try {
-            const bitmap = await createImageBitmap(file);
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 500;
-            const MAX_HEIGHT = 500;
-            let width = bitmap.width;
-            let height = bitmap.height;
-            if (width > height) {
-                if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-            } else {
-                if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(bitmap, 0, 0, width, height);
-            
-            const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.6));
-            if (blob) {
-                file = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
-            }
-        } catch(e) {
-            console.error('Compression failed', e);
+    // Client-side square center-crop and compression
+    try {
+        const bitmap = await createImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        const SIZE = 512;
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        
+        // Center crop to 1:1 square
+        const minDim = Math.min(bitmap.width, bitmap.height);
+        const sx = (bitmap.width - minDim) / 2;
+        const sy = (bitmap.height - minDim) / 2;
+        
+        ctx.drawImage(bitmap, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
+        
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.88));
+        if (blob) {
+            file = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
         }
+    } catch(e) {
+        console.error('Profile image preparation failed', e);
     }
     
     const formData = new FormData();
@@ -9375,7 +9397,8 @@ window.updateRouteVisibility = updateRouteVisibility;
 function updateRouteVisibility() {
     const pickupInput = document.getElementById('pickup-location-global');
     const dropInput = document.getElementById('drop-location-global');
-    const placeholderCard = document.getElementById('location-placeholder-card');
+    const pickupHint = document.getElementById('pickup-helper-hint');
+    const dropHint = document.getElementById('drop-helper-hint');
     
     if (pickupInput && dropInput) {
         const pLat = pickupInput.getAttribute('data-lat');
@@ -9393,11 +9416,8 @@ function updateRouteVisibility() {
         const hasPickup = !isNaN(pLatNum) && !isNaN(pLngNum) && pAddr.length > 0;
         const hasDrop = !isNaN(dLatNum) && !isNaN(dLngNum) && dAddr.length > 0;
 
-        if (hasPickup && hasDrop) {
-            if (placeholderCard) placeholderCard.style.display = 'none';
-        } else {
-            if (placeholderCard) placeholderCard.style.display = 'block';
-        }
+        if (pickupHint) pickupHint.style.display = hasPickup ? 'none' : 'flex';
+        if (dropHint) dropHint.style.display = (hasPickup && !hasDrop) ? 'flex' : 'none';
         
         if (hasPickup && hasDrop && pickupLocationResolved && dropLocationResolved) {
             window.routePickup = {
@@ -9415,8 +9435,6 @@ function updateRouteVisibility() {
             recalculateAndDrawRoute();
             return;
         }
-    } else {
-        if (placeholderCard) placeholderCard.style.display = 'block';
     }
     
     clearRouteLine();

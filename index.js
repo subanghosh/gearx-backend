@@ -452,10 +452,11 @@ pool.on('error', (err, client) => {
     console.error('Unexpected error on idle client', err);
 });
 
-// Ensure is_test_account column exists in PostgreSQL
+// Ensure is_test and is_test_account columns exist in PostgreSQL
 pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
+    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE;
 `).catch(e => console.warn('Schema check warning:', e.message));
 
 const db = {
