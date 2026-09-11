@@ -9448,7 +9448,7 @@ window.removeModalTargetCustomer = function(id) {
 };
 
 window.renderModalTargetChips = function() {
-    if (window._modalTargetCustomers.length === 0) {
+    if (!window._modalTargetCustomers || window._modalTargetCustomers.length === 0) {
         return '<span style="font-size:0.75rem; color:var(--text-dim); font-style:italic;">No customers selected yet. Search above to add.</span>';
     }
     return window._modalTargetCustomers.map(c => `
