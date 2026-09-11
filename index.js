@@ -126,16 +126,28 @@ function getNormalizedHost(req) {
 
 function isCustomerDomain(req) {
     const host = getNormalizedHost(req);
-    return host === 'redrivo.in' || host === 'www.redrivo.in';
+    return host === 'redrivo.com' || host === 'www.redrivo.com' ||
+           host === 'redrivo.in' || host === 'www.redrivo.in';
 }
 
 function isGarageDomain(req) {
     const host = getNormalizedHost(req);
-    return host === 'garage.redrivo.in' || host === 'www.garage.redrivo.in';
+    return host === 'garages.redrivo.com' || host === 'www.garages.redrivo.com' ||
+           host === 'garage.redrivo.com' || host === 'www.garage.redrivo.com' ||
+           host === 'garages.redrivo.in' || host === 'www.garages.redrivo.in' ||
+           host === 'garage.redrivo.in' || host === 'www.garage.redrivo.in';
+}
+
+function isDriverDomain(req) {
+    const host = getNormalizedHost(req);
+    return host === 'drivers.redrivo.com' || host === 'www.drivers.redrivo.com' ||
+           host === 'driver.redrivo.com' || host === 'www.driver.redrivo.com' ||
+           host === 'drivers.redrivo.in' || host === 'www.drivers.redrivo.in' ||
+           host === 'driver.redrivo.in' || host === 'www.driver.redrivo.in';
 }
 
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
-// Apply noindex headers on non-customer domains (api.redrivo.in & garage.redrivo.in); leave customer domain (redrivo.in) indexable
+// Apply noindex headers on non-customer domains (drivers, garages, and api); leave customer domains (redrivo.com / redrivo.in) indexable
 app.use((req, res, next) => {
     if (!isCustomerDomain(req)) {
         res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -147,7 +159,7 @@ app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     if (isCustomerDomain(req)) {
         res.send('User-agent: *\nAllow: /\n');
-    } else if (isGarageDomain(req)) {
+    } else if (isGarageDomain(req) || isDriverDomain(req)) {
         res.send('User-agent: *\nDisallow: /\n');
     } else {
         // Temporarily allow crawling so search engines can read the 'X-Robots-Tag: noindex' header and purge api.redrivo.in from the search index
@@ -169,10 +181,20 @@ app.use(helmet({
 const allowedOrigins = [
     'https://redrivo.com',
     'https://www.redrivo.com',
+    'https://drivers.redrivo.com',
+    'https://www.drivers.redrivo.com',
+    'https://garages.redrivo.com',
+    'https://www.garages.redrivo.com',
+    'https://garage.redrivo.com',
     'https://redrivo.in',
     'https://www.redrivo.in',
+    'https://drivers.redrivo.in',
+    'https://www.drivers.redrivo.in',
+    'https://garages.redrivo.in',
+    'https://www.garages.redrivo.in',
     'https://garage.redrivo.in',
     'https://www.garage.redrivo.in',
+    'https://api.redrivo.in',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:5500',
@@ -719,6 +741,8 @@ function initializeDatabase() {
             db.run(`INSERT INTO system_settings (key, value) VALUES ('driver_noshow_penalty', '49.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_wait_minutes', '10') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_penalty', '99.0') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('platform_base_charge_override_enabled', 'false') ON CONFLICT(key) DO NOTHING`);
+            db.run(`INSERT INTO system_settings (key, value) VALUES ('platform_base_charge_override_value', '0') ON CONFLICT(key) DO NOTHING`);
         });
 
         // Async PostgreSQL migrations for cancellation & arrival tracking
@@ -1062,6 +1086,8 @@ try {
 async function ensureKycColumns() {
     try {
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS fcmToken TEXT').catch(() => {});
+        await pool.query('ALTER TABLE customers ADD COLUMN IF NOT EXISTS fcmToken TEXT').catch(() => {});
+        await pool.query('ALTER TABLE customers ADD COLUMN IF NOT EXISTS fcmtoken TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycRejectionReason TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS kycrejectionreason TEXT').catch(() => {});
         await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS vehicle_types TEXT DEFAULT \'bike\'').catch(() => {});
@@ -1080,6 +1106,101 @@ async function ensureKycColumns() {
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS serviceCenterType TEXT DEFAULT \'local\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedCarBrands TEXT DEFAULT \'\'').catch(() => {});
         await pool.query('ALTER TABLE garages ADD COLUMN IF NOT EXISTS authorizedBikeBrands TEXT DEFAULT \'\'').catch(() => {});
+
+        // Promo tracking columns (First 5 Rides Free Promotion)
+        await pool.query(`
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS is_promotional_ride BOOLEAN DEFAULT FALSE;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS promo_type VARCHAR(64) DEFAULT NULL;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS original_customer_fare NUMERIC(10,2) DEFAULT 0;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS promo_discount_amount NUMERIC(10,2) DEFAULT 0;
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS promo_absorbed_by VARCHAR(64) DEFAULT 'redrivo';
+
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS is_promotional_ride BOOLEAN DEFAULT FALSE;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS promo_type VARCHAR(64) DEFAULT NULL;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS original_customer_fare NUMERIC(10,2) DEFAULT 0;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS promo_discount_amount NUMERIC(10,2) DEFAULT 0;
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS promo_absorbed_by VARCHAR(64) DEFAULT 'redrivo';
+        `).catch(e => console.warn('promo columns ensure failed:', e.message));
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS vehicle_plate_change_requests (
+                id VARCHAR(64) PRIMARY KEY,
+                customer_id VARCHAR(64) NOT NULL,
+                vehicle_id VARCHAR(64) NOT NULL,
+                current_plate VARCHAR(32) NOT NULL,
+                requested_plate VARCHAR(32) NOT NULL,
+                normalized_requested_plate VARCHAR(32) NOT NULL,
+                rc_doc_url TEXT NOT NULL,
+                insurance_doc_url TEXT NOT NULL,
+                is_ownership_changed BOOLEAN DEFAULT FALSE,
+                form29_30_doc_url TEXT,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                rejection_reason TEXT,
+                reviewed_by VARCHAR(64),
+                reviewed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_vpcr_status ON vehicle_plate_change_requests(status);
+            CREATE INDEX IF NOT EXISTS idx_vpcr_customer ON vehicle_plate_change_requests(customer_id);
+            CREATE INDEX IF NOT EXISTS idx_vpcr_vehicle ON vehicle_plate_change_requests(vehicle_id);
+        `).catch(e => console.warn('vehicle_plate_change_requests ensure failed:', e.message));
+
+        // Offers Management System Tables & Migration
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS offers (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                ride_count INTEGER NOT NULL DEFAULT 5,
+                max_free_distance_km NUMERIC(6,2) DEFAULT 30.0,
+                start_date TIMESTAMPTZ DEFAULT NOW(),
+                end_date TIMESTAMPTZ NOT NULL,
+                vehicle_scope VARCHAR(16) NOT NULL DEFAULT 'both',
+                target_type VARCHAR(16) NOT NULL DEFAULT 'all',
+                status VARCHAR(16) NOT NULL DEFAULT 'active',
+                created_by VARCHAR(64),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_offers_status ON offers(status);
+            CREATE INDEX IF NOT EXISTS idx_offers_end_date ON offers(end_date);
+
+            CREATE TABLE IF NOT EXISTS offer_target_customers (
+                id SERIAL PRIMARY KEY,
+                offer_id VARCHAR(64) NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+                customer_id VARCHAR(64) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(offer_id, customer_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_otc_offer_id ON offer_target_customers(offer_id);
+            CREATE INDEX IF NOT EXISTS idx_otc_customer_id ON offer_target_customers(customer_id);
+
+            ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS offer_id VARCHAR(64);
+            ALTER TABLE trips ADD COLUMN IF NOT EXISTS offer_id VARCHAR(64);
+
+            -- Migrate default Launch Promotion Offer
+            INSERT INTO offers (
+                id, name, description, ride_count, max_free_distance_km, start_date, end_date, vehicle_scope, target_type, status, created_at, updated_at
+            ) VALUES (
+                'off_launch_sep2026',
+                'Launch Promotion: First 5 Rides Free',
+                'Initial platform launch promotion — first 30km free per ride for all customers',
+                5,
+                30.0,
+                '2026-09-11 00:00:00+05:30',
+                '2026-11-10 23:59:59+05:30',
+                'both',
+                'all',
+                'active',
+                NOW(),
+                NOW()
+            ) ON CONFLICT (id) DO NOTHING;
+
+            -- Backfill existing promo service requests to off_launch_sep2026
+            UPDATE service_requests SET offer_id = 'off_launch_sep2026' WHERE is_promotional_ride = true AND (offer_id IS NULL OR offer_id = '');
+            UPDATE trips SET offer_id = 'off_launch_sep2026' WHERE is_promotional_ride = true AND (offer_id IS NULL OR offer_id = '');
+        `).catch(e => console.warn('offers system tables ensure failed:', e.message));
         
         await pool.query(`
             CREATE TABLE IF NOT EXISTS investor_access_requests (
@@ -1181,20 +1302,31 @@ async function notifyMarshalsFCM(title, body, payloadData = {}) {
 }
 
 async function notifyUserFCM(userId, title, body, payloadData = {}) {
+    if (!userId || !title) return;
     try {
         if (!fcmInitialized) return;
-        const res = await pool.query("SELECT fcmToken FROM users WHERE id = $1 AND fcmToken IS NOT NULL", [userId]);
+        const res = await pool.query(`
+            SELECT fcmtoken as "fcmToken" FROM users WHERE id = $1 AND fcmtoken IS NOT NULL
+            UNION
+            SELECT fcmtoken as "fcmToken" FROM customers WHERE id = $1 AND fcmtoken IS NOT NULL
+        `, [userId]);
         if (res.rows.length === 0) return;
-        const token = res.rows[0].fcmtoken || res.rows[0].fcmToken;
+        const token = res.rows[0].fcmToken || res.rows[0].fcmtoken;
         if (!token) return;
+
+        const stringifiedData = {};
+        for (const [k, v] of Object.entries(payloadData || {})) {
+            stringifiedData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        }
+
         await getMessaging().send({
             token: token,
             notification: { title, body },
-            data: payloadData,
+            data: stringifiedData,
             android: { priority: 'high', notification: { channel_id: 'marshal-alerts', default_sound: true } }
         });
-        console.log('Sent FCM to user:', userId);
-    } catch(e) { console.error('FCM Error for user:', userId, e); }
+        console.log(`[FCM_NOTIFY] Sent FCM to user ${userId} | Title: "${title}"`);
+    } catch(e) { console.error(`[FCM_ERROR] Failed for user ${userId}:`, e.message); }
 }
 
 const apiRouter = express.Router();
@@ -1880,6 +2012,8 @@ apiRouter.get('/settings/global', (req, res) => {
             payout_days: 3,
             car_platform_base_charge: 99,
             bike_platform_base_charge: 49,
+            platform_base_charge_override_enabled: false,
+            platform_base_charge_override_value: 0,
             car_base_fare: 150,
             bike_base_fare: 50,
             car_customer_rate_per_km: 30,
@@ -2156,6 +2290,23 @@ apiRouter.put('/users/:id/fcm-token', authMiddleware, async (req, res) => {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ error: 'Token required' });
         await pool.query("UPDATE users SET fcmToken = $1 WHERE id = $2", [fcmToken, req.params.id]);
+        await pool.query("UPDATE customers SET fcmToken = $1 WHERE id = $2", [fcmToken, req.params.id]).catch(() => {});
+        res.json({ success: true });
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+apiRouter.put('/customers/:id/fcm-token', authMiddleware, async (req, res) => {
+    if (req.user.role !== 'admin' && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) return res.status(400).json({ error: 'Token required' });
+        await pool.query("UPDATE customers SET fcmToken = $1 WHERE id = $2", [fcmToken, req.params.id]);
+        await pool.query("UPDATE users SET fcmToken = $1 WHERE id = $2", [fcmToken, req.params.id]).catch(() => {});
         res.json({ success: true });
     } catch(err) {
         console.error(err);
@@ -2679,6 +2830,270 @@ async function sendFast2SmsOtp(phone, otp) {
         return data;
     } catch (err) {
         console.warn('[FAST2SMS] SMS dispatch failed (non-fatal):', err.message);
+    }
+}
+
+// --- TRANSACTIONAL SMS NOTIFICATION DISPATCH HELPER ---
+async function sendTransactionalSms(phone, message) {
+    if (!phone || !message) return;
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    if (cleanPhone.length !== 10) {
+        console.warn('[SMS_ALERT] Invalid 10-digit phone number:', phone);
+        return;
+    }
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    if (!apiKey) {
+        console.warn('[SMS_ALERT] FAST2SMS_API_KEY is not configured in environment. SMS dispatch skipped.');
+        return;
+    }
+    try {
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        const data = await res.json().catch(() => null);
+        if (data && data.return === false) {
+            console.warn('[SMS_ALERT] Fast2SMS dispatch response:', JSON.stringify(data));
+        } else {
+            console.log(`[SMS_ALERT] SMS dispatched successfully to ${cleanPhone.slice(0, 2)}******${cleanPhone.slice(-2)} | Message: "${message.slice(0, 50)}..."`);
+        }
+        return data;
+    } catch (err) {
+        console.warn('[SMS_ALERT] SMS dispatch failed (non-fatal):', err.message);
+    }
+}
+
+// Helper to look up customer id, phone, name & email for a trip
+async function getTripCustomerInfo(trip, clientOrPool = pool) {
+    if (!trip) return null;
+    try {
+        let custId = trip.customerid || trip.customerId || null;
+        let custPhone = null;
+        let custName = null;
+        let custEmail = null;
+        const srId = trip.servicerequestid || trip.serviceRequestId || trip.sr_id;
+
+        if (custId) {
+            const cRes = await clientOrPool.query(
+                "SELECT id, phone, name, email FROM customers WHERE id = $1 UNION SELECT id, phone, name, email FROM users WHERE id = $1",
+                [custId]
+            );
+            if (cRes.rows[0]) {
+                custId = cRes.rows[0].id || custId;
+                custPhone = cRes.rows[0].phone;
+                custName = cRes.rows[0].name;
+                custEmail = cRes.rows[0].email;
+            }
+        }
+        if ((!custPhone || !custId) && srId) {
+            const srRes = await clientOrPool.query(`
+                SELECT COALESCE(c.id, u.id) as id, COALESCE(c.phone, u.phone) as phone, COALESCE(c.name, u.name) as name, COALESCE(c.email, u.email) as email
+                FROM service_requests sr
+                LEFT JOIN customers c ON sr.customerId = c.id
+                LEFT JOIN users u ON sr.customerId = u.id
+                WHERE sr.id = $1
+            `, [srId]);
+            if (srRes.rows[0]) {
+                custId = custId || srRes.rows[0].id;
+                custPhone = custPhone || srRes.rows[0].phone;
+                custName = custName || srRes.rows[0].name;
+                custEmail = custEmail || srRes.rows[0].email;
+            }
+        }
+        return { id: custId, phone: custPhone, name: custName, email: custEmail };
+    } catch (err) {
+        console.warn('[TRIP_CUSTOMER_LOOKUP_ERROR]', err.message);
+        return { id: trip.customerid || trip.customerId || null, phone: null, name: null, email: null };
+    }
+}
+
+// Branded HTML Generator for Cancellation & Refund Receipts
+function generateCancellationEmailHtml({ trip, cust, tier, refundAmount, customerFee, originalFare, reason }) {
+    const customerName = cust?.name || 'Valued Customer';
+    const tripId = trip?.id || 'N/A';
+    const tripShortId = tripId.length > 8 ? tripId.slice(0, 8).toUpperCase() : tripId;
+    const formattedDate = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+    const totalPrepaid = parseFloat(originalFare || (refundAmount + customerFee)).toFixed(2);
+    const formattedFee = parseFloat(customerFee || 0).toFixed(2);
+    const formattedRefund = parseFloat(refundAmount || 0).toFixed(2);
+
+    let tierHeading = 'Trip Cancellation & Settlement';
+    let tierBadge = 'CANCELLED';
+    let tierBadgeColor = '#ef4444';
+    let tierBadgeBg = '#fee2e2';
+    let tierDescription = 'Your booking has been cancelled. Below is your detailed settlement breakdown and refund status.';
+
+    if (tier === 'tier1_free_cancel') {
+        tierHeading = 'Trip Cancelled (Free Window)';
+        tierBadge = '100% REFUNDED';
+        tierBadgeColor = '#059669';
+        tierBadgeBg = '#d1fae5';
+        tierDescription = 'Your booking was cancelled within the free 3-minute cancellation window. No cancellation fee was charged, and a full 100% refund has been initiated.';
+    } else if (tier === 'tier2_standard_cancel') {
+        tierHeading = 'Trip Cancelled En Route';
+        tierBadge = 'FEE APPLIED';
+        tierBadgeColor = '#d97706';
+        tierBadgeBg = '#fef3c7';
+        tierDescription = 'Your booking was cancelled while your assigned driver was en route. A standard cancellation fee was deducted to compensate the driver for transit time.';
+    } else if (tier === 'tier3_driver_noshow') {
+        tierHeading = 'Driver Arrival Timeout — Full Refund';
+        tierBadge = '100% REFUNDED';
+        tierBadgeColor = '#059669';
+        tierBadgeBg = '#d1fae5';
+        tierDescription = 'We sincerely apologize — your driver was unable to reach your pickup location within the designated arrival window. A full 100% refund has been processed.';
+    } else if (tier === 'tier4_customer_noshow') {
+        tierHeading = 'Customer No-Show Settlement';
+        tierBadge = 'NO-SHOW FEE';
+        tierBadgeColor = '#dc2626';
+        tierBadgeBg = '#fee2e2';
+        tierDescription = 'The driver arrived at your pickup location and waited for the required arrival grace period. A no-show fee was applied to compensate the driver.';
+    }
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${tierHeading}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1f2937;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6; padding: 30px 15px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="100%" style="max-width: 560px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #0f172a; padding: 24px 30px; text-align: left;">
+                            <table width="100%" cellspacing="0" cellpadding="0">
+                                <tr>
+                                    <td>
+                                        <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">ReDrivo</h1>
+                                        <p style="margin: 2px 0 0 0; color: #94a3b8; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">Professional On-Demand Drivers</p>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; background-color: ${tierBadgeBg}; color: ${tierBadgeColor};">
+                                            ${tierBadge}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Body Content -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <h2 style="margin: 0 0 10px 0; color: #0f172a; font-size: 18px; font-weight: 700;">${tierHeading}</h2>
+                            <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 14px; line-height: 1.5;">
+                                Hi <strong>${customerName}</strong>,
+                            </p>
+                            <p style="margin: 0 0 24px 0; color: #4b5563; font-size: 14px; line-height: 1.5;">
+                                ${tierDescription}
+                            </p>
+
+                            <!-- Breakdown Card -->
+                            <table width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px;">
+                                <tr>
+                                    <td style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+                                        <table width="100%" cellspacing="0" cellpadding="0">
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px;">Booking Reference</td>
+                                                <td align="right" style="color: #0f172a; font-size: 13px; font-family: monospace; font-weight: 600;">#${tripShortId}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; padding-top: 6px;">Date & Time</td>
+                                                <td align="right" style="color: #0f172a; font-size: 13px; font-weight: 500; padding-top: 6px;">${formattedDate}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 16px 20px;">
+                                        <table width="100%" cellspacing="0" cellpadding="0">
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 14px;">Prepaid Booking Amount</td>
+                                                <td align="right" style="color: #0f172a; font-size: 14px; font-weight: 600;">₹${totalPrepaid}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 14px; padding-top: 8px;">Cancellation / No-Show Fee</td>
+                                                <td align="right" style="color: #dc2626; font-size: 14px; font-weight: 600; padding-top: 8px;">- ₹${formattedFee}</td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="2" style="padding-top: 12px; padding-bottom: 12px;">
+                                                    <div style="height: 1px; background-color: #cbd5e1;"></div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #0f172a; font-size: 15px; font-weight: 700;">Net Refund Amount</td>
+                                                <td align="right" style="color: #059669; font-size: 16px; font-weight: 800;">₹${formattedRefund}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Refund Details -->
+                            <div style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
+                                <p style="margin: 0; color: #065f46; font-size: 13px; line-height: 1.4;">
+                                    <strong>Refund Status:</strong> Initiated to your original payment method. Depending on your bank/UPI provider, funds typically reflect in <strong>3-5 business days</strong>.
+                                </p>
+                            </div>
+
+                            <!-- Dispute Notice -->
+                            <p style="margin: 0; color: #64748b; font-size: 12px; line-height: 1.5;">
+                                Have questions or believe this was recorded incorrectly? You can file a dispute directly in the <strong>ReDrivo App</strong> or reply to this email at <a href="mailto:support@redrivo.in" style="color: #2563eb; text-decoration: none;">support@redrivo.in</a>.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8fafc; padding: 20px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 4px 0; color: #94a3b8; font-size: 12px;">
+                                © ${new Date().getFullYear()} ReDrivo Inc. All rights reserved.
+                            </p>
+                            <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+                                Bangalore, Karnataka, India • <a href="https://redrivo.in" style="color: #94a3b8; text-decoration: underline;">redrivo.in</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    `.trim();
+}
+
+// Transactional Email Receipt Dispatcher
+async function sendCancellationEmailReceipt({ trip, cust, tier, refundAmount, customerFee, originalFare, reason }) {
+    if (!cust || !cust.email) {
+        console.log(`[EMAIL_RECEIPT] Skipped - no email on file for customer (${cust?.id || cust?.phone || trip?.customerid || 'unknown'})`);
+        return { skipped: true, reason: 'no_email' };
+    }
+    try {
+        const fromEmail = process.env.RESEND_FROM_EMAIL || '"ReDrivo Support" <support@redrivo.in>';
+        const tripId = trip?.id || 'N/A';
+        const tripShortId = tripId.length > 8 ? tripId.slice(0, 8).toUpperCase() : tripId;
+        const subject = tier === 'tier3_driver_noshow'
+            ? `ReDrivo Trip Update: Driver No-Show & Full Refund (#${tripShortId})`
+            : `ReDrivo Cancellation & Refund Receipt (#${tripShortId})`;
+        
+        const html = generateCancellationEmailHtml({ trip, cust, tier, refundAmount, customerFee, originalFare, reason });
+        const text = `ReDrivo Cancellation Receipt for Trip #${tripId}.\nTier: ${tier}\nOriginal Amount: ₹${(originalFare || (refundAmount + customerFee)).toFixed(2)}\nCancellation Fee: ₹${customerFee.toFixed(2)}\nNet Refund Amount: ₹${refundAmount.toFixed(2)}\nRefund has been processed to your original payment method. Contact support@redrivo.in for questions.`;
+
+        console.log(`[EMAIL_RECEIPT] Dispatching cancellation receipt to ${cust.email} for Trip #${tripShortId} (${tier})...`);
+        const result = await transporter.sendMail({
+            from: fromEmail,
+            to: cust.email,
+            subject: subject,
+            text: text,
+            html: html
+        });
+        return result;
+    } catch (err) {
+        console.warn('[EMAIL_RECEIPT_ERROR]', err.message);
+        return { error: err.message };
     }
 }
 
@@ -5298,9 +5713,92 @@ apiRouter.post('/crm/driver-subscriptions/:id/refund', authMiddleware, requireRo
 // ==========================================
 // CUSTOMER ADVANCE PAYMENTS (RIDE BOOKING)
 // ==========================================
+// DUAL-LAYER ANTI-FRAUD & PROMO HELPERS
+// ==========================================
+
+function normalizeVehiclePlate(plate) {
+    if (!plate || typeof plate !== 'string') return '';
+    return plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+async function resolveVehiclePlate(vehicleId, passedPlate) {
+    if (passedPlate && typeof passedPlate === 'string' && passedPlate.trim().length > 0) {
+        return passedPlate.trim();
+    }
+    if (vehicleId) {
+        try {
+            const pgVeh = await pool.query("SELECT plate FROM vehicles WHERE id = $1 LIMIT 1", [vehicleId]);
+            if (pgVeh.rows.length > 0 && pgVeh.rows[0].plate) {
+                return pgVeh.rows[0].plate;
+            }
+        } catch (e) {}
+        try {
+            const sqliteVeh = await new Promise((resolve) => {
+                db.get("SELECT plate FROM vehicles WHERE id = ?", [vehicleId], (err, row) => {
+                    resolve(row || null);
+                });
+            });
+            if (sqliteVeh && sqliteVeh.plate) {
+                return sqliteVeh.plate;
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+
+async function isSameCustomerAccount(custA, custB) {
+    if (!custA || !custB) return false;
+    if (custA === custB) return true;
+    try {
+        const res = await pool.query(
+            `SELECT phone FROM customers WHERE id = $1 
+             UNION 
+             SELECT phone FROM users WHERE id = $1`, 
+            [custA]
+        );
+        const phonesA = res.rows.map(r => r.phone).filter(Boolean);
+        if (phonesA.length === 0) return false;
+        
+        const resB = await pool.query(
+            `SELECT phone FROM customers WHERE id = $1 
+             UNION 
+             SELECT phone FROM users WHERE id = $1`, 
+            [custB]
+        );
+        const phonesB = resB.rows.map(r => r.phone).filter(Boolean);
+        return phonesA.some(pA => phonesB.includes(pA));
+    } catch (e) {
+        return false;
+    }
+}
+
+async function registerPromoVehiclePlate({ plate, customerId, serviceRequestId }) {
+    const norm = normalizeVehiclePlate(plate);
+    if (!norm || !customerId) return null;
+    try {
+        const regId = 'pvr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const insertRes = await pool.query(`
+            INSERT INTO promo_vehicle_registrations (
+                id, plate, normalized_plate, first_customer_id, first_promo_request_id, status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
+            ON CONFLICT (normalized_plate) DO NOTHING
+            RETURNING *;
+        `, [regId, plate, norm, customerId, serviceRequestId || null]);
+        return insertRes.rows[0] || null;
+    } catch (err) {
+        console.warn('[PROMO_VEHICLE_REG_ERR]', err.message);
+        return null;
+    }
+}
 
 async function calculateServerSideFare(params) {
     const {
+        customerId,
+        customerPhone,
+        phone,
+        vehicleId,
+        vehiclePlate,
+        plate,
         distanceKm = 0,
         pricingMode = 'distance',
         estimatedHours = 4,
@@ -5321,7 +5819,19 @@ async function calculateServerSideFare(params) {
     const ratePerKm = parseFloat(settings[`${typeKey}_customer_rate_per_km`] !== undefined ? settings[`${typeKey}_customer_rate_per_km`] : (settings['customer_rate_per_km'] || (typeKey === 'car' ? 30.0 : 8.0)));
     const baseFareFloor = parseFloat(settings[`${typeKey}_base_fare`] !== undefined ? settings[`${typeKey}_base_fare`] : (settings['base_fare'] || (typeKey === 'car' ? 150.0 : 50.0)));
     const haltRate = parseFloat(settings[`${typeKey}_halt_rate_per_min`] !== undefined ? settings[`${typeKey}_halt_rate_per_min`] : (settings['halt_rate_per_min'] || (typeKey === 'car' ? 5.0 : 3.0)));
-    const platformBaseCharge = parseFloat(settings[`${typeKey}_platform_base_charge`] !== undefined ? settings[`${typeKey}_platform_base_charge`] : (settings['platform_base_charge'] || (bookingFlow === 'p2p' ? 99.0 : 99.0)));
+    
+    // Check if Promotional Platform Base Charge Override is enabled (Applies to point-to-point distance trips for both Car & Bike)
+    const isOverrideEnabled = settings['platform_base_charge_override_enabled'] === 'true' || 
+                              settings['platform_base_charge_override_enabled'] === '1' || 
+                              settings['platform_base_charge_override_enabled'] === true || 
+                              settings['platform_base_charge_override_enabled'] === 1;
+    let platformBaseCharge;
+    if (isOverrideEnabled && settings['platform_base_charge_override_value'] !== undefined && settings['platform_base_charge_override_value'] !== '') {
+        const parsedOverride = parseFloat(settings['platform_base_charge_override_value']);
+        platformBaseCharge = isNaN(parsedOverride) ? 0 : parsedOverride;
+    } else {
+        platformBaseCharge = parseFloat(settings[`${typeKey}_platform_base_charge`] !== undefined ? settings[`${typeKey}_platform_base_charge`] : (settings['platform_base_charge'] || (bookingFlow === 'p2p' ? 99.0 : 99.0)));
+    }
 
     // Towing fee if vehicle is not working
     let towingFee = 0;
@@ -5335,7 +5845,25 @@ async function calculateServerSideFare(params) {
         const hourlyRate = parseFloat(settings[`${typeKey}_hourly_rate`] || (typeKey === 'car' ? '150.0' : '80.0'));
         const hours = parseFloat(estimatedHours) || 4;
         const total = (hours * hourlyRate) + towingFee;
-        return Math.round(total * 100) / 100;
+        const standardFare = Math.round(total * 100) / 100;
+        return {
+            customerFare: standardFare,
+            totalCustomerPrice: standardFare,
+            originalCustomerFare: standardFare,
+            promoDiscountAmount: 0,
+            isPromotionalRide: false,
+            promoType: null,
+            promoAbsorbedBy: 'redrivo',
+            promoUsedCount: 0,
+            promoRemainingCount: 0,
+            isPlateDisqualified: false,
+            promoDisqualificationReason: null,
+            normalizedPlate: null,
+            applicableDistanceCharge: 0,
+            platformBaseCharge: 0,
+            haltCharge: 0,
+            towingFee: towingFee
+        };
     }
 
     // Distance pricing mode: Platform Base Charge + max(Base Fare Floor, Distance * Rate per KM) + Halt Charges + Towing
@@ -5349,14 +5877,196 @@ async function calculateServerSideFare(params) {
         });
     }
     const haltCharge = totalHaltMinutes * haltRate;
-    const totalFare = platformBaseCharge + applicableDistanceCharge + haltCharge + towingFee;
-    return Math.round(totalFare * 100) / 100;
+    const standardTotalFare = Math.round((platformBaseCharge + applicableDistanceCharge + haltCharge + towingFee) * 100) / 100;
+
+    // --- MULTI-OFFER PROMOTIONAL ENGINE & TIE-BREAK RESOLUTION ---
+    const targetCustId = customerId || null;
+    const targetPhone = customerPhone || phone || null;
+
+    // Dual-layer Anti-Fraud: Global vehicle plate registration check across all promotional offers
+    const rawPlate = await resolveVehiclePlate(vehicleId, vehiclePlate || plate);
+    const normalizedPlate = normalizeVehiclePlate(rawPlate);
+    let isPlateDisqualified = false;
+    let promoDisqualificationReason = null;
+
+    if (normalizedPlate) {
+        try {
+            const regRes = await pool.query(
+                "SELECT * FROM promo_vehicle_registrations WHERE normalized_plate = $1 AND status = 'active' LIMIT 1",
+                [normalizedPlate]
+            );
+            if (regRes.rows.length > 0) {
+                const reg = regRes.rows[0];
+                const isOwner = targetCustId ? await isSameCustomerAccount(reg.first_customer_id, targetCustId) : false;
+                if (!isOwner) {
+                    isPlateDisqualified = true;
+                    promoDisqualificationReason = 'Vehicle plate is already registered to another account for promotional rides';
+                }
+            }
+        } catch (plateErr) {
+            console.warn('[PROMO_PLATE_CHECK_ERR]', plateErr.message);
+        }
+    }
+
+    let winningOffer = null;
+    let winningOfferUsedCount = 0;
+
+    if (pricingMode === 'distance' && !isPlateDisqualified) {
+        try {
+            // 1. Fetch active offers matching current timestamp and vehicle scope
+            const offersRes = await pool.query(`
+                SELECT o.* FROM offers o
+                WHERE o.status = 'active'
+                  AND (o.start_date IS NULL OR o.start_date <= NOW())
+                  AND (o.end_date >= NOW())
+                  AND (o.vehicle_scope = 'both' OR o.vehicle_scope = $1)
+                ORDER BY o.created_at ASC
+            `, [typeKey]);
+
+            const activeOffers = offersRes.rows || [];
+            const candidateOffers = [];
+
+            for (const offer of activeOffers) {
+                let isAudienceEligible = false;
+                if (offer.target_type === 'all') {
+                    isAudienceEligible = true;
+                } else if (offer.target_type === 'specific') {
+                    if (targetCustId) {
+                        const checkTarget = await pool.query(
+                            `SELECT 1 FROM offer_target_customers otc
+                             WHERE otc.offer_id = $1 
+                               AND (otc.customer_id = $2 OR otc.customer_id IN (
+                                   SELECT id FROM customers WHERE phone = (SELECT phone FROM customers WHERE id = $2 LIMIT 1)
+                               )) LIMIT 1`,
+                            [offer.id, targetCustId]
+                        );
+                        if (checkTarget.rows.length > 0) isAudienceEligible = true;
+                    } else if (targetPhone) {
+                        const checkTarget = await pool.query(
+                            `SELECT 1 FROM offer_target_customers otc
+                             JOIN customers c ON otc.customer_id = c.id
+                             WHERE otc.offer_id = $1 AND c.phone = $2 LIMIT 1`,
+                            [offer.id, targetPhone]
+                        );
+                        if (checkTarget.rows.length > 0) isAudienceEligible = true;
+                    }
+                }
+
+                if (!isAudienceEligible) continue;
+
+                // Count usage for this specific offer
+                let usedCount = 0;
+                if (targetCustId) {
+                    const usageRes = await pool.query(
+                        `SELECT COUNT(*)::int as count FROM service_requests 
+                         WHERE (customerid = $1 OR customerid IN (SELECT id FROM customers WHERE phone = (SELECT phone FROM customers WHERE id = $1 LIMIT 1))) 
+                           AND offer_id = $2
+                           AND is_promotional_ride = true 
+                           AND status NOT IN ('cancelled', 'rejected')`,
+                        [targetCustId, offer.id]
+                    ).catch(() => ({ rows: [{ count: 0 }] }));
+                    usedCount = parseInt(usageRes.rows[0]?.count || 0, 10);
+                } else if (targetPhone) {
+                    const usageRes = await pool.query(
+                        `SELECT COUNT(*)::int as count FROM service_requests 
+                         WHERE customerid IN (SELECT id FROM customers WHERE phone = $1) 
+                           AND offer_id = $2
+                           AND is_promotional_ride = true 
+                           AND status NOT IN ('cancelled', 'rejected')`,
+                        [targetPhone, offer.id]
+                    ).catch(() => ({ rows: [{ count: 0 }] }));
+                    usedCount = parseInt(usageRes.rows[0]?.count || 0, 10);
+                }
+
+                const remainingCount = Math.max(0, offer.ride_count - usedCount);
+                if (remainingCount > 0) {
+                    candidateOffers.push({
+                        offer,
+                        usedCount,
+                        remainingCount,
+                        isSpecific: offer.target_type === 'specific',
+                        endTime: new Date(offer.end_date).getTime()
+                    });
+                }
+            }
+
+            // TIE-BREAK RULE:
+            // 1. Specific Target ('specific') takes priority over General ('all')
+            // 2. Earliest End Date (expires soonest first)
+            // 3. Highest Remaining Free Rides
+            if (candidateOffers.length > 0) {
+                candidateOffers.sort((a, b) => {
+                    if (a.isSpecific !== b.isSpecific) return a.isSpecific ? -1 : 1;
+                    if (a.endTime !== b.endTime) return a.endTime - b.endTime;
+                    return b.remainingCount - a.remainingCount;
+                });
+                winningOffer = candidateOffers[0].offer;
+                winningOfferUsedCount = candidateOffers[0].usedCount;
+            }
+        } catch (offerErr) {
+            console.warn('[OFFER_RESOLUTION_ERR]', offerErr.message);
+        }
+    }
+
+    let customerChargedFare = standardTotalFare;
+    let promoDiscountAmount = 0;
+    let isPromotionalRide = false;
+    let promoType = null;
+    let appliedOfferId = null;
+    let appliedOfferName = null;
+    const originalCustomerFare = standardTotalFare;
+
+    if (winningOffer) {
+        isPromotionalRide = true;
+        promoType = 'free_ride_offer';
+        appliedOfferId = winningOffer.id;
+        appliedOfferName = winningOffer.name;
+        const maxPromoKm = parseFloat(winningOffer.max_free_distance_km || 30.0);
+
+        if (dist <= maxPromoKm) {
+            // Option B: <= maxPromoKm is 100% free (waiving platform charge, base fare & distance charge)
+            customerChargedFare = towingFee;
+            promoDiscountAmount = Math.max(0, originalCustomerFare - customerChargedFare);
+        } else {
+            // Option B: > maxPromoKm waives first maxPromoKm, customer pays only for distance beyond maxPromoKm
+            const overDistanceKm = dist - maxPromoKm;
+            const marginalDistanceCharge = Math.round(overDistanceKm * ratePerKm);
+            customerChargedFare = Math.round((marginalDistanceCharge + haltCharge + towingFee) * 100) / 100;
+            promoDiscountAmount = Math.max(0, originalCustomerFare - customerChargedFare);
+        }
+    }
+
+    return {
+        customerFare: customerChargedFare,
+        totalCustomerPrice: customerChargedFare,
+        originalCustomerFare: originalCustomerFare,
+        promoDiscountAmount: promoDiscountAmount,
+        isPromotionalRide: isPromotionalRide,
+        promoType: promoType,
+        offerId: appliedOfferId,
+        offerName: appliedOfferName,
+        promoAbsorbedBy: 'redrivo',
+        promoUsedCount: winningOfferUsedCount,
+        promoRemainingCount: winningOffer ? Math.max(0, winningOffer.ride_count - winningOfferUsedCount - 1) : 0,
+        isPlateDisqualified: !!isPlateDisqualified,
+        promoDisqualificationReason: promoDisqualificationReason || null,
+        normalizedPlate: normalizedPlate || null,
+        applicableDistanceCharge: applicableDistanceCharge,
+        platformBaseCharge: platformBaseCharge,
+        haltCharge: haltCharge,
+        towingFee: towingFee
+    };
 }
 
 // Unified API endpoint for calculating live customer fare and driver payout
 apiRouter.post('/pricing/calculate', async (req, res) => {
     try {
         const {
+            customerId,
+            customerPhone,
+            vehicleId,
+            vehiclePlate,
+            plate,
             distanceKm = 0,
             pricingMode = 'distance',
             estimatedHours = 4,
@@ -5367,20 +6077,46 @@ apiRouter.post('/pricing/calculate', async (req, res) => {
             driverPayoutModel = 'commission'
         } = req.body;
 
-        const customerFare = await calculateServerSideFare({
-            distanceKm, pricingMode, estimatedHours, vehicleType, vehicleCondition, routeStops, bookingFlow
+        const pricing = await calculateServerSideFare({
+            customerId,
+            customerPhone,
+            vehicleId,
+            vehiclePlate,
+            plate,
+            distanceKm,
+            pricingMode,
+            estimatedHours,
+            vehicleType,
+            vehicleCondition,
+            routeStops,
+            bookingFlow
         });
 
         const commRes = await pool.query("SELECT commission_rate_percent FROM payout_model_rates WHERE id = 'current_rates'");
         const commPct = parseFloat(commRes.rows[0]?.commission_rate_percent !== undefined ? commRes.rows[0].commission_rate_percent : 20.0);
         
         const isSubscribed = driverPayoutModel === 'subscription';
-        const driverPayout = isSubscribed ? customerFare : Math.round(customerFare * (1 - (commPct / 100)));
-        const platformCommission = customerFare - driverPayout;
+        // CRITICAL REQUIREMENT: Driver payout calculated on FULL original fare, NEVER on discounted promo fare
+        const driverPayout = isSubscribed ? pricing.originalCustomerFare : Math.round(pricing.originalCustomerFare * (1 - (commPct / 100)));
+        const platformCommission = pricing.originalCustomerFare - driverPayout;
 
         res.json({
             success: true,
-            customerFare,
+            customerFare: pricing.customerFare,
+            originalCustomerFare: pricing.originalCustomerFare,
+            promoDiscountAmount: pricing.promoDiscountAmount,
+            isPromotionalRide: pricing.isPromotionalRide,
+            promoType: pricing.promoType,
+            offerId: pricing.offerId || null,
+            offerName: pricing.offerName || null,
+            promoAbsorbedBy: pricing.promoAbsorbedBy,
+            promoUsedCount: pricing.promoUsedCount,
+            promoRemainingCount: pricing.promoRemainingCount,
+            isPlateDisqualified: pricing.isPlateDisqualified,
+            promoDisqualificationReason: pricing.promoDisqualificationReason,
+            normalizedPlate: pricing.normalizedPlate,
+            platformBaseCharge: pricing.platformBaseCharge,
+            applicableDistanceCharge: pricing.applicableDistanceCharge,
             driverPayout,
             commissionRatePercent: commPct,
             isSubscribed,
@@ -5389,6 +6125,389 @@ apiRouter.post('/pricing/calculate', async (req, res) => {
     } catch (err) {
         console.error('Pricing calculation error:', err);
         res.status(500).json({ error: 'Failed to calculate pricing: ' + err.message });
+    }
+});
+
+// ==========================================
+// OFFERS MANAGEMENT REST APIS (CRM ADMIN)
+// ==========================================
+
+// 1. List all offers with audience counts, usage, and subsidized metrics
+apiRouter.get('/offers', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const offersRes = await pool.query(`
+            SELECT 
+                o.*,
+                COALESCE(
+                    (SELECT COUNT(*)::int FROM offer_target_customers otc WHERE otc.offer_id = o.id),
+                    0
+                ) as target_customer_count,
+                COALESCE(
+                    (SELECT COUNT(*)::int FROM service_requests sr 
+                     WHERE sr.offer_id = o.id AND sr.is_promotional_ride = true AND sr.status NOT IN ('cancelled', 'rejected')),
+                    0
+                ) as claimed_rides_count,
+                COALESCE(
+                    (SELECT SUM(sr.promo_discount_amount)::numeric FROM service_requests sr 
+                     WHERE sr.offer_id = o.id AND sr.is_promotional_ride = true AND sr.status NOT IN ('cancelled', 'rejected')),
+                    0
+                ) as subsidized_amount_total
+            FROM offers o
+            ORDER BY o.created_at DESC
+        `);
+
+        const offers = [];
+        for (const offer of offersRes.rows) {
+            let targetCustomers = [];
+            if (offer.target_type === 'specific') {
+                const custRes = await pool.query(`
+                    SELECT c.id, c.name, c.phone, c.email 
+                    FROM offer_target_customers otc
+                    JOIN customers c ON otc.customer_id = c.id
+                    WHERE otc.offer_id = $1
+                    ORDER BY c.name ASC
+                `, [offer.id]);
+                targetCustomers = custRes.rows;
+            }
+            offers.push({
+                ...offer,
+                ride_count: parseInt(offer.ride_count || 5, 10),
+                max_free_distance_km: parseFloat(offer.max_free_distance_km || 30.0),
+                claimed_rides_count: parseInt(offer.claimed_rides_count || 0, 10),
+                subsidized_amount_total: parseFloat(offer.subsidized_amount_total || 0),
+                target_customer_count: parseInt(offer.target_customer_count || 0, 10),
+                target_customers: targetCustomers
+            });
+        }
+
+        res.json({ success: true, offers });
+    } catch (err) {
+        console.error('[GET_OFFERS_ERR]', err);
+        res.status(500).json({ error: 'Failed to fetch offers: ' + err.message });
+    }
+});
+
+// 2. Real-time Customer Usage Ledger across offers
+apiRouter.get('/offers/usage', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const usageRes = await pool.query(`
+            SELECT 
+                sr.customerid as customer_id,
+                COALESCE(c.name, 'Customer') as customer_name,
+                COALESCE(c.phone, '') as customer_phone,
+                COALESCE(c.email, '') as customer_email,
+                sr.offer_id,
+                COALESCE(o.name, 'Launch Promotion') as offer_name,
+                COALESCE(o.ride_count, 5) as rides_allotted,
+                COALESCE(o.status, 'active') as offer_status,
+                o.end_date as offer_end_date,
+                COUNT(sr.id)::int as rides_used,
+                COALESCE(SUM(sr.promo_discount_amount), 0)::numeric as total_subsidized,
+                MAX(sr.created_at) as last_used_at
+            FROM service_requests sr
+            LEFT JOIN customers c ON sr.customerid = c.id
+            LEFT JOIN offers o ON sr.offer_id = o.id
+            WHERE sr.is_promotional_ride = true 
+              AND sr.status NOT IN ('cancelled', 'rejected')
+              AND sr.offer_id IS NOT NULL
+            GROUP BY sr.customerid, c.name, c.phone, c.email, sr.offer_id, o.name, o.ride_count, o.status, o.end_date
+            ORDER BY MAX(sr.created_at) DESC
+        `);
+
+        const usage = (usageRes.rows || []).map(row => {
+            const used = parseInt(row.rides_used || 0, 10);
+            const allotted = parseInt(row.rides_allotted || 5, 10);
+            return {
+                ...row,
+                rides_used: used,
+                rides_allotted: allotted,
+                rides_remaining: Math.max(0, allotted - used),
+                total_subsidized: parseFloat(row.total_subsidized || 0)
+            };
+        });
+
+        res.json({ success: true, usage });
+    } catch (err) {
+        console.error('[GET_OFFERS_USAGE_ERR]', err);
+        res.status(500).json({ error: 'Failed to fetch offer usage ledger: ' + err.message });
+    }
+});
+
+// 3. Autocomplete Customer Search for Offer Targeting
+apiRouter.get('/crm/customers/search', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        const searchPattern = `%${q}%`;
+        const result = await pool.query(`
+            SELECT id, name, phone, email 
+            FROM customers 
+            WHERE status != 'banned'
+              AND ($1 = '' OR name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2)
+            ORDER BY name ASC 
+            LIMIT 25
+        `, [q, searchPattern]);
+
+        res.json({ success: true, customers: result.rows || [] });
+    } catch (err) {
+        console.error('[CUSTOMER_SEARCH_ERR]', err);
+        res.status(500).json({ error: 'Customer search failed: ' + err.message });
+    }
+});
+
+// 4. Create new Promotional Offer
+apiRouter.post('/offers', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const {
+            name,
+            description,
+            ride_count = 5,
+            max_free_distance_km = 30.0,
+            start_date,
+            end_date,
+            vehicle_scope = 'both',
+            target_type = 'all',
+            customer_ids = []
+        } = req.body;
+
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            return res.status(400).json({ error: 'Offer name is required.' });
+        }
+        if (!end_date) {
+            return res.status(400).json({ error: 'Offer end date is mandatory.' });
+        }
+        const parsedEndDate = new Date(end_date);
+        if (isNaN(parsedEndDate.getTime())) {
+            return res.status(400).json({ error: 'Invalid end date format.' });
+        }
+        if (parsedEndDate.getTime() <= Date.now()) {
+            return res.status(400).json({ error: 'End date must be in the future.' });
+        }
+
+        const rides = parseInt(ride_count, 10);
+        if (isNaN(rides) || rides < 1) {
+            return res.status(400).json({ error: 'Free ride allotment must be at least 1.' });
+        }
+
+        const maxDist = parseFloat(max_free_distance_km);
+        if (isNaN(maxDist) || maxDist <= 0) {
+            return res.status(400).json({ error: 'Maximum free distance must be greater than 0 km.' });
+        }
+
+        const validVehicleScopes = ['car', 'bike', 'both'];
+        const scope = validVehicleScopes.includes(vehicle_scope) ? vehicle_scope : 'both';
+
+        const validTargetTypes = ['all', 'specific'];
+        const target = validTargetTypes.includes(target_type) ? target_type : 'all';
+
+        if (target === 'specific' && (!Array.isArray(customer_ids) || customer_ids.length === 0)) {
+            return res.status(400).json({ error: 'Please select at least one customer for a targeted offer.' });
+        }
+
+        const offerId = 'off_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const startDateVal = start_date ? new Date(start_date).toISOString() : new Date().toISOString();
+        const endDateVal = parsedEndDate.toISOString();
+        const adminId = req.user?.id || 'u_admin';
+
+        const insertRes = await pool.query(`
+            INSERT INTO offers (
+                id, name, description, ride_count, max_free_distance_km,
+                start_date, end_date, vehicle_scope, target_type, status,
+                created_by, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, NOW(), NOW())
+            RETURNING *;
+        `, [
+            offerId, name.trim(), description ? description.trim() : null,
+            rides, maxDist, startDateVal, endDateVal, scope, target, adminId
+        ]);
+
+        const newOffer = insertRes.rows[0];
+
+        if (target === 'specific' && Array.isArray(customer_ids) && customer_ids.length > 0) {
+            for (const custId of customer_ids) {
+                if (!custId) continue;
+                await pool.query(`
+                    INSERT INTO offer_target_customers (offer_id, customer_id, created_at)
+                    VALUES ($1, $2, NOW())
+                    ON CONFLICT (offer_id, customer_id) DO NOTHING
+                `, [offerId, custId]);
+            }
+        }
+
+        res.json({ success: true, offer: newOffer });
+    } catch (err) {
+        console.error('[CREATE_OFFER_ERR]', err);
+        res.status(500).json({ error: 'Failed to create offer: ' + err.message });
+    }
+});
+
+// 5. Update Offer details or toggle status (Pause/Resume/Edit)
+apiRouter.patch('/offers/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            name,
+            description,
+            ride_count,
+            max_free_distance_km,
+            start_date,
+            end_date,
+            vehicle_scope,
+            target_type,
+            status,
+            customer_ids
+        } = req.body;
+
+        const checkRes = await pool.query("SELECT * FROM offers WHERE id = $1", [id]);
+        if (checkRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Offer not found.' });
+        }
+        const existing = checkRes.rows[0];
+
+        let updatedName = name !== undefined ? String(name).trim() : existing.name;
+        let updatedDesc = description !== undefined ? (description ? String(description).trim() : null) : existing.description;
+        let updatedRides = ride_count !== undefined ? parseInt(ride_count, 10) : existing.ride_count;
+        let updatedMaxDist = max_free_distance_km !== undefined ? parseFloat(max_free_distance_km) : parseFloat(existing.max_free_distance_km);
+        let updatedStartDate = start_date !== undefined ? new Date(start_date).toISOString() : existing.start_date;
+        let updatedEndDate = existing.end_date;
+        let updatedScope = vehicle_scope !== undefined ? vehicle_scope : existing.vehicle_scope;
+        let updatedTarget = target_type !== undefined ? target_type : existing.target_type;
+        let updatedStatus = status !== undefined ? status : existing.status;
+
+        if (end_date !== undefined) {
+            const parsedEnd = new Date(end_date);
+            if (isNaN(parsedEnd.getTime())) {
+                return res.status(400).json({ error: 'Invalid end date format.' });
+            }
+            updatedEndDate = parsedEnd.toISOString();
+        }
+
+        const updateRes = await pool.query(`
+            UPDATE offers SET
+                name = $1,
+                description = $2,
+                ride_count = $3,
+                max_free_distance_km = $4,
+                start_date = $5,
+                end_date = $6,
+                vehicle_scope = $7,
+                target_type = $8,
+                status = $9,
+                updated_at = NOW()
+            WHERE id = $10
+            RETURNING *;
+        `, [
+            updatedName, updatedDesc, updatedRides, updatedMaxDist,
+            updatedStartDate, updatedEndDate, updatedScope, updatedTarget,
+            updatedStatus, id
+        ]);
+
+        if (customer_ids !== undefined && Array.isArray(customer_ids)) {
+            await pool.query("DELETE FROM offer_target_customers WHERE offer_id = $1", [id]);
+            if (updatedTarget === 'specific') {
+                for (const custId of customer_ids) {
+                    if (!custId) continue;
+                    await pool.query(`
+                        INSERT INTO offer_target_customers (offer_id, customer_id, created_at)
+                        VALUES ($1, $2, NOW())
+                        ON CONFLICT (offer_id, customer_id) DO NOTHING
+                    `, [id, custId]);
+                }
+            }
+        }
+
+        res.json({ success: true, offer: updateRes.rows[0] });
+    } catch (err) {
+        console.error('[UPDATE_OFFER_ERR]', err);
+        res.status(500).json({ error: 'Failed to update offer: ' + err.message });
+    }
+});
+
+// 6. Delete or Archive Offer
+apiRouter.delete('/offers/:id', authMiddleware, requireRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const checkRes = await pool.query("SELECT * FROM offers WHERE id = $1", [id]);
+        if (checkRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Offer not found.' });
+        }
+
+        const usageCheck = await pool.query(
+            "SELECT COUNT(*)::int as count FROM service_requests WHERE offer_id = $1",
+            [id]
+        );
+        const usedCount = parseInt(usageCheck.rows[0]?.count || 0, 10);
+
+        if (usedCount > 0) {
+            await pool.query("UPDATE offers SET status = 'archived', updated_at = NOW() WHERE id = $1", [id]);
+            return res.json({
+                success: true,
+                archived: true,
+                message: `Offer has ${usedCount} associated ride records and was safely archived.`
+            });
+        } else {
+            await pool.query("DELETE FROM offers WHERE id = $1", [id]);
+            return res.json({
+                success: true,
+                archived: false,
+                message: 'Offer deleted successfully.'
+            });
+        }
+    } catch (err) {
+        console.error('[DELETE_OFFER_ERR]', err);
+        res.status(500).json({ error: 'Failed to delete offer: ' + err.message });
+    }
+});
+
+// Dedicated endpoint to check vehicle promo eligibility
+apiRouter.post('/promo/check-vehicle', async (req, res) => {
+    try {
+        const { plate, vehicleId, customerId } = req.body;
+        const rawPlate = await resolveVehiclePlate(vehicleId, plate);
+        const norm = normalizeVehiclePlate(rawPlate);
+        if (!norm) {
+            return res.json({ success: true, eligible: true, message: 'No vehicle plate provided' });
+        }
+
+        const regRes = await pool.query(
+            "SELECT * FROM promo_vehicle_registrations WHERE normalized_plate = $1 AND status = 'active' LIMIT 1",
+            [norm]
+        );
+
+        if (regRes.rows.length === 0) {
+            return res.json({
+                success: true,
+                eligible: true,
+                normalizedPlate: norm,
+                registered: false,
+                message: 'Vehicle plate is eligible for promotional rides'
+            });
+        }
+
+        const reg = regRes.rows[0];
+        const isOwner = customerId ? await isSameCustomerAccount(reg.first_customer_id, customerId) : false;
+
+        if (isOwner) {
+            return res.json({
+                success: true,
+                eligible: true,
+                normalizedPlate: norm,
+                registered: true,
+                isOwner: true,
+                message: 'Vehicle plate is registered to this account and eligible'
+            });
+        } else {
+            return res.json({
+                success: true,
+                eligible: false,
+                normalizedPlate: norm,
+                registered: true,
+                isOwner: false,
+                message: 'Vehicle plate is already registered to another account for promotional rides'
+            });
+        }
+    } catch (err) {
+        console.error('[PROMO_CHECK_VEHICLE_ERR]', err);
+        res.status(500).json({ error: 'Failed to check vehicle promo status: ' + err.message });
     }
 });
 
@@ -5421,6 +6540,14 @@ async function activateRideAdvancePaymentAtomic(orderId, paymentId, signature, m
     // 2. PUBLISH TO DRIVERS: Now insert service_requests with status 'pending' and is_advance_paid = true
     const draftId = payment.service_request_id;
     const reqMeta = payMeta.requestParams || {};
+    const pricingObj = payMeta.pricingObj || {};
+
+    const isPromo = pricingObj.isPromotionalRide || reqMeta.is_promotional_ride || false;
+    const promoType = isPromo ? (pricingObj.promoType || 'first_n_rides_free') : null;
+    const origFare = isPromo ? (pricingObj.originalCustomerFare || payment.estimated_fare) : (payment.estimated_fare || 0);
+    const discountAmt = isPromo ? (pricingObj.promoDiscountAmount || 0) : 0;
+    const absorbedBy = isPromo ? (pricingObj.promoAbsorbedBy || 'redrivo') : 'redrivo';
+    const offerId = pricingObj.offerId || reqMeta.offerId || reqMeta.offer_id || null;
 
     // SQLite dual-write for legacy polling feeds
     db.run(
@@ -5444,14 +6571,35 @@ async function activateRideAdvancePaymentAtomic(orderId, paymentId, signature, m
     await pool.query(`
         INSERT INTO service_requests (
             id, customerid, vehicleid, garageid, date, status, totalcustomerprice,
-            lat, lng, pickup_address, drop_address, is_advance_paid, created_at
-        ) VALUES ($1, $2, $3, $4, CURRENT_DATE, 'pending', $5, $6, $7, $8, $9, true, EXTRACT(EPOCH FROM NOW())*1000)
-        ON CONFLICT (id) DO UPDATE SET status = 'pending', is_advance_paid = true;
+            lat, lng, pickup_address, drop_address, is_advance_paid, created_at,
+            is_promotional_ride, promo_type, original_customer_fare, promo_discount_amount, promo_absorbed_by, offer_id
+        ) VALUES ($1, $2, $3, $4, CURRENT_DATE, 'pending', $5, $6, $7, $8, $9, true, EXTRACT(EPOCH FROM NOW())*1000, $10, $11, $12, $13, $14, $15)
+        ON CONFLICT (id) DO UPDATE SET 
+            status = 'pending', 
+            is_advance_paid = true,
+            is_promotional_ride = EXCLUDED.is_promotional_ride,
+            promo_type = EXCLUDED.promo_type,
+            original_customer_fare = EXCLUDED.original_customer_fare,
+            promo_discount_amount = EXCLUDED.promo_discount_amount,
+            promo_absorbed_by = EXCLUDED.promo_absorbed_by,
+            offer_id = EXCLUDED.offer_id;
     `, [
         draftId, payment.customer_id, reqMeta.vehicleId || null, reqMeta.garageId || null,
         payment.estimated_fare, reqMeta.lat || null, reqMeta.lng || null,
-        reqMeta.pickup_address || null, reqMeta.drop_address || null
+        reqMeta.pickup_address || null, reqMeta.drop_address || null,
+        isPromo, promoType, origFare, discountAmt, absorbedBy, offerId
     ]).catch(e => console.error("PG service_requests insert error:", e));
+
+    if (isPromo) {
+        const resolvedPlate = await resolveVehiclePlate(reqMeta.vehicleId, reqMeta.plate || reqMeta.vehiclePlate);
+        if (resolvedPlate) {
+            await registerPromoVehiclePlate({
+                plate: resolvedPlate,
+                customerId: payment.customer_id,
+                serviceRequestId: draftId
+            });
+        }
+    }
 
     return { claimed: true, payment };
 }
@@ -5460,7 +6608,7 @@ async function activateRideAdvancePaymentAtomic(orderId, paymentId, signature, m
 apiRouter.post('/customer/booking/create-order', async (req, res) => {
     try {
         const {
-            customerId, vehicleId, garageId,
+            customerId, vehicleId, vehiclePlate, plate, garageId,
             lat, lng, pickup_address, drop_address,
             distanceKm, pricingMode, estimatedHours,
             vehicleType, vehicleCondition, routeStops,
@@ -5502,13 +6650,20 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
 
         // Calculate fare: use explicit amount if passed from confirmed bid, or calculate server-side
         let calculatedFare = parseFloat(amount);
-        if (isNaN(calculatedFare) || calculatedFare <= 0) {
-            calculatedFare = await calculateServerSideFare({
+        let pricingObj = null;
+        if (isNaN(calculatedFare) || calculatedFare < 0) {
+            pricingObj = await calculateServerSideFare({
+                customerId,
+                vehicleId,
+                vehiclePlate,
+                plate,
                 distanceKm, pricingMode, estimatedHours,
                 vehicleType: vehicleType || 'car',
                 vehicleCondition: vehicleCondition || 'Working',
-                routeStops: routeStops || []
+                routeStops: routeStops || [],
+                bookingFlow: bookingFlow || 'p2p'
             });
+            calculatedFare = typeof pricingObj === 'object' ? pricingObj.totalCustomerPrice : pricingObj;
         }
 
         const totalPayableRupees = Math.max(1.00, calculatedFare + outstandingBalance);
@@ -5528,10 +6683,11 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
 
         const paymentId = `ridepay_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const requestParams = {
-            vehicleId, garageId, lat, lng, pickup_address, drop_address,
+            vehicleId, vehiclePlate, plate, garageId, lat, lng, pickup_address, drop_address,
             distanceKm, pricingMode, estimatedHours, vehicleType, vehicleCondition,
             routeStops, issue, serviceCategory: serviceType || issue || 'Standard Service',
-            bookingFlow, pickupDropType, tripId
+            bookingFlow, pickupDropType, tripId,
+            is_promotional_ride: pricingObj?.isPromotionalRide || false
         };
 
         await pool.query(`
@@ -5541,7 +6697,7 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             ) VALUES ($1, $2, $3, $4, $5, $6, 'created', $7, NOW(), NOW())
         `, [
             paymentId, targetRequestId, customerId, calculatedFare, totalPayableRupees,
-            rzpOrder.id, JSON.stringify({ rzpOrder, requestParams, outstandingBalance, tripId })
+            rzpOrder.id, JSON.stringify({ rzpOrder, requestParams, pricingObj, outstandingBalance, tripId })
         ]);
 
         res.json({
@@ -5554,7 +6710,8 @@ apiRouter.post('/customer/booking/create-order', async (req, res) => {
             draftRequestId: targetRequestId,
             tripId: tripId || null,
             outstandingBalanceIncluded: outstandingBalance,
-            calculatedFare
+            calculatedFare,
+            pricing: pricingObj
         });
     } catch (err) {
         console.error('[CUSTOMER_CREATE_ORDER_ERROR]', err);
@@ -5843,6 +7000,29 @@ apiRouter.post('/trips/:id/mark-arrived', authMiddleware, async (req, res) => {
         if (trip.servicerequestid) {
             await pool.query("UPDATE service_requests SET status = 'arrived', arrived_at = $1 WHERE id = $2", [now, trip.servicerequestid]);
         }
+
+        // Priority 1 Notification: Dispatch Arrival Alerts (Customer FCM Push + Driver FCM Push)
+        (async () => {
+            try {
+                const cust = await getTripCustomerInfo(trip);
+                const custId = cust?.id || trip.customerid || trip.customerId;
+                if (custId) {
+                    notifyUserFCM(custId, 'Driver Arrived', 'ReDrivo Alert: Your driver has arrived at your pickup location. Please head to your vehicle now to start your trip.', {
+                        tripId,
+                        type: 'driver_arrived'
+                    });
+                }
+                const driverId = trip.marshalid || trip.workerid;
+                if (driverId) {
+                    notifyUserFCM(driverId, 'Arrived at Pickup', 'Arrival verified. Customer notified. Please wait for customer at vehicle.', {
+                        tripId,
+                        type: 'driver_arrived'
+                    });
+                }
+            } catch (notifErr) {
+                console.warn('[MARK_ARRIVED_NOTIF_ERR]', notifErr.message);
+            }
+        })();
 
         res.json({ success: true, message: 'Driver arrival recorded successfully', arrivedAt: now });
     } catch (err) {
@@ -6174,6 +7354,100 @@ apiRouter.post(['/trips/:id/cancel-symmetric', '/trips/:id/cancel'], authMiddlew
         }
 
         await client.query('COMMIT');
+
+        // Priority 1: Dispatch cancellation notifications & email receipts asynchronously
+        (async () => {
+            try {
+                const cust = await getTripCustomerInfo(trip, pool);
+                const custId = cust?.id || trip.customerid || trip.customerId;
+
+                if (finalTier === 'tier1_free_cancel') {
+                    if (custId) {
+                        notifyUserFCM(custId, 'Booking Cancelled (Free)', `Your booking was cancelled within the free cancellation window. ₹${refundAmount.toFixed(2)} (100%) has been refunded.`, {
+                            tripId,
+                            tier: finalTier,
+                            refundAmount: String(refundAmount),
+                            customerFee: '0',
+                            type: 'trip_cancelled'
+                        });
+                    }
+                    if (driverId) {
+                        notifyUserFCM(driverId, 'Booking Cancelled', `Trip was cancelled by customer within free window (₹0 fee). You have been returned to available driver pool.`, {
+                            tripId,
+                            tier: finalTier,
+                            type: 'trip_cancelled'
+                        });
+                    }
+                } else if (finalTier === 'tier2_standard_cancel') {
+                    if (custId) {
+                        notifyUserFCM(custId, 'Booking Cancelled', `Booking cancelled while driver was en route. Cancellation fee: ₹${customerFee.toFixed(2)}. Refund: ₹${refundAmount.toFixed(2)}.`, {
+                            tripId,
+                            tier: finalTier,
+                            refundAmount: String(refundAmount),
+                            customerFee: String(customerFee),
+                            type: 'trip_cancelled'
+                        });
+                    }
+                    if (driverId) {
+                        notifyUserFCM(driverId, 'Trip Cancelled — Compensation Credited', `Customer cancelled while you were en route. ₹${driverPayout.toFixed(2)} compensation has been credited to your wallet.`, {
+                            tripId,
+                            tier: finalTier,
+                            driverPayout: String(driverPayout),
+                            type: 'trip_cancelled'
+                        });
+                    }
+                } else if (finalTier === 'tier3_driver_noshow') {
+                    if (custId) {
+                        notifyUserFCM(custId, 'Driver No-Show — Full Refund', `We apologize, your driver did not reach on time. 100% refund of ₹${refundAmount.toFixed(2)} has been processed.`, {
+                            tripId,
+                            tier: finalTier,
+                            refundAmount: String(refundAmount),
+                            customerFee: '0',
+                            type: 'trip_cancelled'
+                        });
+                    }
+                    if (driverId) {
+                        notifyUserFCM(driverId, 'Driver No-Show Penalty', `Trip cancelled due to arrival timeout. A penalty of ₹${driverPenalty.toFixed(2)} was debited. You may appeal on Dispute Board.`, {
+                            tripId,
+                            tier: finalTier,
+                            driverPenalty: String(driverPenalty),
+                            type: 'trip_cancelled'
+                        });
+                    }
+                } else if (finalTier === 'tier4_customer_noshow') {
+                    if (custId) {
+                        notifyUserFCM(custId, 'Customer No-Show Recorded', `Trip cancelled as Customer No-Show after driver arrival. No-show fee: ₹${customerFee.toFixed(2)}. Refund: ₹${refundAmount.toFixed(2)}.`, {
+                            tripId,
+                            tier: finalTier,
+                            refundAmount: String(refundAmount),
+                            customerFee: String(customerFee),
+                            type: 'trip_cancelled'
+                        });
+                    }
+                    if (driverId) {
+                        notifyUserFCM(driverId, 'Customer No-Show Compensation', `Customer no-show recorded. ₹${driverPayout.toFixed(2)} payout has been credited to your wallet.`, {
+                            tripId,
+                            tier: finalTier,
+                            driverPayout: String(driverPayout),
+                            type: 'trip_cancelled'
+                        });
+                    }
+                }
+
+                // Send transactional email receipt to customer
+                await sendCancellationEmailReceipt({
+                    trip,
+                    cust,
+                    tier: finalTier,
+                    refundAmount,
+                    customerFee,
+                    originalFare: prepaidAmount,
+                    reason: reason || finalTier
+                });
+            } catch (notifErr) {
+                console.warn('[CANCEL_NOTIF_ERROR]', notifErr.message);
+            }
+        })();
 
         res.json({
             success: true,
@@ -6649,11 +7923,31 @@ apiRouter.post('/vehicles', (req, res) => {
         });
 });
 
-apiRouter.put('/vehicles/:id', (req, res) => {
+apiRouter.put('/vehicles/:id', async (req, res) => {
     const { make, model, type, plate, photo, fuel, transmission } = req.body;
-    db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], (err, existing) => {
+    db.get("SELECT * FROM vehicles WHERE id = ?", [req.params.id], async (err, existing) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!existing) return res.status(404).json({ error: 'Vehicle not found' });
+
+        // Check if vehicle plate is locked due to ride history
+        if (plate !== undefined && existing.plate && normalizeVehiclePlate(plate) !== normalizeVehiclePlate(existing.plate)) {
+            try {
+                const histRes = await pool.query(
+                    `SELECT COUNT(*)::int as count FROM trips WHERE (vehicleid = $1 OR servicerequestid IN (SELECT id FROM service_requests WHERE vehicleid = $1)) AND status != 'cancelled'`,
+                    [req.params.id]
+                ).catch(() => ({ rows: [{ count: 0 }] }));
+                const hasRides = parseInt(histRes.rows[0]?.count || 0, 10) > 0;
+                if (hasRides) {
+                    return res.status(400).json({
+                        error: 'This vehicle is linked to completed ride history. Direct plate changes are locked. Please submit a Plate Change Request with RC and Insurance documents for verification.',
+                        locked: true,
+                        requirePlateChangeRequest: true
+                    });
+                }
+            } catch (e) {
+                console.warn('[VEHICLE_LOCK_CHECK_WARN]', e.message);
+            }
+        }
 
         const updatedMake = make !== undefined ? make : existing.make;
         const updatedModel = model !== undefined ? model : existing.model;
@@ -6665,11 +7959,17 @@ apiRouter.put('/vehicles/:id', (req, res) => {
 
         db.run("UPDATE vehicles SET make=?, model=?, type=?, plate=?, photo=?, fuel=?, transmission=? WHERE id=?",
             [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, req.params.id],
-            (updateErr) => {
+            async (updateErr) => {
                 if (updateErr) {
                     console.error("PUT /vehicles DB error:", updateErr.message);
                     return res.status(500).json({ error: updateErr.message });
                 }
+                try {
+                    await pool.query(
+                        `UPDATE vehicles SET make=$1, model=$2, type=$3, plate=$4, photo=$5, fuel=$6, transmission=$7 WHERE id=$8`,
+                        [updatedMake, updatedModel, updatedType, updatedPlate, updatedPhoto, updatedFuel, updatedTransmission, req.params.id]
+                    );
+                } catch (pgE) {}
                 res.json({ success: true });
             }
         );
@@ -6680,63 +7980,467 @@ apiRouter.delete('/vehicles/:id', (req, res) => {
     db.run("DELETE FROM vehicles WHERE id=?", [req.params.id], (err) => res.json({ success: true }));
 });
 
-const createRequest = (req, res) => {
-    const {
-        id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-        lat, lng, pickup_address, drop_address,
-        issue, serviceType, bookingFlow, pickupDropType, route_stops
-    } = req.body;
-    // Normalise service category — accept either field name
-    const serviceCategory = serviceType || issue || 'Standard Service';
+// --- VEHICLE PLATE CHANGE REQUEST PIPELINE (CRM & CUSTOMER) ---
 
-    let routeStopsParsed = [];
+apiRouter.post('/vehicles/:id/plate-change-request', upload.fields([
+    { name: 'rcDoc', maxCount: 1 },
+    { name: 'insuranceDoc', maxCount: 1 },
+    { name: 'form29_30Doc', maxCount: 1 },
+    { name: 'rc_doc', maxCount: 1 },
+    { name: 'insurance_doc', maxCount: 1 },
+    { name: 'form29_30_doc', maxCount: 1 }
+]), validateUploadedFiles, async (req, res) => {
     try {
-        if (route_stops) {
-            const parsed = typeof route_stops === 'string' ? JSON.parse(route_stops) : route_stops;
-            if (Array.isArray(parsed)) {
-                routeStopsParsed = parsed.map(stop => {
-                    return {
-                        address: stop.address || '',
-                        lat: parseFloat(stop.lat),
-                        lng: parseFloat(stop.lng),
-                        otp: stop.otp || String(Math.floor(1000 + Math.random() * 9000)),
-                        otpVerified: stop.otpVerified || false
-                    };
-                });
+        const vehicleId = req.params.id;
+        const customerId = req.user?.id || req.body.customerId || req.body.customer_id;
+        const requestedPlate = req.body.requestedPlate || req.body.requested_plate || req.body.plate;
+        const isOwnershipChanged = req.body.isOwnershipChanged === 'true' || req.body.isOwnershipChanged === true || req.body.is_ownership_changed === 'true' || req.body.is_ownership_changed === true;
+
+        if (!requestedPlate || typeof requestedPlate !== 'string' || !requestedPlate.trim()) {
+            return res.status(400).json({ error: 'Requested plate number is mandatory.' });
+        }
+
+        const normalizedRequested = normalizeVehiclePlate(requestedPlate);
+        if (!normalizedRequested || normalizedRequested.length < 4) {
+            return res.status(400).json({ error: 'Invalid license plate number format.' });
+        }
+
+        // Fetch vehicle to get current plate
+        let currentPlate = '';
+        let vehOwnerId = customerId;
+        const pgVeh = await pool.query("SELECT * FROM vehicles WHERE id = $1", [vehicleId]).catch(() => ({ rows: [] }));
+        if (pgVeh.rows.length > 0) {
+            currentPlate = pgVeh.rows[0].plate || '';
+            if (pgVeh.rows[0].customerid) vehOwnerId = pgVeh.rows[0].customerid;
+        } else {
+            const sqVeh = await new Promise((resolve) => {
+                db.get("SELECT * FROM vehicles WHERE id = ?", [vehicleId], (err, row) => resolve(row || null));
+            });
+            if (sqVeh) {
+                currentPlate = sqVeh.plate || '';
+                if (sqVeh.customerId) vehOwnerId = sqVeh.customerId;
             }
         }
-    } catch (e) {
-        console.warn("Failed to parse route_stops:", e);
-    }
-    const routeStopsString = JSON.stringify(routeStopsParsed);
-    
-    const insertReq = (assignedGarageId) => {
-        db.run(
-            `INSERT INTO service_requests
-             (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-              lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                id, customerId, vehicleId, assignedGarageId || garageId || null,
-                date, status || 'pending', totalCustomerPrice || 0, workerId || null,
-                lat || null, lng || null,
-                pickup_address || null, drop_address || null,
-                issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString, Date.now()
-            ], (err) => {
-                if (err) {
-                    console.error('Error creating request:', err.message);
-                    return res.status(500).json({ error: err.message });
-                }
-                res.json({ success: true, id });
-            });
-    };
 
-    if (!garageId) {
-        findClosestActiveGarage(lat, lng, (closestId) => {
-            insertReq(closestId);
+        if (!currentPlate) {
+            return res.status(404).json({ error: 'Vehicle not found.' });
+        }
+
+        if (normalizeVehiclePlate(currentPlate) === normalizedRequested) {
+            return res.status(400).json({ error: 'Requested new plate must be different from current plate.' });
+        }
+
+        // Handle uploaded documents
+        const files = req.files || {};
+        const rcFile = files['rcDoc']?.[0] || files['rc_doc']?.[0];
+        const insFile = files['insuranceDoc']?.[0] || files['insurance_doc']?.[0];
+        const formFile = files['form29_30Doc']?.[0] || files['form29_30_doc']?.[0];
+
+        let rcDocUrl = req.body.rcDocUrl || req.body.rc_doc_url || null;
+        let insuranceDocUrl = req.body.insuranceDocUrl || req.body.insurance_doc_url || null;
+        let form2930DocUrl = req.body.form29_30DocUrl || req.body.form29_30_doc_url || null;
+
+        const requestId = 'vpcr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+        if (rcFile) {
+            const ext = path.extname(rcFile.originalname) || '.jpg';
+            const key = `uploads/plate_req_${requestId}_rc${ext}`;
+            await uploadBufferToR2({ key, buffer: rcFile.buffer, mimetype: rcFile.mimetype, metadata: { customerId: vehOwnerId, vehicleId, docType: 'rc' } });
+            rcDocUrl = key;
+        }
+
+        if (insFile) {
+            const ext = path.extname(insFile.originalname) || '.jpg';
+            const key = `uploads/plate_req_${requestId}_ins${ext}`;
+            await uploadBufferToR2({ key, buffer: insFile.buffer, mimetype: insFile.mimetype, metadata: { customerId: vehOwnerId, vehicleId, docType: 'insurance' } });
+            insuranceDocUrl = key;
+        }
+
+        if (formFile) {
+            const ext = path.extname(formFile.originalname) || '.jpg';
+            const key = `uploads/plate_req_${requestId}_form2930${ext}`;
+            await uploadBufferToR2({ key, buffer: formFile.buffer, mimetype: formFile.mimetype, metadata: { customerId: vehOwnerId, vehicleId, docType: 'form29_30' } });
+            form2930DocUrl = key;
+        }
+
+        if (!rcDocUrl) {
+            return res.status(400).json({ error: 'RC (Registration Certificate) document upload is mandatory.' });
+        }
+        if (!insuranceDocUrl) {
+            return res.status(400).json({ error: 'Vehicle Insurance certificate upload is mandatory.' });
+        }
+        if (isOwnershipChanged && !form2930DocUrl) {
+            return res.status(400).json({ error: 'Form 29/30 document is mandatory when ownership has changed.' });
+        }
+
+        // Insert into PostgreSQL
+        await pool.query(`
+            INSERT INTO vehicle_plate_change_requests (
+                id, customer_id, vehicle_id, current_plate, requested_plate, normalized_requested_plate,
+                rc_doc_url, insurance_doc_url, is_ownership_changed, form29_30_doc_url, status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW(), NOW())
+        `, [
+            requestId, vehOwnerId || 'unknown_customer', vehicleId, currentPlate, requestedPlate.trim(), normalizedRequested,
+            rcDocUrl, insuranceDocUrl, isOwnershipChanged, form2930DocUrl
+        ]);
+
+        // Dual-write to SQLite
+        db.run(
+            `INSERT INTO vehicle_plate_change_requests
+             (id, customerId, vehicleId, currentPlate, requestedPlate, normalizedRequestedPlate, rcDocUrl, insuranceDocUrl, isOwnershipChanged, form29_30DocUrl, status, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+            [
+                requestId, vehOwnerId || 'unknown_customer', vehicleId, currentPlate, requestedPlate.trim(), normalizedRequested,
+                rcDocUrl, insuranceDocUrl, isOwnershipChanged ? 1 : 0, form2930DocUrl, new Date().toISOString(), new Date().toISOString()
+            ],
+            () => {}
+        );
+
+        res.json({
+            success: true,
+            requestId,
+            message: 'Vehicle plate change request submitted successfully. Pending CRM verification.',
+            currentPlate,
+            requestedPlate: requestedPlate.trim(),
+            status: 'pending'
         });
-    } else {
-        insertReq(garageId);
+    } catch (err) {
+        console.error('[PLATE_CHANGE_REQ_ERR]', err);
+        res.status(500).json({ error: 'Failed to submit plate change request: ' + err.message });
+    }
+});
+
+apiRouter.get('/vehicles/:id/plate-change-requests', async (req, res) => {
+    try {
+        const vehicleId = req.params.id;
+        const result = await pool.query(
+            "SELECT * FROM vehicle_plate_change_requests WHERE vehicle_id = $1 ORDER BY created_at DESC",
+            [vehicleId]
+        );
+        const rows = result.rows.map(row => ({
+            ...row,
+            rc_doc_signed_url: row.rc_doc_url ? generateSignedUploadUrl(row.rc_doc_url) : null,
+            insurance_doc_signed_url: row.insurance_doc_url ? generateSignedUploadUrl(row.insurance_doc_url) : null,
+            form29_30_doc_signed_url: row.form29_30_doc_url ? generateSignedUploadUrl(row.form29_30_doc_url) : null
+        }));
+        res.json({ success: true, requests: rows });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /crm/vehicle-plate-requests
+apiRouter.get('/crm/vehicle-plate-requests', async (req, res) => {
+    try {
+        const { status } = req.query;
+        let query = `
+            SELECT 
+                r.*,
+                c.name as customer_name,
+                c.phone as customer_phone,
+                c.email as customer_email,
+                v.make as vehicle_make,
+                v.model as vehicle_model,
+                v.type as vehicle_type
+            FROM vehicle_plate_change_requests r
+            LEFT JOIN customers c ON r.customer_id = c.id
+            LEFT JOIN vehicles v ON r.vehicle_id = v.id
+        `;
+        const params = [];
+        if (status && status !== 'all') {
+            query += ` WHERE r.status = $1`;
+            params.push(status);
+        }
+        query += ` ORDER BY r.created_at DESC`;
+
+        const result = await pool.query(query, params);
+        const rows = result.rows.map(row => ({
+            ...row,
+            rc_doc_signed_url: row.rc_doc_url ? generateSignedUploadUrl(row.rc_doc_url) : null,
+            insurance_doc_signed_url: row.insurance_doc_url ? generateSignedUploadUrl(row.insurance_doc_url) : null,
+            form29_30_doc_signed_url: row.form29_30_doc_url ? generateSignedUploadUrl(row.form29_30_doc_url) : null
+        }));
+
+        res.json({ success: true, count: rows.length, requests: rows });
+    } catch (err) {
+        console.error('[CRM_GET_PLATE_REQS_ERR]', err);
+        res.status(500).json({ error: 'Failed to fetch plate change requests: ' + err.message });
+    }
+});
+
+// POST /crm/vehicle-plate-requests/:id/approve
+apiRouter.post('/crm/vehicle-plate-requests/:id/approve', async (req, res) => {
+    try {
+        const requestId = req.params.id;
+        const reqRes = await pool.query("SELECT * FROM vehicle_plate_change_requests WHERE id = $1", [requestId]);
+        if (reqRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Plate change request not found.' });
+        }
+
+        const request = reqRes.rows[0];
+        if (request.status === 'approved') {
+            return res.status(400).json({ error: 'This request has already been approved.' });
+        }
+
+        const reviewerId = req.user?.id || 'admin';
+        const now = new Date();
+
+        // 1. Update request status to 'approved'
+        await pool.query(
+            `UPDATE vehicle_plate_change_requests 
+             SET status = 'approved', reviewed_by = $1, reviewed_at = $2, updated_at = $2 
+             WHERE id = $3`,
+            [reviewerId, now, requestId]
+        );
+        db.run(
+            `UPDATE vehicle_plate_change_requests SET status = 'approved', reviewedBy = ?, reviewedAt = ?, updatedAt = ? WHERE id = ?`,
+            [reviewerId, now.toISOString(), now.toISOString(), requestId],
+            () => {}
+        );
+
+        // 2. Update vehicle table with new plate
+        const newPlate = request.requested_plate;
+        const normNewPlate = request.normalized_requested_plate;
+        const vehicleId = request.vehicle_id;
+        const customerId = request.customer_id;
+
+        await pool.query(
+            "UPDATE vehicles SET plate = $1 WHERE id = $2",
+            [newPlate, vehicleId]
+        );
+        db.run("UPDATE vehicles SET plate = ? WHERE id = ?", [newPlate, vehicleId], () => {});
+
+        // 3. Update / re-run promo_vehicle_registrations anti-fraud tracking
+        const oldNormPlate = request.current_plate ? normalizeVehiclePlate(request.current_plate) : '';
+        if (oldNormPlate) {
+            await pool.query(
+                `UPDATE promo_vehicle_registrations 
+                 SET plate = $1, normalized_plate = $2, updated_at = NOW() 
+                 WHERE normalized_plate = $3 AND first_customer_id = $4`,
+                [newPlate, normNewPlate, oldNormPlate, customerId]
+            );
+        }
+
+        // Ensure new plate is registered in anti-fraud table
+        await pool.query(`
+            INSERT INTO promo_vehicle_registrations (
+                id, plate, normalized_plate, first_customer_id, first_promo_request_id, status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())
+            ON CONFLICT (normalized_plate) DO UPDATE SET first_customer_id = EXCLUDED.first_customer_id, plate = EXCLUDED.plate, updated_at = NOW();
+        `, ['pvr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6), newPlate, normNewPlate, customerId, requestId]);
+
+        // 4. Dispatch notification to customer
+        notifyUserFCM(customerId, 'Plate Change Approved', `Your vehicle plate change request for ${newPlate} has been approved.`, {
+            type: 'plate_change_approved',
+            vehicleId,
+            newPlate,
+            requestId
+        });
+
+        res.json({
+            success: true,
+            message: `Plate change request approved. Vehicle ${vehicleId} updated to ${newPlate}.`,
+            vehicleId,
+            newPlate,
+            status: 'approved'
+        });
+    } catch (err) {
+        console.error('[CRM_APPROVE_PLATE_REQ_ERR]', err);
+        res.status(500).json({ error: 'Failed to approve plate change request: ' + err.message });
+    }
+});
+
+// POST /crm/vehicle-plate-requests/:id/reject
+apiRouter.post('/crm/vehicle-plate-requests/:id/reject', async (req, res) => {
+    try {
+        const requestId = req.params.id;
+        const { reason } = req.body;
+        const reqRes = await pool.query("SELECT * FROM vehicle_plate_change_requests WHERE id = $1", [requestId]);
+        if (reqRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Plate change request not found.' });
+        }
+
+        const request = reqRes.rows[0];
+        const reviewerId = req.user?.id || 'admin';
+        const now = new Date();
+        const rejReason = reason || 'Document verification failed or invalid details.';
+
+        // 1. Update request status to 'rejected'
+        await pool.query(
+            `UPDATE vehicle_plate_change_requests 
+             SET status = 'rejected', rejection_reason = $1, reviewed_by = $2, reviewed_at = $3, updated_at = $3 
+             WHERE id = $4`,
+            [rejReason, reviewerId, now, requestId]
+        );
+        db.run(
+            `UPDATE vehicle_plate_change_requests SET status = 'rejected', rejectionReason = ?, reviewedBy = ?, reviewedAt = ?, updatedAt = ? WHERE id = ?`,
+            [rejReason, reviewerId, now.toISOString(), now.toISOString(), requestId],
+            () => {}
+        );
+
+        // 2. Dispatch notification to customer
+        notifyUserFCM(request.customer_id, 'Plate Change Request Rejected', `Your plate change request for ${request.requested_plate} was rejected: ${rejReason}`, {
+            type: 'plate_change_rejected',
+            vehicleId: request.vehicle_id,
+            requestedPlate: request.requested_plate,
+            reason: rejReason,
+            requestId
+        });
+
+        res.json({
+            success: true,
+            message: `Plate change request rejected.`,
+            requestId,
+            status: 'rejected',
+            reason: rejReason
+        });
+    } catch (err) {
+        console.error('[CRM_REJECT_PLATE_REQ_ERR]', err);
+        res.status(500).json({ error: 'Failed to reject plate change request: ' + err.message });
+    }
+});
+
+const createRequest = async (req, res) => {
+    try {
+        const {
+            id, customerId, vehicleId, vehiclePlate, plate, garageId, date, status, totalCustomerPrice, workerId,
+            lat, lng, pickup_address, drop_address,
+            issue, serviceType, bookingFlow, pickupDropType, route_stops,
+            distanceKm, pricingMode, estimatedHours, vehicleType, vehicle_condition
+        } = req.body;
+        // Normalise service category — accept either field name
+        const serviceCategory = serviceType || issue || 'Standard Service';
+
+        let routeStopsParsed = [];
+        try {
+            if (route_stops) {
+                const parsed = typeof route_stops === 'string' ? JSON.parse(route_stops) : route_stops;
+                if (Array.isArray(parsed)) {
+                    routeStopsParsed = parsed.map(stop => {
+                        return {
+                            address: stop.address || '',
+                            lat: parseFloat(stop.lat),
+                            lng: parseFloat(stop.lng),
+                            otp: stop.otp || String(Math.floor(1000 + Math.random() * 9000)),
+                            otpVerified: stop.otpVerified || false
+                        };
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to parse route_stops:", e);
+        }
+        const routeStopsString = JSON.stringify(routeStopsParsed);
+
+        // Calculate pricing & promotional eligibility
+        const pricing = await calculateServerSideFare({
+            customerId,
+            vehicleId,
+            vehiclePlate: vehiclePlate || plate,
+            plate: plate || vehiclePlate,
+            distanceKm: distanceKm || 0,
+            pricingMode: pricingMode || 'distance',
+            estimatedHours: estimatedHours || 4,
+            vehicleType: vehicleType || 'car',
+            vehicleCondition: vehicle_condition || req.body.vehicleCondition || 'Working',
+            routeStops: routeStopsParsed,
+            bookingFlow: bookingFlow || 'p2p'
+        });
+
+        const finalPrice = totalCustomerPrice !== undefined && totalCustomerPrice !== null && !isNaN(parseFloat(totalCustomerPrice)) 
+            ? parseFloat(totalCustomerPrice) 
+            : pricing.customerFare;
+
+        const isPromo = pricing.isPromotionalRide || false;
+        const promoType = isPromo ? pricing.promoType : null;
+        const origFare = isPromo ? pricing.originalCustomerFare : finalPrice;
+        const discountAmt = isPromo ? pricing.promoDiscountAmount : 0;
+        const absorbedBy = isPromo ? pricing.promoAbsorbedBy : 'redrivo';
+        
+        const insertReq = async (assignedGarageId) => {
+            // 1. SQLite Write
+            db.run(
+                `INSERT INTO service_requests
+                 (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
+                  lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET status = EXCLUDED.status, totalCustomerPrice = EXCLUDED.totalCustomerPrice`,
+                [
+                    id, customerId, vehicleId || null, assignedGarageId || garageId || null,
+                    date || new Date().toISOString().split('T')[0], status || 'pending', finalPrice, workerId || null,
+                    lat || null, lng || null,
+                    pickup_address || null, drop_address || null,
+                    issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString, Date.now()
+                ], async (err) => {
+                    if (err) {
+                        console.error('Error creating request in SQLite:', err.message);
+                        return res.status(500).json({ error: err.message });
+                    }
+
+                    // 2. PostgreSQL Write
+                    try {
+                        const offerId = pricing.offerId || null;
+                        await pool.query(`
+                            INSERT INTO service_requests (
+                                id, customerid, vehicleid, garageid, date, status, totalcustomerprice, workerid,
+                                lat, lng, pickup_address, drop_address, service_category, booking_flow, pickup_drop_type, route_stops, created_at,
+                                is_promotional_ride, promo_type, original_customer_fare, promo_discount_amount, promo_absorbed_by, offer_id
+                            ) VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, EXTRACT(EPOCH FROM NOW())*1000, $16, $17, $18, $19, $20, $21)
+                            ON CONFLICT (id) DO UPDATE SET
+                                status = EXCLUDED.status,
+                                totalcustomerprice = EXCLUDED.totalcustomerprice,
+                                is_promotional_ride = EXCLUDED.is_promotional_ride,
+                                promo_type = EXCLUDED.promo_type,
+                                original_customer_fare = EXCLUDED.original_customer_fare,
+                                promo_discount_amount = EXCLUDED.promo_discount_amount,
+                                promo_absorbed_by = EXCLUDED.promo_absorbed_by,
+                                offer_id = EXCLUDED.offer_id;
+                        `, [
+                            id, customerId, vehicleId || null, assignedGarageId || garageId || null,
+                            status || 'pending', finalPrice, workerId || null,
+                            lat || null, lng || null, pickup_address || null, drop_address || null,
+                            serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString,
+                            isPromo, promoType, origFare, discountAmt, absorbedBy, offerId
+                        ]);
+
+                        // 3. Register promo vehicle plate if applicable
+                        if (isPromo) {
+                            const resolvedPlate = await resolveVehiclePlate(vehicleId, vehiclePlate || plate);
+                            if (resolvedPlate) {
+                                await registerPromoVehiclePlate({
+                                    plate: resolvedPlate,
+                                    customerId,
+                                    serviceRequestId: id
+                                });
+                            }
+                        }
+                    } catch (pgErr) {
+                        console.warn('[CREATE_REQUEST_PG_WARN]', pgErr.message);
+                    }
+
+                    res.json({
+                        success: true,
+                        id,
+                        totalCustomerPrice: finalPrice,
+                        isPromotionalRide: isPromo,
+                        promoDiscountAmount: discountAmt,
+                        originalCustomerFare: origFare,
+                        offerId: pricing.offerId || null,
+                        offerName: pricing.offerName || null
+                    });
+                });
+        };
+
+        if (!garageId) {
+            findClosestActiveGarage(lat, lng, (closestId) => {
+                insertReq(closestId);
+            });
+        } else {
+            insertReq(garageId);
+        }
+    } catch (createErr) {
+        console.error('[CREATE_REQUEST_ERR]', createErr);
+        res.status(500).json({ error: 'Failed to create request: ' + createErr.message });
     }
 };
 apiRouter.post('/service-requests', authMiddleware, requireRole('customer', 'admin'), createRequest);
@@ -9346,7 +11050,7 @@ app.get('/uploads/:filename', async (req, res) => {
 });
 
 // --- DOMAIN-SPECIFIC PATH ISOLATION (DEFENSE IN DEPTH) ---
-// On customer domain (redrivo.in), do NOT expose administrative portals or internal uploads
+// On customer domain (redrivo.com / redrivo.in), do NOT expose administrative portals or internal uploads
 const RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN = [
     '/admin',
     '/crm',
@@ -9359,7 +11063,7 @@ const RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN = [
     '/uploads'
 ];
 
-// On garage domain (garage.redrivo.in), only expose garage portal and APIs
+// On garage domain (garages.redrivo.com / garage.redrivo.in), only expose garage portal and APIs
 const RESTRICTED_PORTALS_ON_GARAGE_DOMAIN = [
     '/admin',
     '/crm',
@@ -9367,6 +11071,18 @@ const RESTRICTED_PORTALS_ON_GARAGE_DOMAIN = [
     '/vroomly-customer-app',
     '/marshal',
     '/vroomly-marshal-app',
+    '/uploads'
+];
+
+// On driver domain (drivers.redrivo.com / drivers.redrivo.in), only expose driver app and APIs
+const RESTRICTED_PORTALS_ON_DRIVER_DOMAIN = [
+    '/admin',
+    '/crm',
+    '/customer',
+    '/vroomly-customer-app',
+    '/garage',
+    '/redrivo-garage-portal',
+    '/vroomly-garage-portal',
     '/uploads'
 ];
 
@@ -9387,11 +11103,21 @@ app.use((req, res, next) => {
             }
         }
     }
+    if (isDriverDomain(req)) {
+        const p = req.path.toLowerCase();
+        for (const restricted of RESTRICTED_PORTALS_ON_DRIVER_DOMAIN) {
+            if (p === restricted || p.startsWith(restricted + '/')) {
+                return res.status(404).send('Not Found');
+            }
+        }
+    }
     next();
 });
 
-// Clean canonical redirect for /customer on redrivo.in to /
-// Clean canonical redirect for /garage on garage.redrivo.in to /
+// Clean canonical redirects:
+// /customer on customer domain -> /
+// /garage on garage domain -> /
+// /marshal on driver domain -> /
 app.use((req, res, next) => {
     if (isCustomerDomain(req)) {
         if (req.path === '/customer' || req.path === '/customer/') {
@@ -9404,12 +11130,37 @@ app.use((req, res, next) => {
     }
     if (isGarageDomain(req)) {
         if (req.path === '/garage' || req.path === '/garage/' || 
+            req.path === '/garages' || req.path === '/garages/' ||
             req.path === '/redrivo-garage-portal' || req.path === '/redrivo-garage-portal/' ||
             req.path === '/vroomly-garage-portal' || req.path === '/vroomly-garage-portal/') {
             return res.redirect(301, '/');
         }
         if (req.path.startsWith('/garage/')) {
             const target = req.path.replace(/^\/garage/, '') || '/';
+            return res.redirect(301, target);
+        }
+        if (req.path.startsWith('/garages/')) {
+            const target = req.path.replace(/^\/garages/, '') || '/';
+            return res.redirect(301, target);
+        }
+    }
+    if (isDriverDomain(req)) {
+        if (req.path === '/marshal' || req.path === '/marshal/' ||
+            req.path === '/driver' || req.path === '/driver/' ||
+            req.path === '/drivers' || req.path === '/drivers/' ||
+            req.path === '/vroomly-marshal-app' || req.path === '/vroomly-marshal-app/') {
+            return res.redirect(301, '/');
+        }
+        if (req.path.startsWith('/marshal/')) {
+            const target = req.path.replace(/^\/marshal/, '') || '/';
+            return res.redirect(301, target);
+        }
+        if (req.path.startsWith('/driver/')) {
+            const target = req.path.replace(/^\/driver/, '') || '/';
+            return res.redirect(301, target);
+        }
+        if (req.path.startsWith('/drivers/')) {
+            const target = req.path.replace(/^\/drivers/, '') || '/';
             return res.redirect(301, target);
         }
     }
@@ -9420,6 +11171,8 @@ app.use((req, res, next) => {
 const customerStatic = express.static(path.join(__dirname, 'public/customer'));
 // Garage Partner Portal Static Serving (at root on garage domain)
 const garageStatic = express.static(path.join(__dirname, 'public/garage'));
+// Driver App Static Serving (at root on driver domain)
+const driverStatic = express.static(path.join(__dirname, 'public/marshal'));
 
 app.use((req, res, next) => {
     if (isCustomerDomain(req) && !req.path.startsWith('/api')) {
@@ -9427,6 +11180,9 @@ app.use((req, res, next) => {
     }
     if (isGarageDomain(req) && !req.path.startsWith('/api')) {
         return garageStatic(req, res, next);
+    }
+    if (isDriverDomain(req) && !req.path.startsWith('/api')) {
+        return driverStatic(req, res, next);
     }
     next();
 });
@@ -9507,6 +11263,9 @@ app.get('/', (req, res) => {
     }
     if (isGarageDomain(req)) {
         return res.sendFile(path.join(__dirname, 'public/garage/index.html'));
+    }
+    if (isDriverDomain(req)) {
+        return res.sendFile(path.join(__dirname, 'public/marshal/index.html'));
     }
     res.redirect('/customer/');
 });

@@ -312,6 +312,21 @@ function animateGoogleMarkerSmoothly(marker, toLat, toLng, duration = 3000) {
 
 window.redrivoSystemSettings = {};
 window.customerRatePerKm = 15;
+
+function getEffectivePlatformBaseCharge(vehicleType) {
+    const s = window.redrivoSystemSettings || {};
+    const isOverride = s['platform_base_charge_override_enabled'] === 'true' || 
+                       s['platform_base_charge_override_enabled'] === true || 
+                       s['platform_base_charge_override_enabled'] === '1' || 
+                       s['platform_base_charge_override_enabled'] === 1;
+    if (isOverride && s['platform_base_charge_override_value'] !== undefined && s['platform_base_charge_override_value'] !== '') {
+        const parsed = parseFloat(s['platform_base_charge_override_value']);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+    const key = `${vehicleType}_platform_base_charge`;
+    return s[key] !== undefined ? parseFloat(s[key]) : (vehicleType === 'bike' ? 49 : 99);
+}
+
 async function loadSystemSettings() {
     try {
         const [sysRes, globalRes] = await Promise.all([
@@ -516,7 +531,7 @@ function updatePricingSummary() {
     const baseFareKey = `${vehicleType}_base_fare`;
     const haltRateKey = `${vehicleType}_halt_rate_per_min`;
     
-    const platformBaseCharge = window.redrivoSystemSettings?.[platformBaseChargeKey] !== undefined ? parseFloat(window.redrivoSystemSettings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
+    const platformBaseCharge = getEffectivePlatformBaseCharge(vehicleType);
     const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
     const baseFare = window.redrivoSystemSettings?.[baseFareKey] !== undefined ? parseFloat(window.redrivoSystemSettings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
     const haltRate = window.redrivoSystemSettings?.[haltRateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[haltRateKey]) : (vehicleType === 'car' ? 5 : 3);
@@ -1097,6 +1112,9 @@ async function handleSignupStep2() {
 
         loadDashboard();
         loadCategories();
+        if (typeof setupCustomerPushNotifications === 'function') {
+            setupCustomerPushNotifications();
+        }
 
     } catch (e) {
         lastVerifiedOtp = ''; // Clear guard on failure so they can try again
@@ -1192,6 +1210,9 @@ async function handleGoogleSignIn() {
 
         loadDashboard();
         loadCategories();
+        if (typeof setupCustomerPushNotifications === 'function') {
+            setupCustomerPushNotifications();
+        }
     } catch (err) {
         console.log('[Google Sign-In]', err);
         const errMsg = (err && (err.message || err.errorMessage || String(err))) || '';
@@ -2431,14 +2452,17 @@ async function loadDashboard() {
 
         // Load Trips (Handovers)
         const allTrips = await apiGet('/trips');
-        // A trip belongs to a user if its serviceRequestId is in myRequests
-        const myTrips = allTrips.filter(t => myRequests.some(r => r.id === (t.serviceRequestId || t.servicerequestid)));
+        // A trip belongs to a user if its serviceRequestId is in myRequests or customerId matches
+        const myTrips = allTrips.filter(t => myRequests.some(r => r.id === (t.serviceRequestId || t.servicerequestid)) || (t.customerId || t.customerid) === currentUser.id);
         window._myTrips = myTrips;
-        
-
 
         renderTrips(myTrips);
         renderHistory(myTrips);
+
+        // Check and display unacknowledged cancellation settlement notices
+        if (typeof checkAndRenderSettlementModal === 'function') {
+            checkAndRenderSettlementModal(myTrips);
+        }
 
         // Load Approvals
         const pendingApprovals = myTrips.filter(t => t.status === 'pending_approval');
@@ -5784,7 +5808,7 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         const baseFareKey = `${vehicleType}_base_fare`;
         const haltRateKey = `${vehicleType}_halt_rate_per_min`;
         
-        const platformBaseCharge = window.redrivoSystemSettings?.[platformBaseChargeKey] !== undefined ? parseFloat(window.redrivoSystemSettings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
+        const platformBaseCharge = getEffectivePlatformBaseCharge(vehicleType);
         const ratePerKm = window.redrivoSystemSettings?.[rateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
         const baseFare = window.redrivoSystemSettings?.[baseFareKey] !== undefined ? parseFloat(window.redrivoSystemSettings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
         const haltRate = window.redrivoSystemSettings?.[haltRateKey] !== undefined ? parseFloat(window.redrivoSystemSettings[haltRateKey]) : (vehicleType === 'car' ? 5 : 3);
@@ -6706,6 +6730,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUserAvatar();
         loadDashboard();
         loadCategories();
+        if (typeof setupCustomerPushNotifications === 'function') {
+            setupCustomerPushNotifications();
+        }
         setTimeout(() => {
             const splash = document.getElementById('splash-screen');
             if(splash) {
@@ -7876,7 +7903,7 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         const baseFareKey = `${vehicleType}_base_fare`;
         const haltRateKey = `${vehicleType}_halt_rate_per_min`;
         
-        const platformBaseCharge = settings[platformBaseChargeKey] !== undefined ? parseFloat(settings[platformBaseChargeKey]) : (vehicleType === 'bike' ? 49 : 99);
+        const platformBaseCharge = getEffectivePlatformBaseCharge(vehicleType);
         const ratePerKm = settings[rateKey] !== undefined ? parseFloat(settings[rateKey]) : (vehicleType === 'car' ? 30 : 8);
         const minFare = settings[baseFareKey] !== undefined ? parseFloat(settings[baseFareKey]) : (vehicleType === 'car' ? 150 : 50);
         const haltRate = parseFloat(settings[haltRateKey] || (vehicleType === 'car' ? 5 : 3));
@@ -8763,7 +8790,7 @@ window.confirmScheduleBooking = async function() {
         const v = userVehicles.find(veh => veh.id === vehicleId) || userVehicles[activeVehicleIndex] || {};
         const isBike = String(v.type).toLowerCase().includes('bike') || String(v.category).toLowerCase().includes('bike');
         const vehicleType = isBike ? 'bike' : 'car';
-        const platformBaseCharge = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_platform_base_charge`]) || (vehicleType === 'bike' ? 49 : 99);
+        const platformBaseCharge = getEffectivePlatformBaseCharge(vehicleType);
         const ratePerKm = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_customer_rate_per_km`]) || (vehicleType === 'car' ? 30 : 8);
         const minBaseFare = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_base_fare`]) || (vehicleType === 'car' ? 150 : 50);
 
@@ -11949,4 +11976,196 @@ window.executeCustomerTripCancellation = async function(tripId) {
         showToast('Cancellation error: ' + err.message, 'error');
     }
 };
+
+// --- Push Notifications Setup for Customer App (Capacitor & Web Push) ---
+async function setupCustomerPushNotifications() {
+    window.setupCustomerPushNotifications = setupCustomerPushNotifications;
+    try {
+        // 1. Register Service Worker for background Web Push (PWA / Mobile Browser)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/customer/sw.js', { scope: '/customer/' }).catch(() => {
+                navigator.serviceWorker.register('/sw.js').catch(() => {});
+            });
+        }
+
+        // 2. Capacitor Push Notifications Plugin (Android & iOS native wrapper)
+        const PushNotifications = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+        if (PushNotifications) {
+            console.log('[CUSTOMER_PUSH] Initializing Capacitor PushNotifications plugin...');
+            const permStatus = await PushNotifications.requestPermissions();
+            if (permStatus && permStatus.receive === 'granted') {
+                await PushNotifications.register();
+            }
+
+            PushNotifications.addListener('registration', async (token) => {
+                console.log('[CUSTOMER_FCM] Device registered with FCM token:', token.value);
+                window.registeredCustomerFcmToken = token.value;
+                if (currentUser && currentUser.id) {
+                    try {
+                        const tokenAuth = localStorage.getItem('redrivo_token') || localStorage.getItem('token');
+                        await fetch(`${API_URL}/customers/${currentUser.id}/fcm-token`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(tokenAuth ? { 'Authorization': `Bearer ${tokenAuth}` } : {})
+                            },
+                            body: JSON.stringify({ fcmToken: token.value })
+                        });
+                        console.log('[CUSTOMER_FCM] Token synced to backend successfully');
+                    } catch (syncErr) {
+                        console.warn('[CUSTOMER_FCM_SYNC_ERR]', syncErr.message);
+                    }
+                }
+            });
+
+            PushNotifications.addListener('registrationError', (error) => {
+                console.warn('[CUSTOMER_FCM_REGISTRATION_ERR]', error);
+            });
+
+            PushNotifications.addListener('pushNotificationReceived', (notification) => {
+                console.log('[CUSTOMER_PUSH_RECEIVED]', notification);
+                if (typeof showToast === 'function') {
+                    showToast(`${notification.title}: ${notification.body}`, 'info');
+                }
+                if (typeof loadDashboard === 'function') {
+                    loadDashboard();
+                }
+            });
+
+            PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+                console.log('[CUSTOMER_PUSH_ACTION]', action);
+                if (typeof loadDashboard === 'function') {
+                    loadDashboard();
+                }
+            });
+        }
+    } catch (pushErr) {
+        console.warn('[CUSTOMER_PUSH_NOT_SUPPORTED]', pushErr.message);
+    }
+}
+
+// --- Persistent In-App Settlement Modal Logic ---
+function checkAndRenderSettlementModal(myTrips) {
+    if (!myTrips || !Array.isArray(myTrips) || myTrips.length === 0) return;
+
+    // Filter cancelled or no-show trips
+    const settledTrips = myTrips.filter(t => 
+        ['cancelled', 'customer_noshow', 'driver_noshow'].includes(t.status) &&
+        (t.cancellation_tier || t.cancellation_fee !== undefined || t.refund_amount !== undefined)
+    );
+
+    if (settledTrips.length === 0) return;
+
+    // Sort descending by most recent
+    settledTrips.sort((a, b) => new Date(b.updated_at || b.updatedat || b.created_at || b.createdat || 0) - new Date(a.updated_at || a.updatedat || a.created_at || a.createdat || 0));
+
+    // Find the first unacknowledged trip settlement
+    const unackTrip = settledTrips.find(t => !localStorage.getItem('settlement_ack_' + t.id));
+    if (!unackTrip) return;
+
+    const modal = document.getElementById('settlement-modal');
+    if (!modal) return;
+
+    const tier = unackTrip.cancellation_tier || (unackTrip.status === 'driver_noshow' ? 'tier3_driver_noshow' : (unackTrip.status === 'customer_noshow' ? 'tier4_customer_noshow' : 'tier1_free_cancel'));
+    const fee = parseFloat(unackTrip.cancellation_fee || 0);
+    const refund = parseFloat(unackTrip.refund_amount || 0);
+    const prepaid = parseFloat(unackTrip.totalcustomerprice || unackTrip.totalPrice || (refund + fee));
+
+    const titleEl = document.getElementById('settlement-modal-title');
+    const badgeEl = document.getElementById('settlement-modal-badge');
+    const descEl = document.getElementById('settlement-modal-desc');
+    const tripIdEl = document.getElementById('settlement-trip-id');
+    const prepaidEl = document.getElementById('settlement-prepaid-amount');
+    const feeLabelEl = document.getElementById('settlement-fee-label');
+    const feeEl = document.getElementById('settlement-fee-amount');
+    const refundEl = document.getElementById('settlement-refund-amount');
+    const iconContainer = document.getElementById('settlement-modal-icon-container');
+
+    if (tripIdEl) tripIdEl.textContent = '#' + (unackTrip.id || '').slice(0, 8).toUpperCase();
+    if (prepaidEl) prepaidEl.textContent = '₹' + prepaid.toFixed(2);
+    if (feeEl) feeEl.textContent = '₹' + fee.toFixed(2);
+    if (refundEl) refundEl.textContent = '₹' + refund.toFixed(2);
+
+    if (tier === 'tier1_free_cancel') {
+        if (titleEl) titleEl.textContent = 'Booking Cancelled (Free)';
+        if (badgeEl) {
+            badgeEl.textContent = '100% REFUNDED';
+            badgeEl.style.background = 'rgba(16, 185, 129, 0.2)';
+            badgeEl.style.color = '#10b981';
+        }
+        if (descEl) descEl.textContent = 'Your booking was cancelled within the free 3-minute cancellation window. No fee was charged and 100% of your advance has been refunded.';
+        if (feeLabelEl) feeLabelEl.textContent = 'Cancellation Fee (Free)';
+        if (feeEl) feeEl.style.color = 'var(--text-muted)';
+        if (iconContainer) {
+            iconContainer.style.background = 'rgba(16, 185, 129, 0.15)';
+            iconContainer.style.color = '#10b981';
+        }
+    } else if (tier === 'tier2_standard_cancel') {
+        if (titleEl) titleEl.textContent = 'Booking Cancelled En Route';
+        if (badgeEl) {
+            badgeEl.textContent = 'FEE APPLIED';
+            badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
+            badgeEl.style.color = '#ef4444';
+        }
+        if (descEl) descEl.textContent = 'Your booking was cancelled while the driver was en route. A standard cancellation fee was deducted to compensate the driver for transit time.';
+        if (feeLabelEl) feeLabelEl.textContent = 'En-Route Cancellation Fee';
+        if (feeEl) feeEl.style.color = '#ef4444';
+        if (iconContainer) {
+            iconContainer.style.background = 'rgba(245, 158, 11, 0.15)';
+            iconContainer.style.color = '#f59e0b';
+        }
+    } else if (tier === 'tier3_driver_noshow') {
+        if (titleEl) titleEl.textContent = 'Driver Arrival Timeout';
+        if (badgeEl) {
+            badgeEl.textContent = '100% REFUNDED';
+            badgeEl.style.background = 'rgba(16, 185, 129, 0.2)';
+            badgeEl.style.color = '#10b981';
+        }
+        if (descEl) descEl.textContent = 'We sincerely apologize — your assigned driver was unable to reach your pickup location on time. A 100% full refund has been processed.';
+        if (feeLabelEl) feeLabelEl.textContent = 'Cancellation Fee';
+        if (feeEl) feeEl.style.color = 'var(--text-muted)';
+        if (iconContainer) {
+            iconContainer.style.background = 'rgba(16, 185, 129, 0.15)';
+            iconContainer.style.color = '#10b981';
+        }
+    } else if (tier === 'tier4_customer_noshow') {
+        if (titleEl) titleEl.textContent = 'Customer No-Show Recorded';
+        if (badgeEl) {
+            badgeEl.textContent = 'NO-SHOW FEE';
+            badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
+            badgeEl.style.color = '#ef4444';
+        }
+        if (descEl) descEl.textContent = 'The driver arrived at your pickup location and waited past the arrival grace period. A no-show fee was applied to compensate the driver.';
+        if (feeLabelEl) feeLabelEl.textContent = 'No-Show Wait Fee';
+        if (feeEl) feeEl.style.color = '#ef4444';
+        if (iconContainer) {
+            iconContainer.style.background = 'rgba(239, 68, 68, 0.15)';
+            iconContainer.style.color = '#ef4444';
+        }
+    }
+
+    const dismissBtn = document.getElementById('btn-settlement-dismiss');
+    if (dismissBtn) {
+        dismissBtn.onclick = () => {
+            localStorage.setItem('settlement_ack_' + unackTrip.id, 'true');
+            modal.style.display = 'none';
+        };
+    }
+
+    const disputeBtn = document.getElementById('btn-settlement-dispute');
+    if (disputeBtn) {
+        disputeBtn.onclick = () => {
+            localStorage.setItem('settlement_ack_' + unackTrip.id, 'true');
+            modal.style.display = 'none';
+            if (typeof window.openDisputeFormForPastTrip === 'function') {
+                window.openDisputeFormForPastTrip(unackTrip.id, unackTrip.marshalId || unackTrip.marshalid || unackTrip.workerid || null);
+            }
+        };
+    }
+
+    modal.style.display = 'flex';
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+}
 

@@ -653,6 +653,7 @@ const router = {
                 case 'rental-partners': renderProviderPage(container, 'rental-partners'); break;
                 case 'sku-catalog': renderSKUCatalog(container); break;
                 case 'charges': renderAllCharges(container); break;
+                case 'offers': renderOffers(container); break;
                 case 'admin-survey': renderAdminSurvey(container); break;
                 case 'public-survey': renderSurveyWizard(container); break;
                 case 'disputes': renderDisputes(container); break;
@@ -5094,111 +5095,355 @@ function renderRequests(container) {
             </header>
 
             <div class="card" style="padding: 0; overflow: hidden;">
-                <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px;">
-                    <button class="tab-btn active">All Orders (${requests.length})</button>
-                    <button class="tab-btn">In Progress</button>
-                    <button class="tab-btn">Completed</button>
+                <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px; align-items:center;">
+                    <button class="tab-btn active" onclick="switchOrderPipelineTab('all', this)">All Orders (${requests.length})</button>
+                    <button class="tab-btn" onclick="switchOrderPipelineTab('in_progress', this)">In Progress</button>
+                    <button class="tab-btn" onclick="switchOrderPipelineTab('completed', this)">Completed</button>
+                    <button class="tab-btn" id="tab-plate-requests" onclick="switchOrderPipelineTab('requests', this)">
+                        Requests <span id="badge-plate-requests" class="chip chip-warning" style="font-size:0.75rem; padding: 2px 7px; margin-left:6px; font-weight:700">0</span>
+                    </button>
                 </div>
                 
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Order ID</th>
-                            <th>Customer & Vehicle</th>
-                            <th>Pincode</th>
-                            <th>Fulfillment Point</th>
-                            <th>Status</th>
-                            <th style="text-align:right">Total Payable</th>
-                            <th style="text-align:center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="orders-tbody">
-                        ${requests.map(req => {
-                            const flow = req.booking_flow || req.bookingFlow || '';
-                            let fulfillmentIcon = 'warehouse';
-                            let fulfillmentColor = 'var(--text-muted)';
-                            let fulfillmentText = 'Unassigned';
-
-                            if (flow === 'p2p') {
-                                fulfillmentIcon = 'map-pin';
-                                fulfillmentColor = 'var(--info)';
-                                fulfillmentText = req.pickup_address ? req.pickup_address.split(',')[0].trim() : 'Direct Pickup';
-                            } else if (flow === 'rental_p2p') {
-                                fulfillmentIcon = 'key';
-                                fulfillmentColor = 'var(--warning)';
-                                fulfillmentText = req.pickup_address ? req.pickup_address.split('(')[0].trim() : 'Rental Hub';
-                            } else {
-                                const actualGarageId = req.assignedGarageId || req.garageid;
-                                const assignedGarage = actualGarageId ? PROTOTYPE_STATE.garages.find(g => g.id === actualGarageId) : null;
-                                if (assignedGarage) {
-                                    fulfillmentIcon = 'warehouse';
-                                    fulfillmentColor = 'var(--success)';
-                                    fulfillmentText = assignedGarage.name;
-                                }
-                            }
-                            
-                            const actualCustId = req.customerId || req.customerid;
-                            const cust = PROTOTYPE_STATE.customers.find(c => c.id === actualCustId);
-                            const customerName = cust ? cust.name : (req.customerName || req.customername || 'Walk-in');
-                            
-                            const actualVehId = req.vehicleId || req.vehicleid;
-                            const veh = PROTOTYPE_STATE.vehicles.find(v => v.id === actualVehId);
-                            const vehicleName = veh ? `${veh.make} ${veh.model}` : (req.vehicleName || req.vehiclename || 'Unknown Vehicle');
-                            
-                            const displayPincode = req.pincode || (req.pickup_address ? (req.pickup_address.match(/\b\d{6}\b/) || ['N/A'])[0] : 'N/A');
-
-                            return `
+                <div id="pipeline-content-area">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td>
-                                    <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${req.id.substring(0, 8)}</div>
-                                    <div style="font-size: 0.75rem; color:var(--text-dim); margin-top:2px">${new Date(req.date).toLocaleDateString()}</div>
-                                </td>
-                                <td>
-                                    <div style="font-weight:600">${customerName}</div>
-                                    <div style="font-size: 0.8rem; color:var(--text-muted)">${vehicleName}</div>
-                                </td>
-                                <td>
-                                    <div style="font-weight:600; color:var(--text-main); font-family:monospace;">${displayPincode}</div>
-                                </td>
-                                <td>
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <i data-lucide="${fulfillmentIcon}" style="width:14px; color:${fulfillmentColor}"></i>
-                                        <span style="font-size:0.85rem; font-weight:500">${fulfillmentText}</span>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="chip ${req.status === 'completed' ? 'chip-success' : 'chip-warning'}">${req.status}</span>
-                                </td>
-                                <td style="text-align:right; font-weight:700; font-size:1rem;">
-                                    ₹${(req.totalCustomerPrice || 0).toLocaleString()}
-                                </td>
-                                <td>
-                                    <div style="display:flex; justify-content:center; gap:8px;">
-                                        <button class="btn btn-secondary btn-sm" onclick="openRequestDetailsModal('${req.id}')" title="View Details">
-                                            <i data-lucide="eye" style="width:14px"></i>
-                                        </button>
-                                        ${PROTOTYPE_STATE.currentUser.role === 'Admin' ? `
-                                            <button class="btn btn-secondary btn-sm" onclick="openAssignGarageModal('${req.id}')" title="Assign Garage">
-                                                <i data-lucide="user-plus" style="width:14px"></i>
-                                            </button>
-                                            <button class="btn btn-secondary btn-sm" onclick="deleteServiceRequest('${req.id}')" style="color:var(--danger)" title="Delete">
-                                                <i data-lucide="trash-2" style="width:14px"></i>
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                </td>
+                                <th>Order ID</th>
+                                <th>Customer & Vehicle</th>
+                                <th>Pincode</th>
+                                <th>Fulfillment Point</th>
+                                <th>Status</th>
+                                <th style="text-align:right">Total Payable</th>
+                                <th style="text-align:center">Actions</th>
                             </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-                ${requests.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No active orders found in the pipeline.</div>' : ''}
+                        </thead>
+                        <tbody id="orders-tbody">
+                            ${renderOrderRows(requests)}
+                        </tbody>
+                    </table>
+                    ${requests.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No active orders found in the pipeline.</div>' : ''}
+                </div>
             </div>
         </div>
     `;
     container.innerHTML = html;
     lucide.createIcons();
+
+    // Fetch pending requests count to update badge
+    fetch('/api/crm/vehicle-plate-requests?status=pending')
+        .then(r => r.json())
+        .then(data => {
+            const badge = document.getElementById('badge-plate-requests');
+            if (badge && data && data.requests) {
+                const count = data.requests.filter(req => req.status === 'pending').length;
+                badge.textContent = count;
+                badge.className = count > 0 ? 'chip chip-danger' : 'chip chip-secondary';
+            }
+        })
+        .catch(() => {});
 }
+
+function renderOrderRows(orders) {
+    return orders.map(req => {
+        const flow = req.booking_flow || req.bookingFlow || '';
+        let fulfillmentIcon = 'warehouse';
+        let fulfillmentColor = 'var(--text-muted)';
+        let fulfillmentText = 'Unassigned';
+
+        if (flow === 'p2p') {
+            fulfillmentIcon = 'map-pin';
+            fulfillmentColor = 'var(--info)';
+            fulfillmentText = req.pickup_address ? req.pickup_address.split(',')[0].trim() : 'Direct Pickup';
+        } else if (flow === 'rental_p2p') {
+            fulfillmentIcon = 'key';
+            fulfillmentColor = 'var(--warning)';
+            fulfillmentText = req.pickup_address ? req.pickup_address.split('(')[0].trim() : 'Rental Hub';
+        } else {
+            const actualGarageId = req.assignedGarageId || req.garageid;
+            const assignedGarage = actualGarageId ? PROTOTYPE_STATE.garages.find(g => g.id === actualGarageId) : null;
+            if (assignedGarage) {
+                fulfillmentIcon = 'warehouse';
+                fulfillmentColor = 'var(--success)';
+                fulfillmentText = assignedGarage.name;
+            }
+        }
+        
+        const actualCustId = req.customerId || req.customerid;
+        const cust = PROTOTYPE_STATE.customers.find(c => c.id === actualCustId);
+        const customerName = cust ? cust.name : (req.customerName || req.customername || 'Walk-in');
+        
+        const actualVehId = req.vehicleId || req.vehicleid;
+        const veh = PROTOTYPE_STATE.vehicles.find(v => v.id === actualVehId);
+        const vehicleName = veh ? `${veh.make} ${veh.model}` : (req.vehicleName || req.vehiclename || 'Unknown Vehicle');
+        
+        const displayPincode = req.pincode || (req.pickup_address ? (req.pickup_address.match(/\b\d{6}\b/) || ['N/A'])[0] : 'N/A');
+
+        return `
+        <tr>
+            <td>
+                <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${req.id.substring(0, 8)}</div>
+                <div style="font-size: 0.75rem; color:var(--text-dim); margin-top:2px">${new Date(req.date).toLocaleDateString()}</div>
+            </td>
+            <td>
+                <div style="font-weight:600">${customerName}</div>
+                <div style="font-size: 0.8rem; color:var(--text-muted)">${vehicleName}</div>
+            </td>
+            <td>
+                <div style="font-weight:600; color:var(--text-main); font-family:monospace;">${displayPincode}</div>
+            </td>
+            <td>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="${fulfillmentIcon}" style="width:14px; color:${fulfillmentColor}"></i>
+                    <span style="font-size:0.85rem; font-weight:500">${fulfillmentText}</span>
+                </div>
+            </td>
+            <td>
+                <span class="chip ${req.status === 'completed' ? 'chip-success' : 'chip-warning'}">${req.status}</span>
+            </td>
+            <td style="text-align:right; font-weight:700; font-size:1rem;">
+                ₹${(req.totalCustomerPrice || 0).toLocaleString()}
+            </td>
+            <td>
+                <div style="display:flex; justify-content:center; gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="openRequestDetailsModal('${req.id}')" title="View Details">
+                        <i data-lucide="eye" style="width:14px"></i>
+                    </button>
+                    ${PROTOTYPE_STATE.currentUser.role === 'Admin' ? `
+                        <button class="btn btn-secondary btn-sm" onclick="openAssignGarageModal('${req.id}')" title="Assign Garage">
+                            <i data-lucide="user-plus" style="width:14px"></i>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="deleteServiceRequest('${req.id}')" style="color:var(--danger)" title="Delete">
+                            <i data-lucide="trash-2" style="width:14px"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+}
+
+window.switchOrderPipelineTab = async function(tab, btnEl) {
+    const tabBtns = btnEl.parentElement.querySelectorAll('.tab-btn');
+    tabBtns.forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+
+    const contentArea = document.getElementById('pipeline-content-area');
+    if (!contentArea) return;
+
+    if (tab === 'requests') {
+        contentArea.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-dim);"><i data-lucide="loader-2" class="spin"></i> Loading Plate-Change Requests...</div>';
+        lucide.createIcons();
+
+        try {
+            const res = await fetch('/api/crm/vehicle-plate-requests');
+            const data = await res.json();
+            const plateRequests = data.requests || [];
+
+            let rowsHtml = '';
+            if (plateRequests.length === 0) {
+                rowsHtml = `<tr><td colspan="7" style="padding: 50px; text-align:center; color:var(--text-dim)">No vehicle plate-change requests submitted.</td></tr>`;
+            } else {
+                rowsHtml = plateRequests.map(pr => {
+                    const isOwnership = pr.is_ownership_changed === true || pr.is_ownership_changed === 'true' || pr.is_ownership_changed === 1;
+                    const statusClass = pr.status === 'approved' ? 'chip-success' : pr.status === 'rejected' ? 'chip-danger' : 'chip-warning';
+                    
+                    return `
+                    <tr>
+                        <td>
+                            <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${pr.id.substring(0, 10)}</div>
+                            <div style="font-size:0.75rem; color:var(--text-dim); margin-top:2px">${new Date(pr.created_at).toLocaleString()}</div>
+                        </td>
+                        <td>
+                            <div style="font-weight:600">${pr.customer_name || 'Customer'}</div>
+                            <div style="font-size:0.8rem; color:var(--text-muted)">${pr.customer_phone || pr.customer_id}</div>
+                        </td>
+                        <td>
+                            <div style="font-weight:600">${pr.vehicle_make || ''} ${pr.vehicle_model || ''}</div>
+                            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+                                <span class="chip chip-secondary" style="font-size:0.75rem;">${pr.current_plate}</span>
+                                <span style="color:var(--text-dim)">→</span>
+                                <span class="chip chip-warning" style="font-weight:700; font-size:0.8rem; color:#FACC15; background:rgba(250,204,21,0.15)">${pr.requested_plate}</span>
+                            </div>
+                        </td>
+                        <td>
+                            ${isOwnership ? `
+                                <span class="chip chip-info" style="font-size:0.75rem; font-weight:600">Ownership Transfer</span>
+                            ` : `
+                                <span class="chip chip-secondary" style="font-size:0.75rem;">Same Owner</span>
+                            `}
+                        </td>
+                        <td>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                ${pr.rc_doc_signed_url ? `
+                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.rc_doc_signed_url}', 'Registration Certificate (RC) — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px;">
+                                        📄 RC Book
+                                    </button>
+                                ` : '<span style="color:var(--danger); font-size:0.75rem;">Missing RC</span>'}
+                                ${pr.insurance_doc_signed_url ? `
+                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.insurance_doc_signed_url}', 'Insurance Certificate — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px;">
+                                        🛡️ Insurance
+                                    </button>
+                                ` : '<span style="color:var(--danger); font-size:0.75rem;">Missing Ins</span>'}
+                                ${isOwnership && pr.form29_30_doc_signed_url ? `
+                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.form29_30_doc_signed_url}', 'Form 29/30 Document — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px; color:var(--info)">
+                                        📝 Form 29/30
+                                    </button>
+                                ` : (isOwnership ? '<span style="color:var(--danger); font-size:0.75rem;">Missing Form</span>' : '')}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="chip ${statusClass}" style="text-transform:capitalize; font-weight:700">${pr.status}</span>
+                            ${pr.rejection_reason ? `<div style="font-size:0.75rem; color:var(--danger); margin-top:2px;">${pr.rejection_reason}</div>` : ''}
+                        </td>
+                        <td>
+                            <div style="display:flex; justify-content:center; gap:8px;">
+                                ${pr.status === 'pending' ? `
+                                    <button class="btn btn-success btn-sm" onclick="approvePlateChangeRequest('${pr.id}', '${pr.requested_plate}')" style="font-size:0.8rem; padding:5px 12px; background:var(--success); color:#fff; border:none; font-weight:600; cursor:pointer;">
+                                        ✓ Approve
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="rejectPlateChangeRequest('${pr.id}', '${pr.requested_plate}')" style="font-size:0.8rem; padding:5px 12px; background:var(--danger); color:#fff; border:none; font-weight:600; cursor:pointer;">
+                                        ✕ Reject
+                                    </button>
+                                ` : `
+                                    <span style="font-size:0.8rem; color:var(--text-dim);">${pr.reviewed_by || 'Verified'}</span>
+                                `}
+                            </div>
+                        </td>
+                    </tr>
+                    `;
+                }).join('');
+            }
+
+            contentArea.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Request ID & Date</th>
+                            <th>Customer</th>
+                            <th>Vehicle & Plate</th>
+                            <th>Transfer Type</th>
+                            <th>Verification Documents</th>
+                            <th>Status</th>
+                            <th style="text-align:center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            `;
+            lucide.createIcons();
+        } catch (e) {
+            contentArea.innerHTML = `<div style="padding:40px; text-align:center; color:var(--danger);">Failed to load plate-change requests: ${e.message}</div>`;
+        }
+        return;
+    }
+
+    // Standard orders view
+    let filtered = [...PROTOTYPE_STATE.serviceRequests].reverse();
+    if (tab === 'in_progress') {
+        filtered = filtered.filter(r => r.status !== 'completed' && r.status !== 'cancelled');
+    } else if (tab === 'completed') {
+        filtered = filtered.filter(r => r.status === 'completed');
+    }
+
+    contentArea.innerHTML = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Order ID</th>
+                    <th>Customer & Vehicle</th>
+                    <th>Pincode</th>
+                    <th>Fulfillment Point</th>
+                    <th>Status</th>
+                    <th style="text-align:right">Total Payable</th>
+                    <th style="text-align:center">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="orders-tbody">
+                ${renderOrderRows(filtered)}
+            </tbody>
+        </table>
+        ${filtered.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No orders found for this filter.</div>' : ''}
+    `;
+    lucide.createIcons();
+};
+
+window.openPlateDocModal = function(url, title) {
+    let modal = document.getElementById('plate-doc-preview-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'plate-doc-preview-modal';
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:99999;';
+        document.body.appendChild(modal);
+    }
+
+    const isPdf = url.toLowerCase().includes('.pdf');
+    modal.innerHTML = `
+        <div class="modal-card" style="background:#18181B; border:1px solid #27272A; border-radius:12px; width:90%; max-width:800px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
+            <div style="padding:16px 20px; border-bottom:1px solid #27272A; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem; color:#fff;">${title || 'Document Preview'}</h3>
+                <button onclick="document.getElementById('plate-doc-preview-modal').style.display='none'" style="background:none; border:none; color:#A1A1AA; font-size:1.4rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:20px; flex:1; overflow:auto; text-align:center;">
+                ${isPdf ? `
+                    <iframe src="${url}" style="width:100%; height:600px; border:none; border-radius:8px;"></iframe>
+                ` : `
+                    <img src="${url}" style="max-width:100%; max-height:600px; object-fit:contain; border-radius:8px; border:1px solid #27272A;" />
+                `}
+            </div>
+            <div style="padding:12px 20px; border-top:1px solid #27272A; display:flex; justify-content:flex-end; gap:10px;">
+                <a href="${url}" target="_blank" class="btn btn-secondary" style="padding:6px 14px; text-decoration:none; font-size:0.85rem;">Open Fullscreen ↗</a>
+                <button class="btn btn-primary" onclick="document.getElementById('plate-doc-preview-modal').style.display='none'" style="padding:6px 16px; font-size:0.85rem;">Close</button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
+window.approvePlateChangeRequest = async function(requestId, requestedPlate) {
+    if (!confirm(`Are you sure you want to approve the license plate change to "${requestedPlate}"? This will update the vehicle record and anti-fraud registry immediately.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/crm/vehicle-plate-requests/${requestId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Failed to approve request');
+
+        alert(`✓ Plate change approved successfully! Vehicle updated to ${requestedPlate}.`);
+        const reqTabBtn = document.getElementById('tab-plate-requests');
+        if (reqTabBtn) window.switchOrderPipelineTab('requests', reqTabBtn);
+    } catch (err) {
+        alert('Error approving request: ' + err.message);
+    }
+};
+
+window.rejectPlateChangeRequest = async function(requestId, requestedPlate) {
+    const reason = prompt(`Enter rejection reason for plate change request "${requestedPlate}":`, 'Document verification failed / invalid RC or Insurance');
+    if (reason === null) return; // Cancelled
+
+    try {
+        const res = await fetch(`/api/crm/vehicle-plate-requests/${requestId}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Failed to reject request');
+
+        alert(`Plate change request rejected.`);
+        const reqTabBtn = document.getElementById('tab-plate-requests');
+        if (reqTabBtn) window.switchOrderPipelineTab('requests', reqTabBtn);
+    } catch (err) {
+        alert('Error rejecting request: ' + err.message);
+    }
+};
 
 function openRequestDetailsModal(requestId) {
     const req = PROTOTYPE_STATE.serviceRequests.find(r => r.id === requestId);
@@ -8278,6 +8523,1016 @@ async function renderIncentives(container) {
         container.innerHTML = '<div class="card" style="color:var(--danger);">Error loading incentives: ' + err.message + '</div>';
     }
 }
+
+// ============================================================================
+// FREE RIDE OFFERS & PROMOTIONS MANAGEMENT SYSTEM
+// ============================================================================
+
+window._offersTab = 'offers';
+window._offersUsageSearchQuery = '';
+window._modalTargetCustomers = [];
+window._modalSearchTimeout = null;
+
+async function renderOffers(container) {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('subtab')) {
+            window._offersTab = urlParams.get('subtab');
+        }
+        const activeTab = window._offersTab || 'offers';
+
+        container.innerHTML = `
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+                <div class="loader-spin" style="margin: 0 auto 16px auto;"></div>
+                <p>Loading Offers & Promotional Engine...</p>
+            </div>
+        `;
+
+        const [offersRes, usageRes, sysRes, globalRes] = await Promise.all([
+            fetch(`${API_URL}/offers`).catch(() => null),
+            fetch(`${API_URL}/offers/usage`).catch(() => null),
+            fetch(`${API_URL}/system-settings`).catch(() => null),
+            fetch(`${API_URL}/settings/global`).catch(() => null)
+        ]);
+
+        const offersData = (offersRes && offersRes.ok) ? await offersRes.json() : { offers: [] };
+        const usageData = (usageRes && usageRes.ok) ? await usageRes.json() : { usage: [] };
+        const sysSettings = (sysRes && sysRes.ok) ? await sysRes.json() : {};
+        const globalSettings = (globalRes && globalRes.ok) ? await globalRes.json() : {};
+        const allSettings = { ...globalSettings, ...sysSettings };
+
+        const offers = offersData.offers || [];
+        const usageList = usageData.usage || [];
+
+        // Compute high-level KPI summary
+        const activeOffersCount = offers.filter(o => o.status === 'active' && new Date(o.end_date) >= new Date()).length;
+        const totalClaimedRides = usageList.reduce((acc, u) => acc + (u.rides_used || 0), 0);
+        const totalSubsidized = usageList.reduce((acc, u) => acc + (parseFloat(u.total_subsidized) || 0), 0);
+        const uniqueCustomersBenefited = new Set(usageList.map(u => u.customer_id)).size;
+
+        // Base charge override settings
+        const isOverrideEnabled = allSettings['platform_base_charge_override_enabled'] === 'true' || 
+                                  allSettings['platform_base_charge_override_enabled'] === true || 
+                                  allSettings['platform_base_charge_override_enabled'] === '1' || 
+                                  allSettings['platform_base_charge_override_enabled'] === 1;
+        const overrideVal = allSettings['platform_base_charge_override_value'] !== undefined ? Number(allSettings['platform_base_charge_override_value']) : 0;
+        const carBaseVal = allSettings['car_platform_base_charge'] !== undefined ? Number(allSettings['car_platform_base_charge']) : 99;
+        const bikeBaseVal = allSettings['bike_platform_base_charge'] !== undefined ? Number(allSettings['bike_platform_base_charge']) : 49;
+        const effectiveCar = isOverrideEnabled ? overrideVal : carBaseVal;
+        const effectiveBike = isOverrideEnabled ? overrideVal : bikeBaseVal;
+
+        let mainTabContent = '';
+
+        if (activeTab === 'offers') {
+            // TAB 1: ACTIVE & SCHEDULED OFFERS TABLE
+            let rowsHtml = '';
+            if (offers.length === 0) {
+                rowsHtml = `
+                    <tr>
+                        <td colspan="8" style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            <i data-lucide="gift" style="width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.5;"></i>
+                            <div style="font-weight: 600;">No promotional offers configured yet.</div>
+                            <button onclick="window.openOfferModal()" class="btn btn-primary btn-sm" style="margin-top: 12px;">
+                                + Create First Offer
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                rowsHtml = offers.map(o => {
+                    const isExpired = new Date(o.end_date) < new Date();
+                    let statusClass = 'chip-success';
+                    let statusLabel = 'ACTIVE';
+
+                    if (o.status === 'paused') {
+                        statusClass = 'chip-warning';
+                        statusLabel = 'PAUSED';
+                    } else if (o.status === 'archived') {
+                        statusClass = 'chip-secondary';
+                        statusLabel = 'ARCHIVED';
+                    } else if (isExpired) {
+                        statusClass = 'chip-danger';
+                        statusLabel = 'EXPIRED';
+                    }
+
+                    const startDateStr = o.start_date ? new Date(o.start_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Immediate';
+                    const endDateStr = new Date(o.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                    const scopeBadge = o.vehicle_scope === 'both'
+                        ? '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.75rem;">Car &amp; Bike</span>'
+                        : (o.vehicle_scope === 'car'
+                            ? '<span class="badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-size:0.75rem;">Car Only</span>'
+                            : '<span class="badge" style="background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3); font-size:0.75rem;">Bike Only</span>');
+
+                    const targetBadge = o.target_type === 'all'
+                        ? '<span class="badge badge-success" style="font-size:0.75rem;">All Customers</span>'
+                        : `<span class="badge badge-info" style="font-size:0.75rem; cursor:pointer;" onclick="window.showTargetCustomersDetails('${o.id}')" title="Click to view target customer list">🎯 ${o.target_customer_count || (o.target_customers ? o.target_customers.length : 0)} Specific Customers</span>`;
+
+                    const offerJsonStr = encodeURIComponent(JSON.stringify(o));
+
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.88rem;">
+                            <td style="padding: 14px 16px;">
+                                <div style="font-weight: 700; color: #fff;">${o.name}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">
+                                    ${o.description || 'No description provided'}
+                                </div>
+                                <div style="font-family: monospace; font-size: 0.7rem; color: var(--primary); margin-top: 4px;">#${o.id}</div>
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                ${scopeBadge}
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                ${targetBadge}
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                <div style="font-weight: 700; color: #fff;">${o.ride_count} Free Rides</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">Up to ${o.max_free_distance_km} km / ride</div>
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                <div style="font-size: 0.82rem; color: #fff;">${startDateStr} → ${endDateStr}</div>
+                                <div style="font-size: 0.72rem; color: ${isExpired ? 'var(--danger)' : 'var(--text-dim)'}; margin-top: 2px;">
+                                    ${isExpired ? 'Offer period ended' : 'Active validity window'}
+                                </div>
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                <div style="font-weight: 700; color: #fff;">${o.claimed_rides_count || 0} Rides</div>
+                                <div style="font-size: 0.75rem; color: var(--primary); font-weight: 600;">₹${parseFloat(o.subsidized_amount_total || 0).toLocaleString()} Subsidized</div>
+                            </td>
+                            <td style="padding: 14px 16px;">
+                                <span class="chip ${statusClass}" style="font-size:0.75rem; font-weight:700;">${statusLabel}</span>
+                            </td>
+                            <td style="padding: 14px 16px; text-align: center;">
+                                <div style="display: flex; gap: 6px; justify-content: center;">
+                                    ${o.status === 'active' ? `
+                                        <button class="btn btn-secondary btn-sm" onclick="window.toggleOfferStatus('${o.id}', 'paused')" title="Pause Offer" style="padding: 4px 8px;">
+                                            <i data-lucide="pause" style="width: 13px; height: 13px; color: var(--warning);"></i>
+                                        </button>
+                                    ` : (o.status === 'paused' ? `
+                                        <button class="btn btn-secondary btn-sm" onclick="window.toggleOfferStatus('${o.id}', 'active')" title="Resume Offer" style="padding: 4px 8px;">
+                                            <i data-lucide="play" style="width: 13px; height: 13px; color: var(--success);"></i>
+                                        </button>
+                                    ` : '')}
+                                    <button class="btn btn-secondary btn-sm" onclick="window.openOfferModal('${offerJsonStr}')" title="Edit Offer" style="padding: 4px 8px;">
+                                        <i data-lucide="edit" style="width: 13px; height: 13px;"></i>
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="window.deleteOffer('${o.id}')" title="Delete / Archive" style="padding: 4px 8px; color: var(--danger);">
+                                        <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            mainTabContent = `
+                <div class="card" style="padding:0; overflow:hidden; background:var(--bg-card); border:1px solid var(--border);">
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; text-align:left;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02); font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">
+                                    <th style="padding:12px 16px;">Offer Campaign</th>
+                                    <th style="padding:12px 16px;">Vehicle Scope</th>
+                                    <th style="padding:12px 16px;">Audience</th>
+                                    <th style="padding:12px 16px;">Allotment &amp; Distance</th>
+                                    <th style="padding:12px 16px;">Validity Window</th>
+                                    <th style="padding:12px 16px;">Performance</th>
+                                    <th style="padding:12px 16px;">Status</th>
+                                    <th style="padding:12px 16px; text-align:center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+        } else if (activeTab === 'usage') {
+            // TAB 2: CUSTOMER USAGE LEDGER
+            const query = (window._offersUsageSearchQuery || '').toLowerCase();
+            const filteredUsage = usageList.filter(u => {
+                if (!query) return true;
+                return (u.customer_name || '').toLowerCase().includes(query) ||
+                       (u.customer_phone || '').includes(query) ||
+                       (u.offer_name || '').toLowerCase().includes(query);
+            });
+
+            let usageRowsHtml = '';
+            if (filteredUsage.length === 0) {
+                usageRowsHtml = `
+                    <tr>
+                        <td colspan="7" style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            <i data-lucide="users" style="width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.5;"></i>
+                            <div style="font-weight: 600;">No promotional ride claims recorded matching this criteria.</div>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                usageRowsHtml = filteredUsage.map(u => {
+                    const used = u.rides_used || 0;
+                    const allotted = u.rides_allotted || 5;
+                    const remaining = Math.max(0, allotted - used);
+                    const pct = Math.min(100, Math.round((used / allotted) * 100));
+
+                    const lastUsedStr = u.last_used_at 
+                        ? new Date(parseInt(u.last_used_at)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'N/A';
+
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.88rem;">
+                            <td style="padding: 12px 16px;">
+                                <div style="font-weight: 700; color: #fff;">${u.customer_name}</div>
+                                <div style="font-size: 0.78rem; color: var(--text-dim); display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                    <i data-lucide="phone" style="width: 12px; height: 12px;"></i> ${u.customer_phone || 'No phone'}
+                                </div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <div style="font-weight: 600; color: #fff;">${u.offer_name}</div>
+                                <div style="font-family: monospace; font-size: 0.7rem; color: var(--primary);">#${u.offer_id}</div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="font-weight: 800; color: #fff;">${used} / ${allotted} Rides</div>
+                                    <span style="font-size: 0.75rem; color: var(--text-dim);">(${pct}%)</span>
+                                </div>
+                                <div style="width: 120px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 4px; overflow: hidden;">
+                                    <div style="width: ${pct}%; height: 100%; background: ${pct >= 100 ? 'var(--danger)' : 'var(--primary)'}; border-radius: 3px;"></div>
+                                </div>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <span class="chip ${remaining > 0 ? 'chip-success' : 'chip-secondary'}" style="font-weight: 700; font-size: 0.8rem;">
+                                    ${remaining} Left
+                                </span>
+                            </td>
+                            <td style="padding: 12px 16px; font-weight: 700; color: var(--primary); font-size: 0.95rem;">
+                                ₹${parseFloat(u.total_subsidized || 0).toLocaleString()}
+                            </td>
+                            <td style="padding: 12px 16px; color: var(--text-muted); font-size: 0.8rem;">
+                                ${lastUsedStr}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            mainTabContent = `
+                <!-- Filter Search Box -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                    <div class="search-box" style="width:100%; max-width:360px;">
+                        <i data-lucide="search" style="width:14px; color:var(--text-muted)"></i>
+                        <input type="text" placeholder="Search customer or offer name..." class="search-input" value="${window._offersUsageSearchQuery || ''}" oninput="window.filterOffersUsageLedger(this.value)">
+                    </div>
+                    <div style="font-size:0.85rem; color:var(--text-muted);">
+                        Showing <strong>${filteredUsage.length}</strong> customer ledger entries
+                    </div>
+                </div>
+
+                <div class="card" style="padding:0; overflow:hidden; background:var(--bg-card); border:1px solid var(--border);">
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; text-align:left;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02); font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">
+                                    <th style="padding:12px 16px;">Customer</th>
+                                    <th style="padding:12px 16px;">Applied Offer</th>
+                                    <th style="padding:12px 16px;">Usage Progress</th>
+                                    <th style="padding:12px 16px;">Remaining</th>
+                                    <th style="padding:12px 16px;">Total Subsidized</th>
+                                    <th style="padding:12px 16px;">Last Used Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${usageRowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+        } else if (activeTab === 'override') {
+            // TAB 3: PLATFORM BASE CHARGE OVERRIDE
+            mainTabContent = `
+                <div class="card" style="margin-top:0; border-top: 3px solid ${isOverrideEnabled ? 'var(--success)' : 'var(--border)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <h2 style="margin:0; font-size:1.25rem; font-weight:700; color:var(--text-main);">
+                                    Promotional Override: Platform Base Charge (Distance Trips)
+                                </h2>
+                                <span id="offer-status-badge" class="badge" style="background:${isOverrideEnabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)'}; color:${isOverrideEnabled ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${isOverrideEnabled ? 'rgba(34,197,94,0.3)' : 'var(--border)'}; font-size:0.75rem; padding:4px 10px; border-radius:20px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                                    <span style="width:8px; height:8px; border-radius:50%; background:${isOverrideEnabled ? 'var(--success)' : 'var(--text-muted)'}; display:inline-block;"></span>
+                                    ${isOverrideEnabled ? 'ACTIVE PROMOTION (Overriding to ₹' + overrideVal + ')' : 'INACTIVE (Standard Rates Apply)'}
+                                </span>
+                            </div>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:6px 0 0 0; line-height:1.5; max-width:850px;">
+                                When enabled, the pricing engine uses this single promotional value instead of normal standard base charges (Car: ₹${carBaseVal}, Bike: ₹${bikeBaseVal}) for <strong>both Car and Bike</strong> on all point-to-point distance trips. When turned OFF, pricing instantly reverts to the normal stored base charge values without needing to re-enter them.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Operational Rule Highlights -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:24px;">
+                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Car Base Charge</div>
+                            <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+                                <span style="font-size:1.3rem; font-weight:800; color:${isOverrideEnabled ? 'var(--success)' : '#fff'};">₹${effectiveCar}</span>
+                                ${isOverrideEnabled ? '<span style="font-size:0.8rem; color:var(--text-dim); text-decoration:line-through;">₹' + carBaseVal + ' standard</span>' : '<span style="font-size:0.8rem; color:var(--text-dim);">standard rate</span>'}
+                            </div>
+                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Point-to-point distance bookings</span>
+                        </div>
+
+                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Bike Base Charge</div>
+                            <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+                                <span style="font-size:1.3rem; font-weight:800; color:${isOverrideEnabled ? 'var(--success)' : '#fff'};">₹${effectiveBike}</span>
+                                ${isOverrideEnabled ? '<span style="font-size:0.8rem; color:var(--text-dim); text-decoration:line-through;">₹' + bikeBaseVal + ' standard</span>' : '<span style="font-size:0.8rem; color:var(--text-dim);">standard rate</span>'}
+                            </div>
+                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Point-to-point distance bookings</span>
+                        </div>
+
+                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Applicable Scope</div>
+                            <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:4px;">Distance Trips Only</div>
+                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Hourly Rentals use slab rates</span>
+                        </div>
+
+                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Promotion Duration</div>
+                            <div style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-top:4px;">Open-Ended</div>
+                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Active until manually toggled off</span>
+                        </div>
+                    </div>
+
+                    <!-- Input Controls -->
+                    <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:20px;">
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+                            <div>
+                                <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">
+                                    Promotional Override Status
+                                </label>
+                                <select id="offer-base-override-enabled" onchange="window.updateOfferLivePreview()" style="width:100%; padding:10px 12px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; font-size:0.95rem;">
+                                    <option value="false" ${!isOverrideEnabled ? 'selected' : ''}>OFF — Use Standard Base Charges (Car ₹${carBaseVal}, Bike ₹${bikeBaseVal})</option>
+                                    <option value="true" ${isOverrideEnabled ? 'selected' : ''}>ON — Apply Promotional Override</option>
+                                </select>
+                                <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">
+                                    Toggle ON to activate promotion, or OFF to instantly restore normal base charges.
+                                </span>
+                            </div>
+
+                            <div>
+                                <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">
+                                    Override Base Charge Value (₹)
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:var(--text-muted); font-size:1rem;">₹</span>
+                                    <input type="number" min="0" step="1" id="offer-base-override-value" value="${overrideVal}" oninput="window.updateOfferLivePreview()" style="width:100%; padding:10px 12px 10px 28px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; font-size:0.95rem;">
+                                </div>
+                                <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">
+                                    Promotional charge for distance bookings (e.g. 0 for ₹0 Base Charge promotion).
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Button & Notification Area -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <button id="btn-save-offers" onclick="saveOfferSettings()" class="btn-primary" style="padding:10px 24px; background:var(--primary); color:#000; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.9rem; display:inline-flex; align-items:center; gap:8px;">
+                            <i data-lucide="save" style="width:16px; height:16px;"></i> Save Offer Settings
+                        </button>
+                        <div id="offer-save-feedback" style="font-size:0.85rem; font-weight:600; display:none;"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            <!-- Offers Section Header -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg, rgba(234,179,8,0.2), rgba(249,115,22,0.2)); display:flex; align-items:center; justify-content:center; border:1px solid rgba(234,179,8,0.3);">
+                            <i data-lucide="gift" style="color:var(--primary); width:22px; height:22px;"></i>
+                        </div>
+                        <div>
+                            <h1 style="margin:0; font-size:1.6rem; font-weight:800; color:var(--text-main); letter-spacing:-0.5px;">Offers &amp; Promotions Engine</h1>
+                            <p style="margin:4px 0 0 0; font-size:0.85rem; color:var(--text-muted);">Configure named free-ride promotions, target specific customer cohorts, track usage ledger, and manage pricing overrides.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button onclick="window.openOfferModal()" class="btn btn-primary" style="padding:8px 16px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                        <i data-lucide="plus-circle" style="width:15px; height:15px;"></i> Create New Offer
+                    </button>
+                    <button onclick="renderOffers(document.getElementById('app'))" class="btn-secondary" style="padding:8px 16px; border-radius:6px; font-weight:600; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
+                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Metric Cards Grid -->
+            <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
+                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Active Campaigns</div>
+                    <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:6px 0 2px;">${activeOffersCount} Offers</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">${offers.length} total campaigns configured</div>
+                </div>
+
+                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Free Rides Claimed</div>
+                    <div style="font-size:1.8rem; font-weight:800; color:var(--primary); margin:6px 0 2px;">${totalClaimedRides} Rides</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">Across all active &amp; historical promos</div>
+                </div>
+
+                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Value Subsidized</div>
+                    <div style="font-size:1.8rem; font-weight:800; color:#22c55e; margin:6px 0 2px;">₹${totalSubsidized.toLocaleString()}</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">100% platform-absorbed promotional spend</div>
+                </div>
+
+                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Customers Benefited</div>
+                    <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:6px 0 2px;">${uniqueCustomersBenefited} Users</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">Unique accounts with completed promo rides</div>
+                </div>
+            </div>
+
+            <!-- Sub-Navigation Tabs -->
+            <div style="display:flex; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px;">
+                <button onclick="window._offersTab='offers'; renderOffers(document.getElementById('app'))" 
+                    class="btn ${activeTab === 'offers' ? 'btn-primary' : 'btn-secondary'}" 
+                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="tag" style="width:16px; height:16px;"></i> Active &amp; Scheduled Offers (${offers.length})
+                </button>
+                <button onclick="window._offersTab='usage'; renderOffers(document.getElementById('app'))" 
+                    class="btn ${activeTab === 'usage' ? 'btn-primary' : 'btn-secondary'}" 
+                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="users" style="width:16px; height:16px;"></i> Customer Usage Ledger (${usageList.length})
+                </button>
+                <button onclick="window._offersTab='override'; renderOffers(document.getElementById('app'))" 
+                    class="btn ${activeTab === 'override' ? 'btn-primary' : 'btn-secondary'}" 
+                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Charge Override
+                </button>
+            </div>
+
+            <!-- Tab Content Area -->
+            <div>
+                ${mainTabContent}
+            </div>
+        `;
+
+        if (window.lucide) lucide.createIcons();
+
+        // Helper for live preview in override tab
+        window.updateOfferLivePreview = function() {
+            const enabledSelect = document.getElementById('offer-base-override-enabled');
+            const valInput = document.getElementById('offer-base-override-value');
+            const badge = document.getElementById('offer-status-badge');
+            if (!enabledSelect || !valInput || !badge) return;
+
+            const isEnabled = enabledSelect.value === 'true';
+            const val = parseFloat(valInput.value) || 0;
+
+            if (isEnabled) {
+                badge.style.background = 'rgba(34,197,94,0.15)';
+                badge.style.color = 'var(--success)';
+                badge.style.border = '1px solid rgba(34,197,94,0.3)';
+                badge.innerHTML = `<span style="width:8px; height:8px; border-radius:50%; background:var(--success); display:inline-block;"></span> ACTIVE PROMOTION (Overriding to ₹${val})`;
+            } else {
+                badge.style.background = 'rgba(255,255,255,0.06)';
+                badge.style.color = 'var(--text-muted)';
+                badge.style.border = '1px solid var(--border)';
+                badge.innerHTML = `<span style="width:8px; height:8px; border-radius:50%; background:var(--text-muted); display:inline-block;"></span> INACTIVE (Standard Rates: Car ₹${carBaseVal} / Bike ₹${bikeBaseVal})`;
+            }
+        };
+
+        window.saveOfferSettings = async function() {
+            const saveBtn = document.getElementById('btn-save-offers');
+            const feedback = document.getElementById('offer-save-feedback');
+            const enabledSelect = document.getElementById('offer-base-override-enabled');
+            const valInput = document.getElementById('offer-base-override-value');
+
+            if (!enabledSelect || !valInput) return;
+
+            const isEnabled = enabledSelect.value;
+            const val = String(parseFloat(valInput.value) || 0);
+
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = `<div class="loader-spin" style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:6px;"></div> Saving...`;
+            }
+
+            try {
+                const [r1, r2] = await Promise.all([
+                    fetch(`${API_URL}/system-settings`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'platform_base_charge_override_enabled', value: isEnabled })
+                    }),
+                    fetch(`${API_URL}/system-settings`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'platform_base_charge_override_value', value: val })
+                    })
+                ]);
+
+                if (r1.ok && r2.ok) {
+                    if (feedback) {
+                        feedback.style.display = 'block';
+                        feedback.style.color = 'var(--success)';
+                        feedback.innerHTML = `<i data-lucide="check" style="width:14px; height:14px; vertical-align:middle; display:inline-block; margin-right:4px;"></i> Offer settings saved successfully!`;
+                        if (window.lucide) lucide.createIcons();
+                        setTimeout(() => { if (feedback) feedback.style.display = 'none'; }, 4000);
+                    }
+                    setTimeout(() => {
+                        renderOffers(container);
+                    }, 600);
+                } else {
+                    const errData = await r1.json().catch(() => ({}));
+                    alert('Failed to save offer settings: ' + (errData.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Save error:', err);
+                alert('Network error while saving offer settings: ' + err.message);
+            } finally {
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = `<i data-lucide="save" style="width:16px; height:16px;"></i> Save Offer Settings`;
+                    if (window.lucide) lucide.createIcons();
+                }
+            }
+        };
+
+        if (urlParams.get('openmodal') === '1') {
+            setTimeout(() => {
+                if (window.openOfferModal) {
+                    window.openOfferModal();
+                    if (urlParams.get('modalcohort') === '1') {
+                        const radio = document.querySelector('input[name="modal-target-type"][value="specific"]');
+                        if (radio) { radio.checked = true; window.toggleTargetAudienceView('specific'); }
+                        window._modalTargetCustomers = [
+                            { id: 'usr_cust_demo_vip1', name: 'Dr. John Watson', phone: '+919876543210', email: 'watson@bakerstreet.com' },
+                            { id: 'usr_cust_demo_vip2', name: 'Priya Sharma', phone: '+919830012345', email: 'priya.sharma@example.com' }
+                        ];
+                        const chipsContainer = document.getElementById('modal-target-chips-container');
+                        const countEl = document.getElementById('modal-target-count');
+                        if (chipsContainer && window.renderModalTargetChips) {
+                            chipsContainer.innerHTML = window.renderModalTargetChips();
+                        }
+                        if (countEl) countEl.innerText = window._modalTargetCustomers.length;
+                        const nameInput = document.getElementById('modal-offer-name');
+                        if (nameInput) nameInput.value = 'VIP Loyalty: 3 Free Rides (Car Only)';
+                        const ridesInput = document.getElementById('modal-offer-rides');
+                        if (ridesInput) ridesInput.value = '3';
+                        const scopeSelect = document.getElementById('modal-offer-scope');
+                        if (scopeSelect) scopeSelect.value = 'car';
+                    }
+                }
+            }, 1200);
+        }
+    } catch (err) {
+        console.error('renderOffers Error:', err);
+        container.innerHTML = `
+            <div class="card" style="color:var(--danger); padding:30px; text-align:center;">
+                <i data-lucide="alert-circle" style="width:36px; height:36px; margin-bottom:10px;"></i>
+                <h3>Error Loading Offers</h3>
+                <p>${err.message}</p>
+                <button class="btn btn-primary" onclick="renderOffers(document.getElementById('app'))" style="margin-top:15px;">Retry</button>
+            </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+    }
+}
+
+// ----------------------------------------------------------------------------
+// MODAL & CLIENT ACTION HANDLERS FOR OFFERS
+// ----------------------------------------------------------------------------
+
+window.filterOffersUsageLedger = function(query) {
+    window._offersUsageSearchQuery = query;
+    renderOffers(document.getElementById('app'));
+};
+
+window.toggleOfferStatus = async function(id, newStatus) {
+    try {
+        const res = await fetch(`${API_URL}/offers/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            window.showToast(`Offer ${newStatus === 'active' ? 'resumed' : 'paused'} successfully.`, 'success');
+            renderOffers(document.getElementById('app'));
+        } else {
+            alert(data.error || 'Failed to update offer status.');
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+};
+
+window.deleteOffer = async function(id) {
+    if (!confirm('Are you sure you want to delete or archive this offer?')) return;
+    try {
+        const res = await fetch(`${API_URL}/offers/${id}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        if (res.ok) {
+            window.showToast(data.message || 'Offer removed successfully.', 'success');
+            renderOffers(document.getElementById('app'));
+        } else {
+            alert(data.error || 'Failed to delete offer.');
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+};
+
+window.showTargetCustomersDetails = async function(offerId) {
+    try {
+        const res = await fetch(`${API_URL}/offers`);
+        const data = await res.json();
+        const offer = (data.offers || []).find(o => o.id === offerId);
+        if (!offer) return alert('Offer details not found.');
+
+        const targets = offer.target_customers || [];
+        let listHtml = '';
+        if (targets.length === 0) {
+            listHtml = '<div style="padding:20px; text-align:center; color:var(--text-muted);">No specific customer accounts attached.</div>';
+        } else {
+            listHtml = targets.map(c => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
+                    <div>
+                        <div style="font-weight:700; color:#fff;">${c.name}</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">${c.phone || ''} ${c.email ? '• ' + c.email : ''}</div>
+                    </div>
+                    <span class="chip chip-info" style="font-size:0.7rem;">Targeted</span>
+                </div>
+            `).join('');
+        }
+
+        const modalHtml = `
+            <div class="modal-overlay" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
+                <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:540px; padding:24px; max-height:85vh; overflow-y:auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="users" style="color:var(--primary); width:20px;"></i> Target Audience (${targets.length})
+                        </h2>
+                        <button onclick="window.closeCrmModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
+                    </div>
+                    <div style="margin-bottom:16px; font-size:0.85rem; color:var(--text-muted);">
+                        Campaign: <strong>${offer.name}</strong> (#${offer.id})
+                    </div>
+                    <div style="max-height:50vh; overflow-y:auto;">
+                        ${listHtml}
+                    </div>
+                    <div style="margin-top:20px; text-align:right;">
+                        <button onclick="window.closeCrmModal()" class="btn btn-secondary">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        let modalEl = document.getElementById('crm-modal-host');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'crm-modal-host';
+            document.body.appendChild(modalEl);
+        }
+        modalEl.innerHTML = modalHtml;
+        if (window.lucide) lucide.createIcons();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+};
+
+window.openOfferModal = function(encodedOfferStr = null) {
+    let offer = null;
+    if (encodedOfferStr) {
+        try {
+            offer = JSON.parse(decodeURIComponent(encodedOfferStr));
+        } catch (e) {}
+    }
+
+    const isEdit = !!offer;
+    window._modalTargetCustomers = (offer && offer.target_customers) ? [...offer.target_customers] : [];
+
+    // Format start and end date for datetime-local
+    const now = new Date();
+    const defaultStart = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    
+    // Default end date: 60 days from now
+    const futureDate = new Date(now.getTime() + (60 * 24 * 60 * 60 * 1000));
+    const defaultEnd = new Date(futureDate.getTime() - futureDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+    const startVal = offer && offer.start_date ? new Date(new Date(offer.start_date).getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : defaultStart;
+    const endVal = offer && offer.end_date ? new Date(new Date(offer.end_date).getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : defaultEnd;
+
+    const modalHtml = `
+        <div class="modal-overlay" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
+            <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:640px; padding:28px; max-height:90vh; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                    <div>
+                        <h2 style="margin:0; font-size:1.3rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="gift" style="color:var(--primary); width:22px;"></i> ${isEdit ? 'Edit Promotional Offer' : 'Create New Promotional Offer'}
+                        </h2>
+                        <p style="margin:4px 0 0 0; font-size:0.8rem; color:var(--text-muted);">Configure free rides, distance caps, targeting rules, and validity period.</p>
+                    </div>
+                    <button onclick="window.closeCrmModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.6rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <form id="offer-modal-form" onsubmit="window.submitOfferForm(event, '${offer ? offer.id : ''}')">
+                    <!-- Offer Name -->
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                            Offer Campaign Name <span style="color:var(--danger);">*</span>
+                        </label>
+                        <input type="text" id="modal-offer-name" required value="${offer ? (offer.name || '') : ''}" placeholder="e.g. October Festival Launch Promo" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.9rem;">
+                    </div>
+
+                    <!-- Description -->
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                            Description / Internal Notes
+                        </label>
+                        <textarea id="modal-offer-desc" rows="2" placeholder="Brief rationale or customer-facing promo explanation..." class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.85rem;">${offer ? (offer.description || '') : ''}</textarea>
+                    </div>
+
+                    <!-- Free Rides & Max Free Distance Grid -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                                Free Rides Allotment <span style="color:var(--danger);">*</span>
+                            </label>
+                            <input type="number" id="modal-offer-rides" required min="1" step="1" value="${offer ? (offer.ride_count || 5) : 5}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:3px; display:block;">Rides per customer account</span>
+                        </div>
+
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                                Max Free Distance (km) <span style="color:var(--danger);">*</span>
+                            </label>
+                            <input type="number" id="modal-offer-max-dist" required min="1" step="0.5" value="${offer ? (offer.max_free_distance_km || 30.0) : 30.0}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-weight:700;">
+                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:3px; display:block;">Distance waived 100% (Option B)</span>
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Scope -->
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                            Vehicle Scope <span style="color:var(--danger);">*</span>
+                        </label>
+                        <select id="modal-offer-scope" class="select" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.9rem;">
+                            <option value="both" ${(!offer || offer.vehicle_scope === 'both') ? 'selected' : ''}>Both Car &amp; Bike</option>
+                            <option value="car" ${offer && offer.vehicle_scope === 'car' ? 'selected' : ''}>Car Only</option>
+                            <option value="bike" ${offer && offer.vehicle_scope === 'bike' ? 'selected' : ''}>Bike Only</option>
+                        </select>
+                    </div>
+
+                    <!-- Start & End Dates -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                                Start Date &amp; Time
+                            </label>
+                            <input type="datetime-local" id="modal-offer-start" value="${startVal}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px;">
+                        </div>
+
+                        <div>
+                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
+                                End Date &amp; Time (Mandatory) <span style="color:var(--danger);">*</span>
+                            </label>
+                            <input type="datetime-local" id="modal-offer-end" required value="${endVal}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; border-color:rgba(250,204,21,0.4);">
+                        </div>
+                    </div>
+
+                    <!-- Target Audience Selector -->
+                    <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:24px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:10px;">
+                            Target Audience
+                        </label>
+
+                        <div style="display:flex; gap:20px; margin-bottom:14px;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#fff; font-size:0.9rem;">
+                                <input type="radio" name="modal-target-type" value="all" ${(!offer || offer.target_type === 'all') ? 'checked' : ''} onchange="window.toggleTargetAudienceView('all')">
+                                All Customers (Global Promo)
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#fff; font-size:0.9rem;">
+                                <input type="radio" name="modal-target-type" value="specific" ${offer && offer.target_type === 'specific' ? 'checked' : ''} onchange="window.toggleTargetAudienceView('specific')">
+                                Specific Customers (Cohort Campaign)
+                            </label>
+                        </div>
+
+                        <!-- Specific Customers Container -->
+                        <div id="modal-specific-audience-box" style="display:${offer && offer.target_type === 'specific' ? 'block' : 'none'}; border-top:1px solid var(--border); padding-top:14px;">
+                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px; font-weight:600;">
+                                Search &amp; Add Customer Accounts:
+                            </label>
+                            <div style="position:relative; margin-bottom:10px;">
+                                <input type="text" id="modal-customer-search-input" placeholder="Type customer name, phone (+91...), or email..." class="input" oninput="window.handleTargetCustomerSearch(this.value)" style="width:100%; padding:9px 12px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.85rem;">
+                                <div id="modal-customer-search-dropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:180px; overflow-y:auto; background:#1E293B; border:1px solid var(--border); border-radius:8px; z-index:1000; box-shadow:0 10px 25px rgba(0,0,0,0.5); margin-top:4px;"></div>
+                            </div>
+
+                            <!-- Selected Customers Chips -->
+                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">Selected Target Cohort (<span id="modal-target-count">${window._modalTargetCustomers.length}</span>):</div>
+                            <div id="modal-target-chips-container" style="display:flex; flex-wrap:wrap; gap:6px; max-height:120px; overflow-y:auto; padding:4px 0;">
+                                ${window.renderModalTargetChips()}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--border); padding-top:16px;">
+                        <button type="button" onclick="window.closeCrmModal()" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" id="btn-modal-offer-submit" class="btn btn-primary" style="padding:10px 24px; font-weight:700;">
+                            ${isEdit ? 'Save Changes' : 'Create Offer'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+    let modalEl = document.getElementById('crm-modal-host');
+    if (!modalEl) {
+        modalEl = document.createElement('div');
+        modalEl.id = 'crm-modal-host';
+        document.body.appendChild(modalEl);
+    }
+    modalEl.innerHTML = modalHtml;
+    if (window.lucide) lucide.createIcons();
+};
+
+window.closeCrmModal = function() {
+    const modalEl = document.getElementById('crm-modal-host');
+    if (modalEl) modalEl.innerHTML = '';
+    const modalContainer = document.getElementById('modal-container');
+    if (modalContainer) modalContainer.innerHTML = '';
+};
+
+window.toggleTargetAudienceView = function(type) {
+    const box = document.getElementById('modal-specific-audience-box');
+    if (box) box.style.display = type === 'specific' ? 'block' : 'none';
+};
+
+window.handleTargetCustomerSearch = function(query) {
+    clearTimeout(window._modalSearchTimeout);
+    const dropdown = document.getElementById('modal-customer-search-dropdown');
+    if (!dropdown) return;
+
+    if (!query || query.trim().length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    window._modalSearchTimeout = setTimeout(async () => {
+        try {
+            const res = await fetch(`${API_URL}/crm/customers/search?q=${encodeURIComponent(query.trim())}`);
+            const data = await res.json();
+            const customers = data.customers || [];
+
+            if (customers.length === 0) {
+                dropdown.innerHTML = '<div style="padding:10px; font-size:0.8rem; color:var(--text-muted); text-align:center;">No matching customers found</div>';
+            } else {
+                dropdown.innerHTML = customers.map(c => {
+                    const isAlreadyAdded = window._modalTargetCustomers.some(tc => tc.id === c.id);
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem; cursor:pointer;" onclick="${isAlreadyAdded ? '' : `window.addModalTargetCustomer('${c.id}', '${encodeURIComponent(c.name || '')}', '${c.phone || ''}', '${c.email || ''}')`}">
+                            <div>
+                                <div style="font-weight:700; color:#fff;">${c.name || 'Customer'}</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">${c.phone || ''} ${c.email ? '• ' + c.email : ''}</div>
+                            </div>
+                            ${isAlreadyAdded ? `
+                                <span style="font-size:0.72rem; color:var(--success); font-weight:700;">✓ Added</span>
+                            ` : `
+                                <button type="button" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:3px 8px;">+ Add</button>
+                            `}
+                        </div>
+                    `;
+                }).join('');
+            }
+            dropdown.style.display = 'block';
+        } catch (e) {
+            dropdown.style.display = 'none';
+        }
+    }, 250);
+};
+
+window.addModalTargetCustomer = function(id, encodedName, phone, email) {
+    const name = decodeURIComponent(encodedName);
+    if (!window._modalTargetCustomers.some(c => c.id === id)) {
+        window._modalTargetCustomers.push({ id, name, phone, email });
+    }
+    const container = document.getElementById('modal-target-chips-container');
+    const countEl = document.getElementById('modal-target-count');
+    if (container) container.innerHTML = window.renderModalTargetChips();
+    if (countEl) countEl.textContent = window._modalTargetCustomers.length;
+
+    const dropdown = document.getElementById('modal-customer-search-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    const input = document.getElementById('modal-customer-search-input');
+    if (input) input.value = '';
+};
+
+window.removeModalTargetCustomer = function(id) {
+    window._modalTargetCustomers = window._modalTargetCustomers.filter(c => c.id !== id);
+    const container = document.getElementById('modal-target-chips-container');
+    const countEl = document.getElementById('modal-target-count');
+    if (container) container.innerHTML = window.renderModalTargetChips();
+    if (countEl) countEl.textContent = window._modalTargetCustomers.length;
+};
+
+window.renderModalTargetChips = function() {
+    if (window._modalTargetCustomers.length === 0) {
+        return '<span style="font-size:0.75rem; color:var(--text-dim); font-style:italic;">No customers selected yet. Search above to add.</span>';
+    }
+    return window._modalTargetCustomers.map(c => `
+        <span class="chip chip-info" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:3px 8px; border-radius:12px;">
+            <span>${c.name} (${c.phone || c.id})</span>
+            <span onclick="window.removeModalTargetCustomer('${c.id}')" style="cursor:pointer; font-weight:800; opacity:0.7;" title="Remove">&times;</span>
+        </span>
+    `).join('');
+};
+
+window.submitOfferForm = async function(e, editId = null) {
+    e.preventDefault();
+
+    const name = document.getElementById('modal-offer-name').value.trim();
+    const description = document.getElementById('modal-offer-desc').value.trim();
+    const ride_count = parseInt(document.getElementById('modal-offer-rides').value, 10);
+    const max_free_distance_km = parseFloat(document.getElementById('modal-offer-max-dist').value);
+    const vehicle_scope = document.getElementById('modal-offer-scope').value;
+    const start_date = document.getElementById('modal-offer-start').value;
+    const end_date = document.getElementById('modal-offer-end').value;
+
+    const targetTypeRadio = document.querySelector('input[name="modal-target-type"]:checked');
+    const target_type = targetTypeRadio ? targetTypeRadio.value : 'all';
+
+    if (!end_date) {
+        alert('Please specify a mandatory offer end date.');
+        return;
+    }
+
+    if (new Date(end_date) <= new Date()) {
+        alert('End date must be in the future.');
+        return;
+    }
+
+    if (target_type === 'specific' && window._modalTargetCustomers.length === 0) {
+        alert('Please select at least one customer account for a targeted campaign.');
+        return;
+    }
+
+    const payload = {
+        name,
+        description,
+        ride_count,
+        max_free_distance_km,
+        vehicle_scope,
+        start_date: start_date ? new Date(start_date).toISOString() : new Date().toISOString(),
+        end_date: new Date(end_date).toISOString(),
+        target_type,
+        customer_ids: target_type === 'specific' ? window._modalTargetCustomers.map(c => c.id) : []
+    };
+
+    const submitBtn = document.getElementById('btn-modal-offer-submit');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+    }
+
+    try {
+        const url = editId ? `${API_URL}/offers/${editId}` : `${API_URL}/offers`;
+        const method = editId ? 'PATCH' : 'POST';
+
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            window.closeCrmModal();
+            window.showToast(editId ? 'Offer updated successfully.' : 'New promotional offer created.', 'success');
+            renderOffers(document.getElementById('app'));
+        } else {
+            alert(data.error || 'Failed to save offer.');
+        }
+    } catch (err) {
+        alert('Error saving offer: ' + err.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = editId ? 'Save Changes' : 'Create Offer';
+        }
+    }
+};
 
 
 
