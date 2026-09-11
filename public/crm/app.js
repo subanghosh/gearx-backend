@@ -10142,3 +10142,5 @@ window.renderTractionLiveMetrics = async function(container) {
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
 };
+
+// Auto-cache-busting verified: 2026-09-11
