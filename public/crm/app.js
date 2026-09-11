@@ -209,8 +209,7 @@ function getAttachmentUrl(path) {
     if (path.startsWith('data:')) {
         return path;
     }
-    // If it's a mock file or a disk upload (which are lost due to Render's ephemeral filesystem), show a friendly placeholder
-    if (path.includes('mock') || path.startsWith('uploads/')) {
+    if (path.includes('mock')) {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250" style="background:#121212; font-family:sans-serif;"><rect width="400" height="250" fill="#1a1a1a" stroke="#333" stroke-width="2"/><circle cx="200" cy="90" r="30" fill="#444"/><path d="M160,150 Q200,120 240,150" stroke="#444" stroke-width="6" fill="none"/><text x="200" y="190" fill="#e5c158" font-size="14" text-anchor="middle" font-weight="bold" letter-spacing="1">DOCUMENT PLACEHOLDER</text><text x="200" y="215" fill="#666" font-size="10" text-anchor="middle">${path}</text></svg>`;
         return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     }

@@ -1790,6 +1790,8 @@ apiRouter.get('/users', authMiddleware, requireRole('admin'), async (req, res) =
                    dlVerified as "dlVerified", dlverified,
                    bankVerified as "bankVerified", bankverified,
                    kycStatus as "kycStatus", kycstatus,
+                   panurl, panbackurl, aadhaarurl, aadhaarbackurl, dlurl, dlbackurl, facephotourl,
+                   panurl as "panUrl", panbackurl as "panBackUrl", aadhaarurl as "aadhaarUrl", aadhaarbackurl as "aadhaarBackUrl", dlurl as "dlUrl", dlbackurl as "dlBackUrl", facephotourl as "facePhotoUrl",
                    is_online, pincode, address, city, state, rating,
                    profilePictureUrl as "profilePictureUrl", profilepictureurl,
                    dob, gender, kycRejectionReason as "kycRejectionReason", kycrejectionreason,
@@ -4505,20 +4507,21 @@ const verifyOwnership = (req, res, next) => {
 
 apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, upload.single('file'), validateUploadedFiles, async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
+    }
     try {
         const file = req.file;
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
         const filename = `${Date.now()}-${safeName}`;
         const filePath = `uploads/${filename}`;
 
-        if (isR2Configured()) {
-            await uploadBufferToR2({
-                key: filePath,
-                buffer: file.buffer,
-                mimetype: file.mimetype,
-                metadata: { userId: req.params.id, type: 'profile_picture' }
-            });
-        }
+        await uploadBufferToR2({
+            key: filePath,
+            buffer: file.buffer,
+            mimetype: file.mimetype,
+            metadata: { userId: req.params.id, type: 'profile_picture' }
+        });
 
         const signedUrl = generateSignedUploadUrl(filePath);
 
@@ -4535,6 +4538,9 @@ apiRouter.post('/users/:id/profile-picture', authMiddleware, verifyOwnership, up
 
 apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.single('file'), validateUploadedFiles, async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
+    }
     try {
         const { docType } = req.body;
         const id = req.params.id;
@@ -4559,14 +4565,12 @@ apiRouter.post('/workers/:id/kyc-file', authMiddleware, verifyOwnership, upload.
         const filename = `${Date.now()}-${safeName}`;
         const filePath = `uploads/${filename}`;
 
-        if (isR2Configured()) {
-            await uploadBufferToR2({
-                key: filePath,
-                buffer: file.buffer,
-                mimetype: file.mimetype,
-                metadata: { userId: id, docType }
-            });
-        }
+        await uploadBufferToR2({
+            key: filePath,
+            buffer: file.buffer,
+            mimetype: file.mimetype,
+            metadata: { userId: id, docType }
+        });
 
         const signedUrl = generateSignedUploadUrl(filePath);
 
@@ -4665,109 +4669,72 @@ apiRouter.put('/workers/:id/kyc', authMiddleware, verifyOwnership, upload.fields
         return res.status(400).json({ error: serverErrors[0], details: serverErrors });
     }
 
+    const hasIncomingFiles = Object.values(files).some(arr => Array.isArray(arr) && arr.length > 0);
+    if (hasIncomingFiles && !isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
+    }
+
     let panUrl = existingUser.panurl || null;
     if (files.panFile && files.panFile[0]) {
-        try {
-            const file = files.panFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            panUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: panUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'pan' } });
-            }
-        } catch (e) {
-            console.error('Error uploading PAN file to R2:', e);
-        }
+        const file = files.panFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        panUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: panUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'pan' } });
     }
 
     let panBackUrl = existingUser.panbackurl || null;
     if (files.panBackFile && files.panBackFile[0]) {
-        try {
-            const file = files.panBackFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            panBackUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: panBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'panback' } });
-            }
-        } catch (e) {
-            console.error('Error uploading PAN back file to R2:', e);
-        }
+        const file = files.panBackFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        panBackUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: panBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'panback' } });
     }
 
     let aadhaarUrl = existingUser.aadhaarurl || null;
     if (files.aadhaarFile && files.aadhaarFile[0]) {
-        try {
-            const file = files.aadhaarFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            aadhaarUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: aadhaarUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaar' } });
-            }
-        } catch (e) {
-            console.error('Error uploading Aadhaar file to R2:', e);
-        }
+        const file = files.aadhaarFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        aadhaarUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: aadhaarUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaar' } });
     }
 
     let aadhaarBackUrl = existingUser.aadhaarbackurl || null;
     if (files.aadhaarBackFile && files.aadhaarBackFile[0]) {
-        try {
-            const file = files.aadhaarBackFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            aadhaarBackUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: aadhaarBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaarback' } });
-            }
-        } catch (e) {
-            console.error('Error uploading Aadhaar back file to R2:', e);
-        }
+        const file = files.aadhaarBackFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        aadhaarBackUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: aadhaarBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'aadhaarback' } });
     }
 
     let facePhotoUrl = existingUser.facephotourl || null;
     if (files.faceFile && files.faceFile[0]) {
-        try {
-            const file = files.faceFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            facePhotoUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: facePhotoUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'face' } });
-            }
-        } catch (e) {
-            console.error('Error uploading face file to R2:', e);
-        }
+        const file = files.faceFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        facePhotoUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: facePhotoUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'face' } });
     }
 
     let dlUrl = existingUser.dlurl || null;
     if (files.dlFile && files.dlFile[0]) {
-        try {
-            const file = files.dlFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            dlUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: dlUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dl' } });
-            }
-        } catch (e) {
-            console.error('Error uploading DL file to R2:', e);
-        }
+        const file = files.dlFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        dlUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: dlUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dl' } });
     }
 
     let dlBackUrl = existingUser.dlbackurl || null;
     if (files.dlBackFile && files.dlBackFile[0]) {
-        try {
-            const file = files.dlBackFile[0];
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const filename = `${Date.now()}-${safeName}`;
-            dlBackUrl = `uploads/${filename}`;
-            if (isR2Configured()) {
-                await uploadBufferToR2({ key: dlBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dlback' } });
-            }
-        } catch (e) {
-            console.error('Error uploading DL back file to R2:', e);
-        }
+        const file = files.dlBackFile[0];
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filename = `${Date.now()}-${safeName}`;
+        dlBackUrl = `uploads/${filename}`;
+        await uploadBufferToR2({ key: dlBackUrl, buffer: file.buffer, mimetype: file.mimetype, metadata: { userId: req.params.id, docType: 'dlback' } });
     }
 
     const cleanAadhaar = aadhaarNumber ? aadhaarNumber.replace(/\D/g, '') : (existingUser.aadhaarnumber || null);
@@ -7626,20 +7593,21 @@ const ALLOWED_MEDIA_DOC_TYPES = ['gst', 'cheque', 'trade_license', 'workshop_pho
 apiRouter.post('/upload-kyc', authMiddleware, upload.single('file'), validateUploadedFiles, async (req, res) => {
     const { entityId, docType } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
+    }
     const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const filename = `${Date.now()}-${safeName}`;
     const filePath = 'uploads/' + filename;
     const fileName = req.file.originalname;
 
     try {
-        if (isR2Configured()) {
-            await uploadBufferToR2({
-                key: filePath,
-                buffer: req.file.buffer,
-                mimetype: req.file.mimetype,
-                metadata: { entityId: entityId || '', docType: docType || '' }
-            });
-        }
+        await uploadBufferToR2({
+            key: filePath,
+            buffer: req.file.buffer,
+            mimetype: req.file.mimetype,
+            metadata: { entityId: entityId || '', docType: docType || '' }
+        });
 
         if (docType && docType.startsWith('owner_')) {
             const field = OWNER_DOC_MAP[docType];
@@ -7680,6 +7648,9 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     if (!referenceId) {
         return res.status(400).json({ error: 'referenceId is required' });
+    }
+    if (!isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
     }
 
     const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -7737,14 +7708,12 @@ apiRouter.post('/media', authMiddleware, upload.single('file'), validateUploaded
     }
 
     try {
-        if (isR2Configured()) {
-            await uploadBufferToR2({
-                key: filePath,
-                buffer: req.file.buffer,
-                mimetype: req.file.mimetype,
-                metadata: { referenceId, type: type || 'document' }
-            });
-        }
+        await uploadBufferToR2({
+            key: filePath,
+            buffer: req.file.buffer,
+            mimetype: req.file.mimetype,
+            metadata: { referenceId, type: type || 'document' }
+        });
 
         db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
             [id, referenceId, filePath, fileName, type || 'document'], (err) => {
@@ -7766,6 +7735,9 @@ apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), 
         return res.status(403).json({ error: 'Forbidden: You do not own this garage profile.' });
     }
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!isR2Configured()) {
+        return res.status(500).json({ error: 'Storage service is not configured. Missing Cloudflare R2 environment variables.' });
+    }
     const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const filename = `${Date.now()}-${safeName}`;
     const filePath = 'uploads/' + filename;
@@ -7773,14 +7745,12 @@ apiRouter.post('/garages/:id/documents', authMiddleware, upload.single('file'), 
     const id = 'doc_' + Date.now();
 
     try {
-        if (isR2Configured()) {
-            await uploadBufferToR2({
-                key: filePath,
-                buffer: req.file.buffer,
-                mimetype: req.file.mimetype,
-                metadata: { garageId, docType }
-            });
-        }
+        await uploadBufferToR2({
+            key: filePath,
+            buffer: req.file.buffer,
+            mimetype: req.file.mimetype,
+            metadata: { garageId, docType }
+        });
 
         db.run("INSERT INTO media (id, referenceId, filePath, fileName, docType) VALUES (?, ?, ?, ?, ?) ON CONFLICT (referenceId, docType) DO UPDATE SET filePath = EXCLUDED.filePath, fileName = EXCLUDED.fileName",
             [id, garageId, filePath, fileName, docType], (err) => {
