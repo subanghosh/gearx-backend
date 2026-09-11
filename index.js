@@ -2096,6 +2096,76 @@ apiRouter.get('/users/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// --- STRICT KYC APPROVAL VALIDATION ---
+function validateKycApprovalRequirements(user, updates = {}) {
+    const role = (user.role || '').toLowerCase();
+    // Only drivers/marshals and garage workers need mandatory DL, Face, ID, and Bank validation
+    if (role !== 'marshal' && role !== 'driver' && role !== 'worker' && role !== 'garage_worker') {
+        return { valid: true };
+    }
+
+    const missing = [];
+
+    // 1. Identity Document: Either Aadhaar (12 digits + front + back) OR PAN (10 chars + front + back)
+    const effectivePan = (updates.panNumber || updates.pannumber || user.pannumber || '').trim().toUpperCase();
+    const isPanFormatValid = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(effectivePan);
+    const hasPanFront = !!(updates.panUrl || updates.panurl || user.panurl);
+    const hasPanBack = !!(updates.panBackUrl || updates.panbackurl || user.panbackurl);
+    const isPanComplete = isPanFormatValid && hasPanFront && hasPanBack;
+
+    const effectiveAadhaar = (updates.aadhaarNumber || updates.aadhaarnumber || user.aadhaarnumber || '').replace(/\D/g, '');
+    const isAadhaarFormatValid = /^[2-9][0-9]{11}$/.test(effectiveAadhaar);
+    const hasAadhaarFront = !!(updates.aadhaarUrl || updates.aadhaarurl || user.aadhaarurl);
+    const hasAadhaarBack = !!(updates.aadhaarBackUrl || updates.aadhaarbackurl || user.aadhaarbackurl);
+    const isAadhaarComplete = isAadhaarFormatValid && hasAadhaarFront && hasAadhaarBack;
+
+    if (!isPanComplete && !isAadhaarComplete) {
+        if (!effectivePan && !effectiveAadhaar) {
+            missing.push('Government ID (Aadhaar or PAN Number + Front/Back photos)');
+        } else if (effectiveAadhaar) {
+            if (!isAadhaarFormatValid) missing.push('Valid 12-digit Aadhaar Number (starting with 2-9)');
+            if (!hasAadhaarFront) missing.push('Aadhaar Front Photo');
+            if (!hasAadhaarBack) missing.push('Aadhaar Back Photo');
+        } else if (effectivePan) {
+            if (!isPanFormatValid) missing.push('Valid PAN Number (e.g. ABCDE1234F)');
+            if (!hasPanFront) missing.push('PAN Front Photo');
+            if (!hasPanBack) missing.push('PAN Back Photo');
+        }
+    }
+
+    // 2. Driving License: DL Number + Front Photo + Back Photo
+    const effectiveDl = (updates.dlNumber || updates.dlnumber || user.dlnumber || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const isDlFormatValid = /^[A-Z]{2}[0-9]{11,13}$/.test(effectiveDl);
+    const hasDlFront = !!(updates.dlUrl || updates.dlurl || user.dlurl);
+    const hasDlBack = !!(updates.dlBackUrl || updates.dlbackurl || user.dlbackurl);
+
+    if (!isDlFormatValid) missing.push('Valid Driving License Number (e.g. WB4120220002368)');
+    if (!hasDlFront) missing.push('Driving License Front Photo');
+    if (!hasDlBack) missing.push('Driving License Back Photo');
+
+    // 3. Live Selfie Photo
+    const hasFacePhoto = !!(updates.facePhotoUrl || updates.facephotourl || user.facephotourl);
+    if (!hasFacePhoto) missing.push('Live Selfie Photo');
+
+    // 4. Bank Payout Details: Account Number + IFSC OR UPI ID
+    const effectiveBankAcc = (updates.bankAccountNumber || updates.bankaccountnumber || user.bankaccountnumber || '').trim();
+    const effectiveBankIfsc = (updates.bankIFSC || updates.bankifsc || user.bankifsc || '').trim().toUpperCase();
+    const effectiveUpi = (updates.upi_id || updates.upiId || user.upi_id || '').trim();
+    const hasValidBank = (effectiveBankAcc.length >= 8 && /^[A-Z]{4}0[A-Z0-9]{6}$/.test(effectiveBankIfsc)) || effectiveUpi.length >= 3;
+    if (!hasValidBank) {
+        missing.push('Bank Payout Details (Account Number + valid IFSC or UPI ID)');
+    }
+
+    if (missing.length > 0) {
+        return {
+            valid: false,
+            error: `Cannot approve driver KYC. Missing or invalid required items: ${missing.join(', ')}.`,
+            missingFields: missing
+        };
+    }
+    return { valid: true };
+}
+
 apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
     let id = req.params.id;
     if (id.endsWith('_owner')) {
@@ -2108,6 +2178,26 @@ apiRouter.patch('/users/:id', authMiddleware, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.id !== id) {
         return res.status(403).json({ error: 'Forbidden: You can only modify your own profile.' });
     }
+
+    // Pre-validate KYC approval if requesting approved/verified status
+    const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
+    if (kycStatusVal && (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved')) {
+        try {
+            const currentUserRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+            const currentUser = currentUserRes.rows[0];
+            if (!currentUser) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            const validation = validateKycApprovalRequirements(currentUser, req.body);
+            if (!validation.valid) {
+                return res.status(400).json({ error: validation.error, missingFields: validation.missingFields });
+            }
+        } catch (vErr) {
+            console.error('KYC approval validation error:', vErr);
+            return res.status(500).json({ error: 'Failed to validate KYC approval requirements.' });
+        }
+    }
+
     const USER_ALLOWED_FIELDS = ['name', 'email', 'phone', 'lat', 'lng', 'is_online', 'pincode', 'address', 'city', 'state'];
     const ADMIN_ONLY_FIELDS = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'is_payment_on_hold', 'kycRejectionReason'];
     const allowed = req.user.role === 'admin' 
@@ -2323,6 +2413,26 @@ apiRouter.put('/users/:id', authMiddleware, async (req, res) => {
     if (req.user.role !== 'admin' && req.user.id !== id) {
         return res.status(403).json({ error: 'Forbidden: You can only modify your own profile.' });
     }
+
+    // Pre-validate KYC approval if requesting approved/verified status
+    const kycStatusVal = req.body.kycStatus || req.body.kycstatus;
+    if (kycStatusVal && (kycStatusVal === 'verified' || kycStatusVal === 'approved' || kycStatusVal === 'Approved')) {
+        try {
+            const currentUserRes = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+            const currentUser = currentUserRes.rows[0];
+            if (!currentUser) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            const validation = validateKycApprovalRequirements(currentUser, req.body);
+            if (!validation.valid) {
+                return res.status(400).json({ error: validation.error, missingFields: validation.missingFields });
+            }
+        } catch (vErr) {
+            console.error('KYC approval validation error:', vErr);
+            return res.status(500).json({ error: 'Failed to validate KYC approval requirements.' });
+        }
+    }
+
     const USER_ALLOWED_FIELDS = ['name', 'email', 'phone', 'lat', 'lng', 'is_online', 'pincode', 'address', 'city', 'state'];
     const ADMIN_ONLY_FIELDS = ['kycStatus', 'panVerified', 'aadhaarVerified', 'bankVerified', 'dlVerified', 'status', 'is_payment_on_hold', 'kycRejectionReason'];
     const allowed = req.user.role === 'admin' 

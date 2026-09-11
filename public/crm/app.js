@@ -3399,13 +3399,16 @@ async function approveMarshal(marshalId) {
             })
         });
 
-        if (!res.ok) throw new Error('Approval failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Approval failed due to a server error.');
+        }
 
         await showAlert('Success', 'Driver Approved Successfully!', 'Done', 'success');
         closeModal('modal-review-kyc');
         fetchRealtimeData().then(() => refreshActiveUserView());
     } catch (err) {
-        await showAlert('Error', err.message, 'Close', 'error');
+        await showAlert('KYC Approval Blocked', err.message, 'Review Details', 'error');
     }
 }
 
