@@ -741,8 +741,6 @@ function initializeDatabase() {
             db.run(`INSERT INTO system_settings (key, value) VALUES ('driver_noshow_penalty', '49.0') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_wait_minutes', '10') ON CONFLICT(key) DO NOTHING`);
             db.run(`INSERT INTO system_settings (key, value) VALUES ('customer_noshow_penalty', '99.0') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('platform_base_charge_override_enabled', 'false') ON CONFLICT(key) DO NOTHING`);
-            db.run(`INSERT INTO system_settings (key, value) VALUES ('platform_base_charge_override_value', '0') ON CONFLICT(key) DO NOTHING`);
         });
 
         // Async PostgreSQL migrations for cancellation & arrival tracking
@@ -2012,8 +2010,6 @@ apiRouter.get('/settings/global', (req, res) => {
             payout_days: 3,
             car_platform_base_charge: 99,
             bike_platform_base_charge: 49,
-            platform_base_charge_override_enabled: false,
-            platform_base_charge_override_value: 0,
             car_base_fare: 150,
             bike_base_fare: 50,
             car_customer_rate_per_km: 30,
@@ -5820,18 +5816,8 @@ async function calculateServerSideFare(params) {
     const baseFareFloor = parseFloat(settings[`${typeKey}_base_fare`] !== undefined ? settings[`${typeKey}_base_fare`] : (settings['base_fare'] || (typeKey === 'car' ? 150.0 : 50.0)));
     const haltRate = parseFloat(settings[`${typeKey}_halt_rate_per_min`] !== undefined ? settings[`${typeKey}_halt_rate_per_min`] : (settings['halt_rate_per_min'] || (typeKey === 'car' ? 5.0 : 3.0)));
     
-    // Check if Promotional Platform Base Charge Override is enabled (Applies to point-to-point distance trips for both Car & Bike)
-    const isOverrideEnabled = settings['platform_base_charge_override_enabled'] === 'true' || 
-                              settings['platform_base_charge_override_enabled'] === '1' || 
-                              settings['platform_base_charge_override_enabled'] === true || 
-                              settings['platform_base_charge_override_enabled'] === 1;
-    let platformBaseCharge;
-    if (isOverrideEnabled && settings['platform_base_charge_override_value'] !== undefined && settings['platform_base_charge_override_value'] !== '') {
-        const parsedOverride = parseFloat(settings['platform_base_charge_override_value']);
-        platformBaseCharge = isNaN(parsedOverride) ? 0 : parsedOverride;
-    } else {
-        platformBaseCharge = parseFloat(settings[`${typeKey}_platform_base_charge`] !== undefined ? settings[`${typeKey}_platform_base_charge`] : (settings['platform_base_charge'] || (bookingFlow === 'p2p' ? 99.0 : 99.0)));
-    }
+    const defaultBaseCharge = typeKey === 'bike' ? 49.0 : 99.0;
+    const platformBaseCharge = parseFloat(settings[`${typeKey}_platform_base_charge`] !== undefined ? settings[`${typeKey}_platform_base_charge`] : (settings['platform_base_charge'] || defaultBaseCharge));
 
     // Towing fee if vehicle is not working
     let towingFee = 0;

@@ -8548,18 +8548,13 @@ async function renderOffers(container) {
             </div>
         `;
 
-        const [offersRes, usageRes, sysRes, globalRes] = await Promise.all([
+        const [offersRes, usageRes] = await Promise.all([
             fetch(`${API_URL}/offers`).catch(() => null),
-            fetch(`${API_URL}/offers/usage`).catch(() => null),
-            fetch(`${API_URL}/system-settings`).catch(() => null),
-            fetch(`${API_URL}/settings/global`).catch(() => null)
+            fetch(`${API_URL}/offers/usage`).catch(() => null)
         ]);
 
         const offersData = (offersRes && offersRes.ok) ? await offersRes.json() : { offers: [] };
         const usageData = (usageRes && usageRes.ok) ? await usageRes.json() : { usage: [] };
-        const sysSettings = (sysRes && sysRes.ok) ? await sysRes.json() : {};
-        const globalSettings = (globalRes && globalRes.ok) ? await globalRes.json() : {};
-        const allSettings = { ...globalSettings, ...sysSettings };
 
         const offers = offersData.offers || [];
         const usageList = usageData.usage || [];
@@ -8569,17 +8564,6 @@ async function renderOffers(container) {
         const totalClaimedRides = usageList.reduce((acc, u) => acc + (u.rides_used || 0), 0);
         const totalSubsidized = usageList.reduce((acc, u) => acc + (parseFloat(u.total_subsidized) || 0), 0);
         const uniqueCustomersBenefited = new Set(usageList.map(u => u.customer_id)).size;
-
-        // Base charge override settings
-        const isOverrideEnabled = allSettings['platform_base_charge_override_enabled'] === 'true' || 
-                                  allSettings['platform_base_charge_override_enabled'] === true || 
-                                  allSettings['platform_base_charge_override_enabled'] === '1' || 
-                                  allSettings['platform_base_charge_override_enabled'] === 1;
-        const overrideVal = allSettings['platform_base_charge_override_value'] !== undefined ? Number(allSettings['platform_base_charge_override_value']) : 0;
-        const carBaseVal = allSettings['car_platform_base_charge'] !== undefined ? Number(allSettings['car_platform_base_charge']) : 99;
-        const bikeBaseVal = allSettings['bike_platform_base_charge'] !== undefined ? Number(allSettings['bike_platform_base_charge']) : 49;
-        const effectiveCar = isOverrideEnabled ? overrideVal : carBaseVal;
-        const effectiveBike = isOverrideEnabled ? overrideVal : bikeBaseVal;
 
         let mainTabContent = '';
 
@@ -8811,100 +8795,6 @@ async function renderOffers(container) {
                 </div>
             `;
 
-        } else if (activeTab === 'override') {
-            // TAB 3: PLATFORM BASE CHARGE OVERRIDE
-            mainTabContent = `
-                <div class="card" style="margin-top:0; border-top: 3px solid ${isOverrideEnabled ? 'var(--success)' : 'var(--border)'};">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
-                        <div>
-                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                                <h2 style="margin:0; font-size:1.25rem; font-weight:700; color:var(--text-main);">
-                                    Promotional Override: Platform Base Charge (Distance Trips)
-                                </h2>
-                                <span id="offer-status-badge" class="badge" style="background:${isOverrideEnabled ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)'}; color:${isOverrideEnabled ? 'var(--success)' : 'var(--text-muted)'}; border:1px solid ${isOverrideEnabled ? 'rgba(34,197,94,0.3)' : 'var(--border)'}; font-size:0.75rem; padding:4px 10px; border-radius:20px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                                    <span style="width:8px; height:8px; border-radius:50%; background:${isOverrideEnabled ? 'var(--success)' : 'var(--text-muted)'}; display:inline-block;"></span>
-                                    ${isOverrideEnabled ? 'ACTIVE PROMOTION (Overriding to ₹' + overrideVal + ')' : 'INACTIVE (Standard Rates Apply)'}
-                                </span>
-                            </div>
-                            <p style="font-size:0.85rem; color:var(--text-muted); margin:6px 0 0 0; line-height:1.5; max-width:850px;">
-                                When enabled, the pricing engine uses this single promotional value instead of normal standard base charges (Car: ₹${carBaseVal}, Bike: ₹${bikeBaseVal}) for <strong>both Car and Bike</strong> on all point-to-point distance trips. When turned OFF, pricing instantly reverts to the normal stored base charge values without needing to re-enter them.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Operational Rule Highlights -->
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:24px;">
-                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Car Base Charge</div>
-                            <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
-                                <span style="font-size:1.3rem; font-weight:800; color:${isOverrideEnabled ? 'var(--success)' : '#fff'};">₹${effectiveCar}</span>
-                                ${isOverrideEnabled ? '<span style="font-size:0.8rem; color:var(--text-dim); text-decoration:line-through;">₹' + carBaseVal + ' standard</span>' : '<span style="font-size:0.8rem; color:var(--text-dim);">standard rate</span>'}
-                            </div>
-                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Point-to-point distance bookings</span>
-                        </div>
-
-                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Bike Base Charge</div>
-                            <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
-                                <span style="font-size:1.3rem; font-weight:800; color:${isOverrideEnabled ? 'var(--success)' : '#fff'};">₹${effectiveBike}</span>
-                                ${isOverrideEnabled ? '<span style="font-size:0.8rem; color:var(--text-dim); text-decoration:line-through;">₹' + bikeBaseVal + ' standard</span>' : '<span style="font-size:0.8rem; color:var(--text-dim);">standard rate</span>'}
-                            </div>
-                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Point-to-point distance bookings</span>
-                        </div>
-
-                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Applicable Scope</div>
-                            <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:4px;">Distance Trips Only</div>
-                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Hourly Rentals use slab rates</span>
-                        </div>
-
-                        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:8px; padding:14px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Promotion Duration</div>
-                            <div style="font-size:1.1rem; font-weight:800; color:var(--primary); margin-top:4px;">Open-Ended</div>
-                            <span style="font-size:0.7rem; color:var(--text-dim); display:block; margin-top:2px;">Active until manually toggled off</span>
-                        </div>
-                    </div>
-
-                    <!-- Input Controls -->
-                    <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:20px;">
-                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
-                            <div>
-                                <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">
-                                    Promotional Override Status
-                                </label>
-                                <select id="offer-base-override-enabled" onchange="window.updateOfferLivePreview()" style="width:100%; padding:10px 12px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; font-size:0.95rem;">
-                                    <option value="false" ${!isOverrideEnabled ? 'selected' : ''}>OFF — Use Standard Base Charges (Car ₹${carBaseVal}, Bike ₹${bikeBaseVal})</option>
-                                    <option value="true" ${isOverrideEnabled ? 'selected' : ''}>ON — Apply Promotional Override</option>
-                                </select>
-                                <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">
-                                    Toggle ON to activate promotion, or OFF to instantly restore normal base charges.
-                                </span>
-                            </div>
-
-                            <div>
-                                <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:6px; font-weight:600;">
-                                    Override Base Charge Value (₹)
-                                </label>
-                                <div style="position:relative;">
-                                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:var(--text-muted); font-size:1rem;">₹</span>
-                                    <input type="number" min="0" step="1" id="offer-base-override-value" value="${overrideVal}" oninput="window.updateOfferLivePreview()" style="width:100%; padding:10px 12px 10px 28px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; font-size:0.95rem;">
-                                </div>
-                                <span style="font-size:0.72rem; color:var(--text-dim); margin-top:4px; display:block;">
-                                    Promotional charge for distance bookings (e.g. 0 for ₹0 Base Charge promotion).
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Action Button & Notification Area -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                        <button id="btn-save-offers" onclick="saveOfferSettings()" class="btn-primary" style="padding:10px 24px; background:var(--primary); color:#000; border:none; border-radius:6px; font-weight:700; cursor:pointer; font-size:0.9rem; display:inline-flex; align-items:center; gap:8px;">
-                            <i data-lucide="save" style="width:16px; height:16px;"></i> Save Offer Settings
-                        </button>
-                        <div id="offer-save-feedback" style="font-size:0.85rem; font-weight:600; display:none;"></div>
-                    </div>
-                </div>
-            `;
         }
 
         container.innerHTML = `
@@ -8917,7 +8807,7 @@ async function renderOffers(container) {
                         </div>
                         <div>
                             <h1 style="margin:0; font-size:1.6rem; font-weight:800; color:var(--text-main); letter-spacing:-0.5px;">Offers &amp; Promotions Engine</h1>
-                            <p style="margin:4px 0 0 0; font-size:0.85rem; color:var(--text-muted);">Configure named free-ride promotions, target specific customer cohorts, track usage ledger, and manage pricing overrides.</p>
+                            <p style="margin:4px 0 0 0; font-size:0.85rem; color:var(--text-muted);">Configure named free-ride promotions, target specific customer cohorts, and track customer usage ledger.</p>
                         </div>
                     </div>
                 </div>
@@ -8971,11 +8861,6 @@ async function renderOffers(container) {
                     style="font-weight:700; display:flex; align-items:center; gap:8px;">
                     <i data-lucide="users" style="width:16px; height:16px;"></i> Customer Usage Ledger (${usageList.length})
                 </button>
-                <button onclick="window._offersTab='override'; renderOffers(document.getElementById('app'))" 
-                    class="btn ${activeTab === 'override' ? 'btn-primary' : 'btn-secondary'}" 
-                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
-                    <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Charge Override
-                </button>
             </div>
 
             <!-- Tab Content Area -->
@@ -8985,86 +8870,6 @@ async function renderOffers(container) {
         `;
 
         if (window.lucide) lucide.createIcons();
-
-        // Helper for live preview in override tab
-        window.updateOfferLivePreview = function() {
-            const enabledSelect = document.getElementById('offer-base-override-enabled');
-            const valInput = document.getElementById('offer-base-override-value');
-            const badge = document.getElementById('offer-status-badge');
-            if (!enabledSelect || !valInput || !badge) return;
-
-            const isEnabled = enabledSelect.value === 'true';
-            const val = parseFloat(valInput.value) || 0;
-
-            if (isEnabled) {
-                badge.style.background = 'rgba(34,197,94,0.15)';
-                badge.style.color = 'var(--success)';
-                badge.style.border = '1px solid rgba(34,197,94,0.3)';
-                badge.innerHTML = `<span style="width:8px; height:8px; border-radius:50%; background:var(--success); display:inline-block;"></span> ACTIVE PROMOTION (Overriding to ₹${val})`;
-            } else {
-                badge.style.background = 'rgba(255,255,255,0.06)';
-                badge.style.color = 'var(--text-muted)';
-                badge.style.border = '1px solid var(--border)';
-                badge.innerHTML = `<span style="width:8px; height:8px; border-radius:50%; background:var(--text-muted); display:inline-block;"></span> INACTIVE (Standard Rates: Car ₹${carBaseVal} / Bike ₹${bikeBaseVal})`;
-            }
-        };
-
-        window.saveOfferSettings = async function() {
-            const saveBtn = document.getElementById('btn-save-offers');
-            const feedback = document.getElementById('offer-save-feedback');
-            const enabledSelect = document.getElementById('offer-base-override-enabled');
-            const valInput = document.getElementById('offer-base-override-value');
-
-            if (!enabledSelect || !valInput) return;
-
-            const isEnabled = enabledSelect.value;
-            const val = String(parseFloat(valInput.value) || 0);
-
-            if (saveBtn) {
-                saveBtn.disabled = true;
-                saveBtn.innerHTML = `<div class="loader-spin" style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:6px;"></div> Saving...`;
-            }
-
-            try {
-                const [r1, r2] = await Promise.all([
-                    fetch(`${API_URL}/system-settings`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key: 'platform_base_charge_override_enabled', value: isEnabled })
-                    }),
-                    fetch(`${API_URL}/system-settings`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key: 'platform_base_charge_override_value', value: val })
-                    })
-                ]);
-
-                if (r1.ok && r2.ok) {
-                    if (feedback) {
-                        feedback.style.display = 'block';
-                        feedback.style.color = 'var(--success)';
-                        feedback.innerHTML = `<i data-lucide="check" style="width:14px; height:14px; vertical-align:middle; display:inline-block; margin-right:4px;"></i> Offer settings saved successfully!`;
-                        if (window.lucide) lucide.createIcons();
-                        setTimeout(() => { if (feedback) feedback.style.display = 'none'; }, 4000);
-                    }
-                    setTimeout(() => {
-                        renderOffers(container);
-                    }, 600);
-                } else {
-                    const errData = await r1.json().catch(() => ({}));
-                    alert('Failed to save offer settings: ' + (errData.error || 'Unknown error'));
-                }
-            } catch (err) {
-                console.error('Save error:', err);
-                alert('Network error while saving offer settings: ' + err.message);
-            } finally {
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = `<i data-lucide="save" style="width:16px; height:16px;"></i> Save Offer Settings`;
-                    if (window.lucide) lucide.createIcons();
-                }
-            }
-        };
 
         if (urlParams.get('openmodal') === '1') {
             setTimeout(() => {

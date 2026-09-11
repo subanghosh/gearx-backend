@@ -315,14 +315,6 @@ window.customerRatePerKm = 15;
 
 function getEffectivePlatformBaseCharge(vehicleType) {
     const s = window.redrivoSystemSettings || {};
-    const isOverride = s['platform_base_charge_override_enabled'] === 'true' || 
-                       s['platform_base_charge_override_enabled'] === true || 
-                       s['platform_base_charge_override_enabled'] === '1' || 
-                       s['platform_base_charge_override_enabled'] === 1;
-    if (isOverride && s['platform_base_charge_override_value'] !== undefined && s['platform_base_charge_override_value'] !== '') {
-        const parsed = parseFloat(s['platform_base_charge_override_value']);
-        return isNaN(parsed) ? 0 : parsed;
-    }
     const key = `${vehicleType}_platform_base_charge`;
     return s[key] !== undefined ? parseFloat(s[key]) : (vehicleType === 'bike' ? 49 : 99);
 }
