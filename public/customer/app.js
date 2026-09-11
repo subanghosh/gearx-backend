@@ -11039,20 +11039,45 @@ window.fetchRentalData = async function() {
     const vehicleType = document.getElementById('rental-filter-type')?.value || 'all';
     const sortFilter = document.getElementById('rental-filter-sort')?.value || 'distance_asc';
 
+    const rentalComingSoonHtml = `
+        <div style="background: rgba(18, 22, 29, 0.85); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 16px; padding: 32px 20px; text-align: center; margin: 10px 0;">
+            <div style="width: 56px; height: 56px; border-radius: 16px; background: rgba(250, 204, 21, 0.12); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; border: 1px solid rgba(250, 204, 21, 0.25);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m11 17 2 2a1 1 0 1 0 3-3"></path>
+                    <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path>
+                    <path d="m21 3 1 11h-2"></path>
+                    <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path>
+                    <path d="M3 4h1.5a2 2 0 0 1 1.42.25l.47.28a5.79 5.79 0 0 0 7.06-.87L16.26 1"></path>
+                </svg>
+            </div>
+            <span style="background: rgba(250, 204, 21, 0.15); color: #facc15; border: 1px solid rgba(250, 204, 21, 0.3); padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; margin-bottom: 12px;">
+                Launching Soon
+            </span>
+            <h3 style="color: #fff; font-size: 1.15rem; font-weight: 800; margin: 0 0 10px 0; letter-spacing: -0.3px;">
+                Rental Partnerships Launching Soon
+            </h3>
+            <p style="color: var(--text-muted, #94a3b8); font-size: 0.85rem; line-height: 1.55; margin: 0 auto 18px auto; max-width: 380px;">
+                We're onboarding trusted rental companies in Kolkata. Check back shortly, or contact us if you're a rental business interested in partnering with ReDrivo.
+            </p>
+            <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 12px 16px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.7); max-width: 400px; margin: 0 auto; text-align: left; display: flex; align-items: center; gap: 10px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                <span>Are you a rental business? Contact <strong style="color: #fff;">partners@redrivo.in</strong> to join the platform.</span>
+            </div>
+        </div>
+    `;
+
     try {
         if (window.currentRentalSubtab === 'partners') {
             const sortParam = sortFilter === 'distance_desc' ? 'desc' : 'asc';
             const res = await fetch(`${API_URL}/rental-partners/nearby?lat=${lat}&lng=${lng}&sort=${sortParam}`);
+            if (!res.ok) {
+                contentArea.innerHTML = rentalComingSoonHtml;
+                return;
+            }
             const data = await res.json();
 
-            if (!res.ok || !data.partners || data.partners.length === 0) {
-                contentArea.innerHTML = `
-                    <div style="background: rgba(18, 22, 29, 0.8); border: 1px dashed rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; text-align: center;">
-                        <span class="material-symbols-outlined" style="font-size: 40px; color: var(--text-muted); margin-bottom: 8px;">storefront</span>
-                        <h4 style="color: #fff; margin: 0 0 4px 0;">No Nearby Rental Partners Found</h4>
-                        <p style="color: var(--text-muted); font-size: 0.8rem;">Switch to 'All Vehicles' to browse available fleet across the region.</p>
-                    </div>
-                `;
+            if (!data.partners || data.partners.length === 0) {
+                contentArea.innerHTML = rentalComingSoonHtml;
                 return;
             }
 
@@ -11091,16 +11116,14 @@ window.fetchRentalData = async function() {
         } else {
             // 'vehicles' subtab
             const res = await fetch(`${API_URL}/rental-vehicles?vehicleType=${vehicleType}&sort=${sortFilter}&lat=${lat}&lng=${lng}`);
+            if (!res.ok) {
+                contentArea.innerHTML = rentalComingSoonHtml;
+                return;
+            }
             const data = await res.json();
 
-            if (!res.ok || !data.vehicles || data.vehicles.length === 0) {
-                contentArea.innerHTML = `
-                    <div style="background: rgba(18, 22, 29, 0.8); border: 1px dashed rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; text-align: center;">
-                        <span class="material-symbols-outlined" style="font-size: 40px; color: var(--text-muted); margin-bottom: 8px;">directions_car</span>
-                        <h4 style="color: #fff; margin: 0 0 4px 0;">No Rental Vehicles Found</h4>
-                        <p style="color: var(--text-muted); font-size: 0.8rem;">Try clearing your vehicle type filter or check back soon.</p>
-                    </div>
-                `;
+            if (!data.vehicles || data.vehicles.length === 0) {
+                contentArea.innerHTML = rentalComingSoonHtml;
                 return;
             }
 
@@ -11149,11 +11172,7 @@ window.fetchRentalData = async function() {
         }
     } catch (err) {
         console.error('Error fetching rental data:', err);
-        contentArea.innerHTML = `
-            <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 12px; padding: 20px; text-align: center; color: #f87171; font-size: 0.85rem;">
-                Failed to load rental listings: ${err.message}
-            </div>
-        `;
+        contentArea.innerHTML = rentalComingSoonHtml;
     }
 };
 
