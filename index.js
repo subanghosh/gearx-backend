@@ -3444,20 +3444,16 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     const wabaDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers{id,display_phone_number,verified_name,quality_rating},subscribed_apps`);
 
     // User-Requested Specific Endpoints:
-    // 1. GET /122105380323458099/assigned_whatsapp_business_accounts
-    const userAssignedWabasDirect = await fetchMeta(`https://graph.facebook.com/v21.0/122105380323458099/assigned_whatsapp_business_accounts`);
-    const userAssignedWabasWithBizRedrivo = await fetchMeta(`https://graph.facebook.com/v21.0/122105380323458099/assigned_whatsapp_business_accounts?business=61593742996473`);
-    const userAssignedWabasWithBizTripytrix = await fetchMeta(`https://graph.facebook.com/v21.0/122105380323458099/assigned_whatsapp_business_accounts?business=61593747644069`);
+    // 1. GET /1935784290711470/assigned_users?business=1746081170012300
+    const wabaAssignedUsersWithBiz1746081170012300 = await fetchMeta(`https://graph.facebook.com/v21.0/1935784290711470/assigned_users?business=1746081170012300`);
 
-    // 2. GET /1935784290711470/assigned_users
-    const wabaAssignedUsersDirect = await fetchMeta(`https://graph.facebook.com/v21.0/1935784290711470/assigned_users`);
-    const wabaAssignedUsersWithBizRedrivo = await fetchMeta(`https://graph.facebook.com/v21.0/1935784290711470/assigned_users?business=61593742996473`);
-    const wabaAssignedUsersWithBizTripytrix = await fetchMeta(`https://graph.facebook.com/v21.0/1935784290711470/assigned_users?business=61593747644069`);
+    // 2. GET /122105380323458099/assigned_whatsapp_business_accounts?business=1746081170012300
+    const userAssignedWabasWithBiz1746081170012300 = await fetchMeta(`https://graph.facebook.com/v21.0/122105380323458099/assigned_whatsapp_business_accounts?business=1746081170012300`);
 
-    // Additional checks on business IDs
-    const biz61593742996473Wabas = await fetchMeta(`https://graph.facebook.com/v21.0/61593742996473/assigned_whatsapp_business_accounts`);
-    const biz61593742996473AssignedUsers = await fetchMeta(`https://graph.facebook.com/v21.0/61593742996473/assigned_users`);
-
+    // 3. Business Portfolio queries
+    const bizOwnedWabas = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/owned_whatsapp_business_accounts`);
+    const bizClientWabas = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/client_whatsapp_business_accounts`);
+    const bizSystemUsers = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/system_users`);
 
     let testSendResult = null;
     if (req.query.phone) {
@@ -3509,15 +3505,11 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
         debugToken: debugToken.data,
         meData: meData.data,
         appData: appData.data,
-        wabaDetails,
-        userAssignedWabasDirect,
-        userAssignedWabasWithBizRedrivo,
-        userAssignedWabasWithBizTripytrix,
-        wabaAssignedUsersDirect,
-        wabaAssignedUsersWithBizRedrivo,
-        wabaAssignedUsersWithBizTripytrix,
-        biz61593742996473Wabas,
-        biz61593742996473AssignedUsers,
+        wabaAssignedUsersWithBiz1746081170012300,
+        userAssignedWabasWithBiz1746081170012300,
+        bizOwnedWabas,
+        bizClientWabas,
+        bizSystemUsers,
         testSendResult
     });
 });
