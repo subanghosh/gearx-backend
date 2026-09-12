@@ -3403,6 +3403,8 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
 apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     const token = process.env.WHATSAPP_ACCESS_TOKEN || '';
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
+    const wabaId = req.query.waba_id || '1935784290711470';
+    const appId = '4633212553569336';
     
     if (!token) {
         return res.json({ configured: false, error: 'WHATSAPP_ACCESS_TOKEN is not configured on server.' });
@@ -3413,35 +3415,51 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
         length: token.length,
         first6: token.substring(0, 6),
         last6: token.substring(token.length - 6),
-        phoneId: phoneId
+        phoneId: phoneId,
+        wabaId: wabaId
     };
 
-    let debugToken = null;
-    let meData = null;
-    let appData = null;
+    const fetchMeta = async (url) => {
+        try {
+            const r = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await r.json().catch(e => ({ error: e.message }));
+            return { httpStatus: r.status, data };
+        } catch (err) {
+            return { httpStatus: 500, error: err.message };
+        }
+    };
+
+    // 1. Debug token
+    const debugToken = await fetchMeta(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`);
+    
+    // 2. Me
+    const meData = await fetchMeta(`https://graph.facebook.com/v21.0/me?access_token=${token}`);
+    
+    // 3. App
+    const appData = await fetchMeta(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
+
+    // 4. WABA Details (Fields)
+    const wabaDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers{id,display_phone_number,verified_name,quality_rating},subscribed_apps`);
+
+    // 5. WABA Assigned Users
+    const wabaAssignedUsers = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/assigned_users`);
+
+    // 6. WABA Subscribed Apps
+    const wabaSubscribedApps = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
+
+    // 7. Phone Number ID Details
+    const phoneDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,verified_name,quality_rating,name_status,messaging_limit_tier,whatsapp_business_account`);
+
+    // 8. App's WhatsApp Business Accounts
+    const appWabas = await fetchMeta(`https://graph.facebook.com/v21.0/${appId}/whatsapp_business_accounts`);
+
+    // 9. System User's assigned WhatsApp Business Accounts (/me/assigned_whatsapp_business_accounts and /me/whatsapp_business_accounts)
+    const meAssignedWabas = await fetchMeta(`https://graph.facebook.com/v21.0/me/assigned_whatsapp_business_accounts`);
+    const meWabas = await fetchMeta(`https://graph.facebook.com/v21.0/me/whatsapp_business_accounts`);
+
     let testSendResult = null;
-
-    try {
-        const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`);
-        debugToken = await debugRes.json();
-    } catch (e) {
-        debugToken = { error: e.message };
-    }
-
-    try {
-        const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${token}`);
-        meData = await meRes.json();
-    } catch (e) {
-        meData = { error: e.message };
-    }
-
-    try {
-        const appRes = await fetch(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
-        appData = await appRes.json();
-    } catch (e) {
-        appData = { error: e.message };
-    }
-
     if (req.query.phone) {
         const testPhone = String(req.query.phone).replace(/\D/g, '').slice(-10);
         const testOtp = req.query.otp || '123456';
@@ -3488,9 +3506,16 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
-        debugToken,
-        meData,
-        appData,
+        debugToken: debugToken.data,
+        meData: meData.data,
+        appData: appData.data,
+        wabaDetails,
+        wabaAssignedUsers,
+        wabaSubscribedApps,
+        phoneDetails,
+        appWabas,
+        meAssignedWabas,
+        meWabas,
         testSendResult
     });
 });
