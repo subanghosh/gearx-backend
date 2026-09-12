@@ -101,6 +101,11 @@ async function checkUniqueEntity(phone, options = {}) {
         checks.push(pool.query("SELECT id, role FROM users WHERE pannumber = $1", [cleanPan]));
         checks.push(pool.query("SELECT id, role FROM garage_workers WHERE pannumber = $1", [cleanPan]));
     }
+    if (options.dl) {
+        const cleanDl = options.dl.replace(/[^A-Z0-9]/g, '').toUpperCase();
+        checks.push(pool.query("SELECT id, role FROM users WHERE dlnumber = $1", [cleanDl]));
+        checks.push(pool.query("SELECT id, role FROM garage_workers WHERE dlnumber = $1", [cleanDl]));
+    }
 
     const results = await Promise.all(checks);
     for (let r of results) {
@@ -1021,6 +1026,19 @@ function initializeDatabase() {
         // Migration: Ensure garage_workers has all required columns in PostgreSQL
         ['email TEXT', 'panNumber TEXT', 'aadhaarNumber TEXT', 'panUrl TEXT', 'aadhaarUrl TEXT', 'facePhotoUrl TEXT', 'kycStatus TEXT DEFAULT \'pending_submission\''].forEach(col => {
             db.run(`ALTER TABLE garage_workers ADD COLUMN ${col}`, () => {});
+        });
+
+        // Migration: Ensure structural unique indexes for legal & transport identity fields
+        const uniqueIndexes = [
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unique_aadhaarnumber ON users (aadhaarnumber) WHERE aadhaarnumber IS NOT NULL AND aadhaarnumber != ''`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unique_pannumber ON users (pannumber) WHERE pannumber IS NOT NULL AND pannumber != ''`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unique_dlnumber ON users (dlnumber) WHERE dlnumber IS NOT NULL AND dlnumber != ''`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_garage_workers_unique_aadhaarnumber ON garage_workers (aadhaarnumber) WHERE aadhaarnumber IS NOT NULL AND aadhaarnumber != ''`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_garage_workers_unique_pannumber ON garage_workers (pannumber) WHERE pannumber IS NOT NULL AND pannumber != ''`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS idx_garage_workers_unique_dlnumber ON garage_workers (dlnumber) WHERE dlnumber IS NOT NULL AND dlnumber != ''`
+        ];
+        uniqueIndexes.forEach(sql => {
+            pool.query(sql).catch(err => console.warn('[INIT_DB] Unique index migration non-fatal warning:', err.message));
         });
 
         // Self-healing database migration: Ensure all referenced garage IDs in users exist in the garages table
@@ -4819,6 +4837,10 @@ apiRouter.put('/workers/:id/kyc', authMiddleware, verifyOwnership, upload.fields
         if (cleanAadhaar) {
             const aadhaarCheck = await pool.query(`SELECT id FROM users WHERE aadhaarnumber = $1 AND id != $2 UNION ALL SELECT id FROM garage_workers WHERE aadhaarnumber = $1 AND id != $2`, [cleanAadhaar, req.params.id]);
             if (aadhaarCheck.rows.length > 0) return res.status(400).json({ error: 'Aadhaar Number is already registered.' });
+        }
+        if (cleanDL) {
+            const dlCheck = await pool.query(`SELECT id FROM users WHERE dlnumber = $1 AND id != $2 UNION ALL SELECT id FROM garage_workers WHERE dlnumber = $1 AND id != $2`, [cleanDL, req.params.id]);
+            if (dlCheck.rows.length > 0) return res.status(400).json({ error: 'Driving License Number is already registered.' });
         }
 
         if (email) {

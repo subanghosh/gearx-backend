@@ -740,7 +740,7 @@ function switchLoginMode(mode) {
     }
 }
 
-let currentMarshalOtpChannel = 'sms';
+let currentMarshalOtpChannel = 'whatsapp';
 
 window.selectMarshalOtpChannel = function(channel) {
     currentMarshalOtpChannel = channel;
@@ -787,7 +787,7 @@ function validateLoginIdentifier() {
             showToast('Enter a valid 10-digit mobile number.', 'error');
             return null;
         }
-        return { phone: `+91${raw}`, role: 'marshal', preferredChannel: currentMarshalOtpChannel || 'sms' };
+        return { phone: `+91${raw}`, role: 'marshal', preferredChannel: currentMarshalOtpChannel || 'whatsapp' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(raw)) {
@@ -2105,7 +2105,54 @@ window.uploadSingleKycFile = async function(type) {
 
 function populateOnboardingFields() {
     if (!currentUser) return;
-    const displayName = (currentUser.name === 'New Driver') ? '' : (currentUser.name || '');
+
+    // Configure Resuming KYC Context Banner
+    const resumingBanner = document.getElementById('kyc-resuming-banner');
+    if (resumingBanner) {
+        const hasExistingId = !!(currentUser.id || currentUser.phone || currentUser.email);
+        const kyc = (currentUser.kycStatus || currentUser.kycstatus || '').toLowerCase();
+        const isResuming = hasExistingId && (kyc === 'pending_submission' || kyc === 'rejected' || kyc === 're-submit kyc' || !kyc || kyc === 'draft');
+        
+        if (isResuming) {
+            resumingBanner.classList.remove('hidden');
+            const greetingEl = document.getElementById('kyc-user-greeting');
+            const identifierEl = document.getElementById('kyc-user-identifier');
+            const pillEl = document.getElementById('kyc-status-pill');
+            const titleEl = document.getElementById('kyc-screen-title');
+            const subtitleEl = document.getElementById('kyc-screen-subtitle');
+
+            const validName = (currentUser.name && currentUser.name !== 'New Marshal' && currentUser.name !== 'New Driver') ? currentUser.name : '';
+            if (greetingEl) {
+                greetingEl.textContent = validName ? `, ${validName}` : '';
+            }
+
+            const identifier = currentUser.phone || currentUser.email || 'your registered account';
+            if (identifierEl) {
+                identifierEl.textContent = identifier;
+            }
+
+            if (pillEl) {
+                if (kyc === 'rejected' || kyc === 're-submit kyc') {
+                    pillEl.textContent = 'Action Required';
+                    pillEl.style.background = 'rgba(239, 68, 68, 0.2)';
+                    pillEl.style.color = '#f87171';
+                    pillEl.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                } else {
+                    pillEl.textContent = 'Resuming Setup';
+                    pillEl.style.background = 'rgba(245, 158, 11, 0.2)';
+                    pillEl.style.color = '#fbbf24';
+                    pillEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                }
+            }
+
+            if (titleEl) titleEl.textContent = 'Complete Profile Setup';
+            if (subtitleEl) subtitleEl.textContent = 'Welcome back! Finish your pending documents to activate driver features.';
+        } else {
+            resumingBanner.classList.add('hidden');
+        }
+    }
+
+    const displayName = (currentUser.name === 'New Driver' || currentUser.name === 'New Marshal') ? '' : (currentUser.name || '');
     if (document.getElementById('on-name')) document.getElementById('on-name').value = displayName;
     if (document.getElementById('on-email')) document.getElementById('on-email').value = currentUser.email || '';
     if (document.getElementById('on-city')) document.getElementById('on-city').value = currentUser.city || '';
@@ -8797,20 +8844,76 @@ window.performDocumentOcr = async function(type, blob) {
                     showToast(`Name auto-filled from Aadhaar: ${aadhaarNameExtracted}`, 'success');
                 }
 
-                // DOB Extraction
+                // DOB Extraction (Upgraded Multi-Stage Parser)
                 let dobVal = null;
-                const explicitDob = fullText.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|D0B|जन्म\s*तिथि|जन्म\s*तारीख)\s*[:\-]?\s*(\d{1,2})[\/\-\.\s](\d{1,2})[\/\-\.\s](\d{4})/i);
+                const cleanOcrDigits = (str) => {
+                    return (str || '').replace(/\b([O0-9Il\/\-\.\s]{8,15})\b/g, (m) => {
+                        return m.replace(/[OoDQ]/g, '0').replace(/[Il|!]/g, '1').replace(/[Ss]/g, '5').replace(/B/g, '8');
+                    });
+                };
+                const normalizedFullText = cleanOcrDigits(fullText);
+
+                // Stage 1: Explicit DOB label with flexible whitespace around slashes/colons and regional (Hindi/Bengali) support
+                const explicitDobRegex = /(?:DOB|D\.O\.B|D0B|Date\s*of\s*Birth|जन्म\s*तिथि|जन्म\s*तारीख|জন্ম\s*তারিখ)\s*(?:[\/|]\s*(?:DOB|Date\s*of\s*Birth)\s*)?[:\-]?\s*(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{4})/i;
+                const explicitDob = normalizedFullText.match(explicitDobRegex);
                 if (explicitDob) {
-                    dobVal = `${explicitDob[1].padStart(2, '0')}/${explicitDob[2].padStart(2, '0')}/${explicitDob[3]}`;
-                } else {
-                    const standaloneDate = fullText.match(/\b(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})\b/);
-                    if (standaloneDate && parseInt(standaloneDate[1], 10) <= 31 && parseInt(standaloneDate[2], 10) <= 12) {
-                        dobVal = `${standaloneDate[1]}/${standaloneDate[2]}/${standaloneDate[3]}`;
-                    } else {
-                        const yobMatch = fullText.match(/(?:Year\s*of\s*Birth|YOB|जन्म\s*वर्ष)\s*[:\-]?\s*(\d{4})/i);
-                        if (yobMatch && parseInt(yobMatch[1], 10) >= 1940 && parseInt(yobMatch[1], 10) <= 2015) {
-                            dobVal = `01/01/${yobMatch[1]}`;
+                    const d = explicitDob[1].padStart(2, '0');
+                    const m = explicitDob[2].padStart(2, '0');
+                    const y = explicitDob[3];
+                    if (parseInt(m, 10) >= 1 && parseInt(m, 10) <= 12 && parseInt(d, 10) >= 1 && parseInt(d, 10) <= 31) {
+                        dobVal = `${d}/${m}/${y}`;
+                    }
+                }
+
+                // Stage 2: Line-by-line proximity match if label & date were split across consecutive OCR detections
+                if (!dobVal && Array.isArray(allDetections)) {
+                    for (let i = 0; i < allDetections.length; i++) {
+                        const line = cleanOcrDigits(allDetections[i]);
+                        if (/(?:DOB|D\.O\.B|Date\s*of\s*Birth|जन्म\s*तिथि|জন্ম\s*তারিখ)/i.test(line)) {
+                            const combined = (line + ' ' + cleanOcrDigits(allDetections[i + 1] || ''));
+                            const lineDateMatch = combined.match(/(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{4})/);
+                            if (lineDateMatch) {
+                                const d = lineDateMatch[1].padStart(2, '0');
+                                const m = lineDateMatch[2].padStart(2, '0');
+                                const y = lineDateMatch[3];
+                                if (parseInt(m, 10) >= 1 && parseInt(m, 10) <= 12 && parseInt(d, 10) >= 1 && parseInt(d, 10) <= 31) {
+                                    dobVal = `${d}/${m}/${y}`;
+                                    break;
+                                }
+                            }
                         }
+                    }
+                }
+
+                // Stage 3: Standalone date fallback with strict Issue/Download/Print date exclusion
+                if (!dobVal) {
+                    const allDatesRegex = /(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{4})/g;
+                    let dateMatch;
+                    while ((dateMatch = allDatesRegex.exec(normalizedFullText)) !== null) {
+                        const matchIdx = dateMatch.index;
+                        const precedingText = normalizedFullText.substring(Math.max(0, matchIdx - 30), matchIdx).toLowerCase();
+                        if (/(?:issued?|download(?:ed)?|print(?:ed)?|valid(?:ity)?|vid|issue\s*date)\s*[:\-]?\s*$/i.test(precedingText.trim())) {
+                            console.log(`[OCR] Ignored non-DOB date (${dateMatch[0]}) due to prefix "${precedingText.trim()}"`);
+                            continue;
+                        }
+                        const d = dateMatch[1].padStart(2, '0');
+                        const m = dateMatch[2].padStart(2, '0');
+                        const y = dateMatch[3];
+                        if (parseInt(m, 10) >= 1 && parseInt(m, 10) <= 12 && parseInt(d, 10) >= 1 && parseInt(d, 10) <= 31) {
+                            const numYear = parseInt(y, 10);
+                            if (numYear >= 1940 && numYear <= 2015) {
+                                dobVal = `${d}/${m}/${y}`;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Stage 4: Year of Birth (YOB) fallback
+                if (!dobVal) {
+                    const yobMatch = normalizedFullText.match(/(?:Year\s*of\s*Birth|YOB|जन्म\s*वर्ष|জন্ম\s*সাল|জন্ম\s*বছর)\s*[:\-]?\s*(\d{4})/i);
+                    if (yobMatch && parseInt(yobMatch[1], 10) >= 1940 && parseInt(yobMatch[1], 10) <= 2015) {
+                        dobVal = `01/01/${yobMatch[1]}`;
                     }
                 }
 

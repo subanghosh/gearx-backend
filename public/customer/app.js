@@ -874,7 +874,7 @@ function switchCustomerAuthMode(mode) {
     }
 }
 
-let currentCustomerOtpChannel = 'sms';
+let currentCustomerOtpChannel = 'whatsapp';
 
 window.selectCustomerOtpChannel = function(channel) {
     currentCustomerOtpChannel = channel;
@@ -953,7 +953,7 @@ function getCustomerAuthIdentifier() {
             showToast('Please enter a valid 10-digit phone number.', 'error');
             return null;
         }
-        return { phone: raw, countryCode: '+91', preferredChannel: currentCustomerOtpChannel || 'sms' };
+        return { phone: raw, countryCode: '+91', preferredChannel: currentCustomerOtpChannel || 'whatsapp' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!raw || !emailRegex.test(raw)) {
@@ -1124,12 +1124,12 @@ async function handleSignupStep2() {
         // Setup User Session
         currentUser = {
             id: verifyData.user.id.replace('_user', ''),
-            name: verifyData.user.name,
+            name: (verifyData.user.name && verifyData.user.name.toLowerCase() !== 'new customer') ? verifyData.user.name : 'Customer',
             role: verifyData.user.role,
             phone: verifyData.user.phone || '',
             email: verifyData.user.email || '',
             emailVerified: verifyData.user.emailVerified || verifyData.user.emailverified || 0,
-            phoneVerified: verifyData.user.phoneVerified || verifyData.user.phoneverified || 0
+            phoneVerified: verifyData.user.phoneVerified || verifyData.user.phoneverified || 1
         };
         localStorage.setItem('redrivo_current_user', JSON.stringify(currentUser));
         if (verifyData.token) {
@@ -1146,14 +1146,7 @@ async function handleSignupStep2() {
         }
         document.getElementById('btn-signup-step2').style.display = 'none';
 
-        // Check Profile Completion Gate
-        const profileStatus = checkProfileCompletionStatus(currentUser);
-        if (!profileStatus.isComplete) {
-            openCompleteProfilePage(profileStatus);
-            return;
-        }
-
-        // Redirect to Dashboard
+        // Redirect directly to Dashboard (No name gate for phone OTP signups)
         document.getElementById('display-name').textContent = currentUser.name;
         document.getElementById('login-container').classList.add('hidden');
         document.getElementById('app-container').classList.remove('hidden');
@@ -1320,18 +1313,14 @@ let profileOtpCooldownInterval = null;
 let profilePhoneSent = '';
 
 function checkProfileCompletionStatus(user) {
-    if (!user) return { isComplete: false, needsName: true, needsPhone: false };
-    const rawName = user.name ? String(user.name).trim() : '';
-    const lowerName = rawName.toLowerCase();
-    const needsName = (!rawName || lowerName === 'new customer' || lowerName === 'customer');
-
+    if (!user) return { isComplete: false, needsName: false, needsPhone: false };
     const rawPhone = user.phone ? String(user.phone).trim() : '';
     const isPhoneVerified = (user.phoneVerified === 1 || user.phoneverified === 1);
     const needsPhone = (!rawPhone || !isPhoneVerified);
 
     return {
-        isComplete: !needsName && !needsPhone,
-        needsName: needsName,
+        isComplete: !needsPhone,
+        needsName: false,
         needsPhone: needsPhone
     };
 }
