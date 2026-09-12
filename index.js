@@ -3452,65 +3452,42 @@ apiRouter.get('/admin/test-email', authMiddleware, requireRole('admin'), async (
 });
 
 /**
- * Test Account Auto-Detection Helper
- * Automatically tags synthetic/dev accounts so test data never pollutes live investor metrics
+ * Strict Database-Backed Test Account Check
+ * ONLY allows test-mode bypass (static OTP 123456) if an existing account record
+ * in the database (users or customers table) is explicitly flagged with is_test = true OR is_test_account = true.
+ * NO regex heuristics, NO repeated-digit checks, NO string shape pattern-matching.
  */
-function isTestAccountIdentifier({ email, phone, name } = {}) {
-    if (email) {
-        const e = String(email).trim().toLowerCase();
-        // Suffix / domain patterns
-        if (
-            e.includes('razorpay') ||
-            e.includes('reviewer') ||
-            e.endsWith('@test.redrivo.com') ||
-            e.endsWith('@redrivo-test.local') ||
-            e.endsWith('@example.com') ||
-            e.endsWith('@test.com') ||
-            e.endsWith('@dummy.com')
-        ) {
-            return true;
-        }
-        // Sub-addressing (+test) or prefix patterns
-        if (
-            e.includes('+test') ||
-            e.includes('.test.') ||
-            e.startsWith('test.') ||
-            e.startsWith('test_') ||
-            e.includes('garage.test.') ||
-            e.includes('csta_') ||
-            e.includes('cstb_') ||
-            e.includes('adm_mail_')
-        ) {
-            return true;
-        }
-    }
-    if (phone) {
-        const p = String(phone).replace(/[\s\-+]/g, '');
-        // Reserved test blocks: +9199999xxxxx, +91900000xxxx, +910000xxxxxx, +91910000xxxx, +91987650xxxx
-        if (
-            /^(91)?(0000000000|9999999999|7777777777|8888888888|9111222333|90000000\d{2}|91000000\d{2}|98765000\d{2})$/.test(p) ||
-            /^(0000000000|9999999999|7777777777|8888888888|9111222333|9999968154|8888868154|7777768154)$/.test(p)
-        ) {
-            return true;
-        }
-        // 5+ repeated identical digits (e.g. 00000, 11111, 77777, 88888, 99999)
-        if (/(.)\1{4,}/.test(p)) {
-            return true;
-        }
-    }
-    if (name) {
-        const n = String(name).trim().toLowerCase();
-        if (
-            n.startsWith('[test]') ||
-            n.startsWith('test ') ||
-            n === 'test' ||
-            n.includes('test driver') ||
-            n.includes('customer attacker') ||
-            n.includes('customer owner') ||
-            n.includes('razorpay')
-        ) {
-            return true;
-        }
+async function isExplicitlyFlaggedTestAccount({ email, phone } = {}) {
+    const val = phone || email;
+    if (!val) return false;
+
+    try {
+        const rawPhone = phone ? String(phone).replace(/[\s\-]/g, '') : (String(val).includes('@') ? null : String(val).replace(/[\s\-]/g, ''));
+        const cleanVal = rawPhone ? rawPhone.replace('+91', '') : null;
+        const prefixedVal = rawPhone ? (rawPhone.startsWith('+91') ? rawPhone : '+91' + rawPhone) : null;
+        const finalEmail = email ? String(email).trim().toLowerCase() : (String(val).includes('@') ? String(val).trim().toLowerCase() : null);
+
+        // 1. Check users table for explicit test flag
+        const userRes = await pool.query(
+            `SELECT id FROM users 
+             WHERE (($1::text IS NOT NULL AND phone IN ($1, $2)) OR ($3::text IS NOT NULL AND LOWER(email) = $3)) 
+               AND (is_test = true OR is_test_account = true) 
+             LIMIT 1`,
+            [cleanVal, prefixedVal, finalEmail]
+        );
+        if (userRes.rows.length > 0) return true;
+
+        // 2. Check customers table for explicit test flag
+        const custRes = await pool.query(
+            `SELECT id FROM customers 
+             WHERE (($1::text IS NOT NULL AND phone IN ($1, $2)) OR ($3::text IS NOT NULL AND LOWER(email) = $3)) 
+               AND (is_test = true OR is_test_account = true) 
+             LIMIT 1`,
+            [cleanVal, prefixedVal, finalEmail]
+        );
+        if (custRes.rows.length > 0) return true;
+    } catch (err) {
+        console.error('[AUTH] isExplicitlyFlaggedTestAccount DB error:', err.message);
     }
     return false;
 }
@@ -3568,7 +3545,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
         console.warn('OTP rate limit check error:', rateErr.message);
     }
 
-    const isTest = isTestAccountIdentifier({ email, phone });
+    const isTest = await isExplicitlyFlaggedTestAccount({ email, phone });
     const otp = (process.env.NODE_ENV !== 'production' || isTest) ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
@@ -3615,8 +3592,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
     if (!val) return res.status(400).json({ error: 'Phone or email required' });
 
     try {
-        // Find valid OTP or accept 123456 for designated test accounts
-        const isTest = isTestAccountIdentifier({ email: val, phone: val });
+        // Find valid OTP or accept 123456 ONLY if the account is explicitly flagged as a test account in the DB
+        const isTest = await isExplicitlyFlaggedTestAccount({ email: val, phone: val });
         let otpValid = false;
         if (isTest && otp === '123456') {
             otpValid = true;
