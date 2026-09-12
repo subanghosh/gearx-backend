@@ -1314,7 +1314,7 @@ async function handleGoogleSignIn() {
 // ============================================================================
 // COMPLETE PROFILE CONTROLLER (MANDATORY PROFILE ONBOARDING GATE)
 // ============================================================================
-let currentProfileOtpChannel = 'whatsapp';
+let currentProfileOtpChannel = 'sms';
 let profileOtpCooldownSeconds = 0;
 let profileOtpCooldownInterval = null;
 let profilePhoneSent = '';
@@ -1336,7 +1336,7 @@ function checkProfileCompletionStatus(user) {
     };
 }
 
-function selectProfileOtpChannel(channel) {
+window.selectProfileOtpChannel = function(channel) {
     currentProfileOtpChannel = channel;
     const pillWa = document.getElementById('profile-pill-whatsapp');
     const pillSms = document.getElementById('profile-pill-sms');
@@ -1366,7 +1366,24 @@ function selectProfileOtpChannel(channel) {
             if (labelWa) labelWa.style.color = '#8B949E';
         }
     }
-}
+};
+
+window.handleProfileResendOtpSmsInstant = async function() {
+    const btn = document.getElementById('profile-resend-sms-instant-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'Sending SMS...';
+    }
+    window.selectProfileOtpChannel('sms');
+    try {
+        await handleProfileSendPhoneOtp();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
+        }
+    }
+};
 
 function openCompleteProfilePage(status) {
     const loginCont = document.getElementById('login-container');
@@ -1483,57 +1500,6 @@ function updateCompleteProfileButtonState() {
         submitBtn.style.color = 'rgba(0, 0, 0, 0.6)';
     }
 }
-
-let currentProfileOtpChannel = 'sms';
-
-window.selectProfileOtpChannel = function(channel) {
-    currentProfileOtpChannel = channel;
-    const pillWa = document.getElementById('profile-pill-whatsapp');
-    const pillSms = document.getElementById('profile-pill-sms');
-    const labelWa = document.getElementById('profile-label-whatsapp');
-    const labelSms = document.getElementById('profile-label-sms');
-
-    if (channel === 'whatsapp') {
-        if (pillWa) {
-            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
-            pillWa.style.border = '1.5px solid #25D366';
-            if (labelWa) labelWa.style.color = '#FFFFFF';
-        }
-        if (pillSms) {
-            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
-            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-            if (labelSms) labelSms.style.color = '#8B949E';
-        }
-    } else {
-        if (pillSms) {
-            pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
-            pillSms.style.border = '1.5px solid #FFD700';
-            if (labelSms) labelSms.style.color = '#FFFFFF';
-        }
-        if (pillWa) {
-            pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
-            pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-            if (labelWa) labelWa.style.color = '#8B949E';
-        }
-    }
-};
-
-window.handleProfileResendOtpSmsInstant = async function() {
-    const btn = document.getElementById('profile-resend-sms-instant-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = 'Sending SMS...';
-    }
-    window.selectProfileOtpChannel('sms');
-    try {
-        await handleProfileSendPhoneOtp();
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
-        }
-    }
-};
 
 async function handleProfileSendPhoneOtp() {
     if (profileOtpCooldownSeconds > 0) {
