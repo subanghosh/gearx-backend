@@ -3597,9 +3597,13 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             if (isEmailInput) {
                 await pool.query(`UPDATE users SET emailverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
                 await pool.query(`UPDATE garage_workers SET emailverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
+                userObj.emailverified = 1;
+                userObj.emailVerified = 1;
             } else {
                 await pool.query(`UPDATE users SET phoneverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
                 await pool.query(`UPDATE garage_workers SET phoneverified = 1 WHERE id = $1`, [userObj.id]).catch(() => {});
+                userObj.phoneverified = 1;
+                userObj.phoneVerified = 1;
             }
 
             const token = signToken({ id: userObj.id, role: userObj.role, garageId: userObj.garageId || null }, userObj.token_version || userObj.tokenversion || 1);
@@ -3806,7 +3810,7 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
             // Default: customer (name is left NULL until user completes profile)
             const newUserId = 'cust_' + Date.now();
             await pool.query(
-                `INSERT INTO users (id, name, role, phone, email, status) VALUES ($1, NULL, 'customer', $2, $3, 'active')`,
+                `INSERT INTO users (id, name, role, phone, email, status, phoneverified) VALUES ($1, NULL, 'customer', $2, $3, 'active', 1)`,
                 [newUserId, finalPhone, finalEmail]
             );
             await pool.query(
@@ -3820,6 +3824,8 @@ apiRouter.post('/auth/verify-otp', verifyOtpLimiter, async (req, res) => {
                 garageId: null, 
                 status: 'active', 
                 phone: finalPhone, 
+                phoneverified: 1,
+                phoneVerified: 1,
                 email: finalEmail
             }, true);
         }
