@@ -2583,7 +2583,7 @@ apiRouter.post('/users/:id/send-update-otp', async (req, res) => {
             userId = userLookup.rows[0].id;
         }
     }
-    const { field, value, preferredChannel = 'whatsapp' } = req.body;
+    const { field, value, preferredChannel = 'sms' } = req.body;
     if (!field || !value) return res.status(400).json({ error: 'Field and value required' });
     if (field !== 'phone' && field !== 'email') return res.status(400).json({ error: 'Invalid field' });
 
@@ -3264,82 +3264,28 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
     const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || customerOtpId;
     const otpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
-    const isDriver = (role === 'marshal' || role === 'driver');
 
-    // For drivers/marshals OR when preferredChannel is explicitly 'dual', dispatch BOTH SMS and WhatsApp concurrently
-    if (isDriver || cleanChannel === 'dual') {
-        console.log(`[UNIFIED_OTP] Executing dual dispatch (SMS + WhatsApp) for role=${role} to ${phone} (OTP ID: ${otpId})...`);
-        const results = await Promise.allSettled([
-            sendFast2SmsOtp(phone, otp),
-            sendFast2SmsWhatsAppOtp(phone, otp, otpId)
-        ]);
+    // Execute concurrent dual-dispatch (SMS + WhatsApp) across all logins, roles & updates for maximum delivery reliability
+    console.log(`[UNIFIED_OTP] Executing dual dispatch (SMS + WhatsApp) for role=${role}, channel=${cleanChannel} to ${phone} (OTP ID: ${otpId})...`);
+    const results = await Promise.allSettled([
+        sendFast2SmsOtp(phone, otp),
+        sendFast2SmsWhatsAppOtp(phone, otp, otpId)
+    ]);
 
-        const smsRes = results[0].status === 'fulfilled' ? results[0].value : { return: false, error: results[0].reason?.message };
-        const waRes = results[1].status === 'fulfilled' ? results[1].value : { success: false, error: results[1].reason?.message };
+    const smsRes = results[0].status === 'fulfilled' ? results[0].value : { return: false, error: results[0].reason?.message };
+    const waRes = results[1].status === 'fulfilled' ? results[1].value : { success: false, error: results[1].reason?.message };
 
-        console.log(`[UNIFIED_OTP] Dual dispatch results -> SMS:`, JSON.stringify(smsRes), `| WhatsApp:`, JSON.stringify(waRes));
+    console.log(`[UNIFIED_OTP] Dual dispatch results -> SMS:`, JSON.stringify(smsRes), `| WhatsApp:`, JSON.stringify(waRes));
 
-        if ((smsRes && smsRes.return !== false) || (waRes && waRes.success)) {
-            return {
-                channel: 'dual_sms_whatsapp',
-                success: true,
-                sms: smsRes,
-                whatsapp: waRes
-            };
-        }
-        return { channel: 'failed', success: false, sms: smsRes, whatsapp: waRes };
+    if ((smsRes && smsRes.return !== false) || (waRes && waRes.success)) {
+        return {
+            channel: 'dual_sms_whatsapp',
+            success: true,
+            sms: smsRes,
+            whatsapp: waRes
+        };
     }
-
-    if (cleanChannel === 'sms') {
-        // Preferred: SMS -> Fallback: WhatsApp
-        console.log(`[UNIFIED_OTP] Preferred channel: SMS. Attempting Fast2SMS SMS dispatch to ${phone}...`);
-        try {
-            const smsResult = await sendFast2SmsOtp(phone, otp);
-            if (smsResult && smsResult.return !== false) {
-                return { channel: 'fast2sms_sms', success: true, data: smsResult };
-            }
-            console.warn(`[UNIFIED_OTP] Primary SMS dispatch returned false. Falling back to WhatsApp (OTP ID: ${otpId})...`);
-        } catch (smsErr) {
-            console.warn(`[UNIFIED_OTP] Primary SMS attempt error: ${smsErr.message}. Falling back to WhatsApp...`);
-        }
-
-        try {
-            const waResult = await sendFast2SmsWhatsAppOtp(phone, otp, otpId);
-            if (waResult && waResult.success) {
-                return { channel: 'fast2sms_whatsapp', success: true, data: waResult.data };
-            }
-            console.error(`[UNIFIED_OTP] WhatsApp fallback also failed (${waResult?.error || 'Unknown error'}).`);
-            return { channel: 'failed', success: false, error: waResult?.error };
-        } catch (waErr) {
-            console.error(`[UNIFIED_OTP] WhatsApp fallback exception:`, waErr.message);
-            return { channel: 'failed', success: false, error: waErr.message };
-        }
-    } else {
-        // Preferred: WhatsApp -> Fallback: SMS
-        console.log(`[UNIFIED_OTP] Preferred channel: WhatsApp. Attempting Fast2SMS WhatsApp dispatch to ${phone} (OTP ID: ${otpId})...`);
-        let waResult = null;
-        try {
-            waResult = await sendFast2SmsWhatsAppOtp(phone, otp, otpId);
-        } catch (waErr) {
-            console.warn(`[UNIFIED_OTP] Primary WhatsApp attempt error: ${waErr.message}.`);
-        }
-
-        // To guarantee delivery, also dispatch SMS if WhatsApp did not deliver or as assurance
-        try {
-            const smsResult = await sendFast2SmsOtp(phone, otp);
-            return {
-                channel: waResult?.success ? 'fast2sms_whatsapp' : 'fast2sms_sms',
-                success: true,
-                data: waResult?.success ? waResult.data : smsResult
-            };
-        } catch (smsErr) {
-            if (waResult && waResult.success) {
-                return { channel: 'fast2sms_whatsapp', success: true, data: waResult.data };
-            }
-            console.error(`[UNIFIED_OTP] Fast2SMS SMS fallback failed:`, smsErr.message);
-            return { channel: 'failed', success: false, error: smsErr.message };
-        }
-    }
+    return { channel: 'failed', success: false, sms: smsRes, whatsapp: waRes };
 }
 
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {

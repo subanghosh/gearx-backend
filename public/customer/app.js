@@ -874,7 +874,7 @@ function switchCustomerAuthMode(mode) {
     }
 }
 
-let currentCustomerOtpChannel = 'whatsapp';
+let currentCustomerOtpChannel = 'sms';
 
 window.selectCustomerOtpChannel = function(channel) {
     currentCustomerOtpChannel = channel;
@@ -908,6 +908,43 @@ window.selectCustomerOtpChannel = function(channel) {
     }
 };
 
+window.handleCustomerResendOtpSmsInstant = async function() {
+    const btn = document.getElementById('cust-resend-sms-instant-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'Sending SMS...';
+    }
+    window.selectCustomerOtpChannel('sms');
+    const payload = getCustomerAuthIdentifier();
+    if (!payload) {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
+        }
+        return;
+    }
+    payload.preferredChannel = 'sms';
+    try {
+        showToast('Dispatching OTP via SMS...', 'info');
+        const res = await fetch(`${API_URL}/auth/send-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to resend SMS OTP');
+        showToast('OTP dispatched via SMS! Check your text messages.', 'success');
+        if (data.otp && window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp);
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
+        }
+    }
+};
+
 function getCustomerAuthIdentifier() {
     const input = document.getElementById('su-phone');
     const raw = input ? input.value.trim() : '';
@@ -916,7 +953,7 @@ function getCustomerAuthIdentifier() {
             showToast('Please enter a valid 10-digit phone number.', 'error');
             return null;
         }
-        return { phone: raw, countryCode: '+91', preferredChannel: currentCustomerOtpChannel || 'whatsapp' };
+        return { phone: raw, countryCode: '+91', preferredChannel: currentCustomerOtpChannel || 'sms' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!raw || !emailRegex.test(raw)) {
@@ -1447,6 +1484,57 @@ function updateCompleteProfileButtonState() {
     }
 }
 
+let currentProfileOtpChannel = 'sms';
+
+window.selectProfileOtpChannel = function(channel) {
+    currentProfileOtpChannel = channel;
+    const pillWa = document.getElementById('profile-pill-whatsapp');
+    const pillSms = document.getElementById('profile-pill-sms');
+    const labelWa = document.getElementById('profile-label-whatsapp');
+    const labelSms = document.getElementById('profile-label-sms');
+
+    if (channel === 'whatsapp') {
+        if (pillWa) {
+            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
+            pillWa.style.border = '1.5px solid #25D366';
+            if (labelWa) labelWa.style.color = '#FFFFFF';
+        }
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelSms) labelSms.style.color = '#8B949E';
+        }
+    } else {
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
+            pillSms.style.border = '1.5px solid #FFD700';
+            if (labelSms) labelSms.style.color = '#FFFFFF';
+        }
+        if (pillWa) {
+            pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelWa) labelWa.style.color = '#8B949E';
+        }
+    }
+};
+
+window.handleProfileResendOtpSmsInstant = async function() {
+    const btn = document.getElementById('profile-resend-sms-instant-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'Sending SMS...';
+    }
+    window.selectProfileOtpChannel('sms');
+    try {
+        await handleProfileSendPhoneOtp();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
+        }
+    }
+};
+
 async function handleProfileSendPhoneOtp() {
     if (profileOtpCooldownSeconds > 0) {
         showToast(`Please wait ${profileOtpCooldownSeconds}s before requesting a new OTP.`, 'error');
@@ -1484,7 +1572,7 @@ async function handleProfileSendPhoneOtp() {
             body: JSON.stringify({
                 field: 'phone',
                 value: '+91' + phone,
-                preferredChannel: currentProfileOtpChannel || 'whatsapp'
+                preferredChannel: currentProfileOtpChannel || 'sms'
             })
         });
         const data = await res.json();
