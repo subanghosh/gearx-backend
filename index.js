@@ -3493,7 +3493,7 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
                     type: 'template',
                     template: {
                         name: targetTemplate,
-                        language: { code: 'en' },
+                        language: { code: 'en_US' },
                         components: [
                             {
                                 type: 'body',
