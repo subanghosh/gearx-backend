@@ -172,17 +172,17 @@
                             <input type="tel" id="login-id" placeholder="Enter your 10 Digits Mobile Number" maxlength="10" oninput="handleLoginIdInput(this)">
                         </div>
                     </div>
-                    <!-- OTP Channel Selector (WhatsApp / SMS) -->
+                    <!-- OTP Channel Selector (SMS / WhatsApp) -->
                     <div id="marshal-otp-channel-group" style="display: flex; gap: 8px; margin-bottom: 16px;">
-                        <label class="otp-channel-pill active" id="marshal-pill-whatsapp" onclick="selectMarshalOtpChannel('whatsapp')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(37, 211, 102, 0.12); border: 1.5px solid #25D366; border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
-                            <input type="radio" name="marshal_otp_channel" value="whatsapp" checked style="display: none;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-                            <span id="marshal-label-whatsapp" style="font-size: 0.88rem; font-weight: 700; color: #FFFFFF;">WhatsApp</span>
+                        <label class="otp-channel-pill active" id="marshal-pill-sms" onclick="selectMarshalOtpChannel('sms')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(255, 215, 0, 0.12); border: 1.5px solid #FFD700; border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="marshal_otp_channel" value="sms" checked style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <span id="marshal-label-sms" style="font-size: 0.88rem; font-weight: 700; color: #FFFFFF;">SMS (Instant)</span>
                         </label>
-                        <label class="otp-channel-pill" id="marshal-pill-sms" onclick="selectMarshalOtpChannel('sms')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
-                            <input type="radio" name="marshal_otp_channel" value="sms" style="display: none;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B949E" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                            <span id="marshal-label-sms" style="font-size: 0.88rem; font-weight: 600; color: #8B949E;">SMS</span>
+                        <label class="otp-channel-pill" id="marshal-pill-whatsapp" onclick="selectMarshalOtpChannel('whatsapp')" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; cursor: pointer; transition: all 0.2s ease;">
+                            <input type="radio" name="marshal_otp_channel" value="whatsapp" style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#8B949E"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                            <span id="marshal-label-whatsapp" style="font-size: 0.88rem; font-weight: 600; color: #8B949E;">WhatsApp</span>
                         </label>
                     </div>
                     <div class="form-group" id="login-otp-group" style="display:none;">
@@ -196,9 +196,15 @@
                             <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
                         </div>
                         <input type="hidden" id="login-otp" value="">
-                        <div style="text-align: right; margin-top: 8px;">
-                            <a href="#" id="resend-login-otp" onclick="handleResendOTP()" style="font-size: 0.85rem; color: var(--primary); display: none; text-decoration: none; font-weight: 600;">Resend OTP</a>
-                            <span id="resend-login-timer" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <a href="javascript:void(0)" id="btn-resend-sms-instant" onclick="handleResendOtpSmsInstant()" style="font-size: 0.82rem; color: #FFD700; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                Didn't receive it? Resend via SMS
+                            </a>
+                            <div>
+                                <a href="#" id="resend-login-otp" onclick="handleResendOTP()" style="font-size: 0.85rem; color: var(--primary); display: none; text-decoration: none; font-weight: 600;">Resend OTP</a>
+                                <span id="resend-login-timer" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+                            </div>
                         </div>
                     </div>
                     

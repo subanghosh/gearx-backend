@@ -2427,6 +2427,19 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
     });
 }
 
+// --- Vehicle Illustration Helper ---
+window.getVehicleIllustration = function(type) {
+    const lowerType = String(type || '').toLowerCase();
+    if (lowerType.includes('bike') || lowerType.includes('motorcycle') || lowerType.includes('scooter') || lowerType.includes('two wheeler') || lowerType.includes('2-wheeler')) {
+        return 'images/bike.png';
+    } else if (lowerType.includes('suv')) {
+        return 'images/suv.png';
+    } else if (lowerType.includes('hatchback')) {
+        return 'images/hatchback.png';
+    }
+    return 'images/sedan.png';
+};
+
 // --- Dashboard ---
 async function loadDashboard() {
     if (!currentUser) return;
@@ -3302,21 +3315,8 @@ function renderVehicles() {
         const colorMap = { 'White': '#f1f5f9', 'Black': '#1e293b', 'Silver': '#94a3b8', 'Grey': '#6b7280', 'Red': '#ef4444', 'Blue': '#3b82f6', 'Green': '#22c55e', 'Brown': '#92400e', 'Orange': '#f97316', 'Yellow': '#facc15', 'Purple': '#a855f7', 'Beige': '#d4b896', 'Gold': '#d4af37', 'Maroon': '#7f1d1d', 'Navy': '#1e3a5f' };
         const colorDot = colorMap[carColor] || '#94a3b8';
 
-        let imageSrc = 'images/sedan.png';
-        if (v.photo) {
-            imageSrc = v.photo;
-        } else {
-            const lowerType = type.toLowerCase();
-            if (lowerType.includes('bike') || lowerType.includes('motorcycle')) {
-                imageSrc = 'images/bike.png';
-            } else if (lowerType.includes('suv')) {
-                imageSrc = 'images/suv.png';
-            } else if (lowerType.includes('hatchback')) {
-                imageSrc = 'images/hatchback.png';
-            } else {
-                imageSrc = 'images/sedan.png';
-            }
-        }
+        const fallbackImg = getVehicleIllustration(type);
+        const imageSrc = v.photo || fallbackImg;
 
         // actionBtn logic is moved outside the card map
 
@@ -3344,7 +3344,7 @@ function renderVehicles() {
                 <!-- Middle Section: Image Frame (always fits, any aspect ratio) -->
                 <div class="vehicle-card-image-wrapper" style="width: 100%; height: 190px; border-radius: 16px; overflow: hidden; background: ${v.photo ? '#0d1017' : 'transparent'}; display: flex; align-items: center; justify-content: center; z-index: 1; margin: 0; position: relative; border: ${v.photo ? '1px solid rgba(255,255,255,0.06)' : 'none'};">
                     ${v.photo ? '' : '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: 150px; background: radial-gradient(ellipse, rgba(250, 204, 21, 0.2) 0%, transparent 70%); z-index: 0; pointer-events: none;"></div>'}
-                    <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" style="width: 100%; height: 100%; object-fit: cover; ${v.photo ? '' : 'filter: drop-shadow(0 20px 25px rgba(0,0,0,0.6));'} position: relative; z-index: 1; display: block;">
+                    <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}'; this.style.filter='drop-shadow(0 20px 25px rgba(0,0,0,0.6))';" style="width: 100%; height: 100%; object-fit: cover; ${v.photo ? '' : 'filter: drop-shadow(0 20px 25px rgba(0,0,0,0.6));'} position: relative; z-index: 1; display: block;">
                 </div>
 
                 <!-- Premium 2x2 details grid below the image -->
@@ -5604,22 +5604,12 @@ function editVehicle(id) {
     document.getElementById('v-make').value = v.make || '';
     document.getElementById('v-model').value = v.model || '';
 
-    let displayPhoto = v.photo;
-    if (!displayPhoto) {
-        const lowerType = (v.type || 'Hatchback').toLowerCase();
-        if (lowerType.includes('bike') || lowerType.includes('motorcycle')) {
-            displayPhoto = 'images/bike.png';
-        } else if (lowerType.includes('suv')) {
-            displayPhoto = 'images/suv.png';
-        } else if (lowerType.includes('sedan')) {
-            displayPhoto = 'images/sedan.png';
-        } else {
-            displayPhoto = 'images/sedan.png';
-        }
-    }
+    const fallbackPhoto = getVehicleIllustration(v.type);
+    const displayPhoto = v.photo || fallbackPhoto;
 
     if (displayPhoto) {
         const preview = document.getElementById('v-photo-preview');
+        preview.onerror = function() { this.onerror = null; this.src = fallbackPhoto; };
         preview.src = displayPhoto;
         preview.style.display = 'block';
         document.getElementById('photo-label-text').textContent = v.photo ? 'Click to change photo' : 'Tap to upload vehicle photo';
@@ -5797,16 +5787,10 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
         if (fmImg && fmImgContainer) {
             // Build image src same way vehicle card does
             let imgSrc = '';
-            if (v.photo) {
-                imgSrc = v.photo;
-            } else {
-                const lowerType = (v.type || '').toLowerCase();
-                if (lowerType.includes('bike') || lowerType.includes('motorcycle')) imgSrc = 'images/bike.png';
-                else if (lowerType.includes('suv')) imgSrc = 'images/suv.png';
-                else if (lowerType.includes('hatchback')) imgSrc = 'images/hatchback.png';
-                else imgSrc = 'images/sedan.png';
-            }
+            const fallbackImg = getVehicleIllustration(v.type);
+            imgSrc = v.photo || fallbackImg;
             if (imgSrc) {
+                fmImg.onerror = function() { this.onerror = null; this.src = fallbackImg; };
                 fmImg.src = imgSrc;
                 fmImgContainer.style.display = 'flex';
             } else {
@@ -7128,19 +7112,12 @@ window.showGarageVehicleSelection = function(g, flowType) {
     if (!modal || !container) return;
 
     container.innerHTML = userVehicles.map(v => {
-        let imageSrc = 'images/sedan.png';
-        const lowerType = (v.type || '').toLowerCase();
-        if (v.photo) {
-            imageSrc = v.photo;
-        } else {
-            if (lowerType.includes('bike') || lowerType.includes('motorcycle')) imageSrc = 'images/bike.png';
-            else if (lowerType.includes('suv')) imageSrc = 'images/suv.png';
-            else if (lowerType.includes('hatchback')) imageSrc = 'images/hatchback.png';
-        }
+        const fallbackImg = getVehicleIllustration(v.type);
+        const imageSrc = v.photo || fallbackImg;
 
         return `
             <div onclick="selectVehicleForGarageFlow('${v.id}')" style="display: flex; align-items: center; gap: 14px; padding: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; cursor: pointer; transition: all 0.2s;">
-                <img src="${imageSrc}" style="width: 50px; height: 35px; object-fit: contain; flex-shrink: 0;" />
+                <img src="${imageSrc}" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 50px; height: 35px; object-fit: contain; flex-shrink: 0;" />
                 <div style="flex: 1; min-width: 0;">
                     <div style="font-weight: 700; color: #fff; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${v.make} ${v.model}</div>
                     <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">${v.plate}</div>
@@ -8157,21 +8134,8 @@ function renderHistory(trips) {
         const formattedDistance = parseFloat(rawDistance).toFixed(1);
 
         // Vehicle Photo
-        let imageSrc = 'images/sedan.png';
-        if (vehicle && vehicle.photo) {
-            imageSrc = vehicle.photo;
-        } else if (vehicle) {
-            const lowerType = (vehicle.type || 'Hatchback').toLowerCase();
-            if (lowerType.includes('bike') || lowerType.includes('motorcycle')) {
-                imageSrc = 'images/bike.png';
-            } else if (lowerType.includes('suv')) {
-                imageSrc = 'images/suv.png';
-            } else if (lowerType.includes('hatchback')) {
-                imageSrc = 'images/hatchback.png';
-            } else {
-                imageSrc = 'images/sedan.png';
-            }
-        }
+        const fallbackImg = getVehicleIllustration(vehicle ? vehicle.type : 'Hatchback');
+        const imageSrc = (vehicle && vehicle.photo) ? vehicle.photo : fallbackImg;
         
         const marshalHtml = t.marshalName ? `
             <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
@@ -8202,7 +8166,7 @@ function renderHistory(trips) {
                         <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px; display: block;">${vPlate}</span>
                     </div>
                     <div style="width: 90px; height: 60px; overflow: hidden; background: rgba(255,255,255,0.02); display: flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;">
-                        <img src="${imageSrc}" alt="${vName}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+                        <img src="${imageSrc}" alt="${vName}" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
                     </div>
                 </div>
 
@@ -8449,21 +8413,8 @@ function renderProfileVehicles() {
         const transmission = v.transmission || 'Manual';
         const type = v.type || 'Hatchback';
 
-        let imageSrc = 'images/sedan.png';
-        if (v.photo) {
-            imageSrc = v.photo;
-        } else {
-            const lowerType = type.toLowerCase();
-            if (lowerType.includes('bike') || lowerType.includes('motorcycle')) {
-                imageSrc = 'images/bike.png';
-            } else if (lowerType.includes('suv')) {
-                imageSrc = 'images/suv.png';
-            } else if (lowerType.includes('hatchback')) {
-                imageSrc = 'images/hatchback.png';
-            } else {
-                imageSrc = 'images/sedan.png';
-            }
-        }
+        const fallbackImg = getVehicleIllustration(type);
+        const imageSrc = v.photo || fallbackImg;
 
         return `
         <div class="vehicle-card" style="display: flex; position: relative; overflow: hidden; align-items: stretch; min-height: 130px; padding: 16px; margin-bottom: 4px; border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; background: rgba(255, 255, 255, 0.02);">
@@ -8491,7 +8442,7 @@ function renderProfileVehicles() {
 
             <!-- Floating car/bike image on the right -->
             <div class="vehicle-card-right-image-wrapper" style="position: absolute; right: 10px; bottom: 10px; top: 10px; width: 40%; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 1;">
-                <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));">
+                <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));">
             </div>
         </div>
         `;

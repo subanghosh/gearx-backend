@@ -740,7 +740,7 @@ function switchLoginMode(mode) {
     }
 }
 
-let currentMarshalOtpChannel = 'whatsapp';
+let currentMarshalOtpChannel = 'sms';
 
 window.selectMarshalOtpChannel = function(channel) {
     currentMarshalOtpChannel = channel;
@@ -749,18 +749,7 @@ window.selectMarshalOtpChannel = function(channel) {
     const labelWa = document.getElementById('marshal-label-whatsapp');
     const labelSms = document.getElementById('marshal-label-sms');
 
-    if (channel === 'whatsapp') {
-        if (pillWa) {
-            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
-            pillWa.style.border = '1.5px solid #25D366';
-            if (labelWa) labelWa.style.color = '#FFFFFF';
-        }
-        if (pillSms) {
-            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
-            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-            if (labelSms) labelSms.style.color = '#8B949E';
-        }
-    } else {
+    if (channel === 'sms') {
         if (pillSms) {
             pillSms.style.background = 'rgba(255, 215, 0, 0.12)';
             pillSms.style.border = '1.5px solid #FFD700';
@@ -770,6 +759,17 @@ window.selectMarshalOtpChannel = function(channel) {
             pillWa.style.background = 'rgba(255, 255, 255, 0.03)';
             pillWa.style.border = '1px solid rgba(255, 255, 255, 0.12)';
             if (labelWa) labelWa.style.color = '#8B949E';
+        }
+    } else {
+        if (pillWa) {
+            pillWa.style.background = 'rgba(37, 211, 102, 0.12)';
+            pillWa.style.border = '1.5px solid #25D366';
+            if (labelWa) labelWa.style.color = '#FFFFFF';
+        }
+        if (pillSms) {
+            pillSms.style.background = 'rgba(255, 255, 255, 0.03)';
+            pillSms.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            if (labelSms) labelSms.style.color = '#8B949E';
         }
     }
 };
@@ -787,7 +787,7 @@ function validateLoginIdentifier() {
             showToast('Enter a valid 10-digit mobile number.', 'error');
             return null;
         }
-        return { phone: `+91${raw}`, role: 'marshal', preferredChannel: currentMarshalOtpChannel || 'whatsapp' };
+        return { phone: `+91${raw}`, role: 'marshal', preferredChannel: currentMarshalOtpChannel || 'sms' };
     } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(raw)) {
@@ -797,6 +797,32 @@ function validateLoginIdentifier() {
         return { email: raw.toLowerCase(), role: 'marshal' };
     }
 }
+
+window.handleResendOtpSmsInstant = async function() {
+    const raw = document.getElementById('login-id')?.value.trim() || '';
+    if (raw.length !== 10 || !/^\d{10}$/.test(raw)) {
+        showToast('Enter a valid 10-digit mobile number.', 'error');
+        return;
+    }
+    const payload = { phone: `+91${raw}`, role: 'marshal', preferredChannel: 'sms' };
+    showToast('Dispatching high-priority SMS to your phone...', 'info');
+
+    try {
+        const res = await fetch(`${API_URL}/auth/send-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to dispatch SMS');
+
+        showToast('High-priority SMS OTP dispatched successfully!', 'success');
+        if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
+        startOtpTimer();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
 
 async function handleResendOTP() {
     if (otpCooldownSeconds > 0) {
