@@ -3440,12 +3440,12 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     // 3. App
     const appData = await fetchMeta(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
 
-    // 4. Subscribed Apps & WABA Namespace Queries
-    const appSubscribedApps = await fetchMeta(`https://graph.facebook.com/v21.0/${appId}/subscribed_apps`);
-    const wabaNamespaceAndDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,message_template_namespace`);
-    const wabaSubscribedAppsBefore = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
+    // 4. Exact GET /1935784290711470/subscribed_apps queries
+    const getSubscribedAppsDirect = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
+    const getSubscribedAppsWithBiz = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps?business=1746081170012300`);
+    const getSubscribedAppsWithFields = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps?fields=whatsapp_business_api_data`);
 
-    // 5. Attempt explicit POST to link App to WABA: POST /1935784290711470/subscribed_apps
+    // 5. Explicit POST /1935784290711470/subscribed_apps
     let postSubscribedAppsResult = null;
     try {
         const subPostRes = await fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
@@ -3463,7 +3463,6 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
         postSubscribedAppsResult = { error: subPostErr.message };
     }
 
-    const wabaSubscribedAppsAfter = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
 
 
     // Phone Registration Call: POST /1329557343567092/register
@@ -3540,11 +3539,10 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
-        appSubscribedApps,
-        wabaNamespaceAndDetails,
-        wabaSubscribedAppsBefore,
+        getSubscribedAppsDirect,
+        getSubscribedAppsWithBiz,
+        getSubscribedAppsWithFields,
         postSubscribedAppsResult,
-        wabaSubscribedAppsAfter,
         phoneStatusAfter,
         testSendResult
     });
