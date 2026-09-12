@@ -3452,8 +3452,32 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     // 3. Business Portfolio queries
     const bizOwnedWabas = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/owned_whatsapp_business_accounts`);
-    const bizClientWabas = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/client_whatsapp_business_accounts`);
-    const bizSystemUsers = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/system_users`);
+    // Phone Registration Call: POST /1329557343567092/register
+    const registrationPin = req.query.pin || '628924';
+    let registrationResult = null;
+    try {
+        const regRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/register`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                pin: registrationPin
+            })
+        });
+        registrationResult = {
+            pinUsed: registrationPin,
+            httpStatus: regRes.status,
+            data: await regRes.json().catch(e => ({ error: e.message }))
+        };
+    } catch (regErr) {
+        registrationResult = { pinUsed: registrationPin, error: regErr.message };
+    }
+
+    // Phone Status Check: GET /1329557343567092
+    const phoneStatusAfter = await fetchMeta(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,verified_name,quality_rating,name_status,messaging_limit_tier,code_verification_status,status`);
 
     let testSendResult = null;
     if (req.query.phone) {
@@ -3502,14 +3526,8 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
-        debugToken: debugToken.data,
-        meData: meData.data,
-        appData: appData.data,
-        wabaAssignedUsersWithBiz1746081170012300,
-        userAssignedWabasWithBiz1746081170012300,
-        bizOwnedWabas,
-        bizClientWabas,
-        bizSystemUsers,
+        registrationResult,
+        phoneStatusAfter,
         testSendResult
     });
 });
