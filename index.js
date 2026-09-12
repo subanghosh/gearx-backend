@@ -11506,6 +11506,12 @@ app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/mars
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
+// Root Public Favicons & Brand Assets
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '4h',
+    index: false
+}));
+
 // Public Downloads with Persistent Volume Priority (APKs & App Distribution)
 app.get('/downloads/:filename', (req, res) => {
     const rawFilename = req.params.filename;

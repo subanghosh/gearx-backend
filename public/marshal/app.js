@@ -692,6 +692,42 @@ function startOtpTimer(timerElId = 'resend-login-timer', resendBtnId = 'resend-l
     }, 1000);
 }
 
+// Shared Full-Screen Loading / Lock State for OTP operations
+function showOtpLoadingOverlay(message = 'Sending OTP...') {
+    let overlay = document.getElementById('otp-loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'otp-loading-overlay';
+        overlay.innerHTML = `
+            <div style="background: rgba(24, 24, 27, 0.95); border: 1px solid rgba(255, 215, 0, 0.3); box-shadow: 0 16px 48px rgba(0,0,0,0.85); border-radius: 20px; padding: 28px 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; max-width: 320px; width: 85%; text-align: center;">
+                <div class="otp-spinner" style="width: 44px; height: 44px; border: 3.5px solid rgba(255, 215, 0, 0.2); border-top-color: #FFD700; border-radius: 50%; animation: otpSpin 0.75s linear infinite; margin-bottom: 16px;"></div>
+                <div id="otp-loading-text" style="color: #FFFFFF; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.2px; font-family: 'Inter', sans-serif;">${message}</div>
+                <div style="color: #8B949E; font-size: 0.8rem; margin-top: 6px; font-family: 'Inter', sans-serif;">Please wait a moment...</div>
+            </div>
+            <style>
+                @keyframes otpSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            </style>
+        `;
+        overlay.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; pointer-events: all; user-select: none; transition: opacity 0.2s ease;';
+        document.body.appendChild(overlay);
+    } else {
+        const textEl = overlay.querySelector('#otp-loading-text');
+        if (textEl) textEl.textContent = message;
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
+    }
+    document.body.style.pointerEvents = 'none';
+    overlay.style.pointerEvents = 'all';
+}
+
+function hideOtpLoadingOverlay() {
+    const overlay = document.getElementById('otp-loading-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+    document.body.style.pointerEvents = 'auto';
+}
+
 let currentLoginMode = 'phone'; // 'phone' | 'email'
 
 function switchLoginMode(mode) {
@@ -805,14 +841,19 @@ window.handleResendOtpSmsInstant = async function() {
         return;
     }
     const payload = { phone: `+91${raw}`, role: 'marshal', preferredChannel: 'sms' };
-    showToast('Dispatching high-priority SMS to your phone...', 'info');
+    showOtpLoadingOverlay('Dispatching SMS OTP...');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
         const res = await fetch(`${API_URL}/auth/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify(payload)
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to dispatch SMS');
 
@@ -820,7 +861,14 @@ window.handleResendOtpSmsInstant = async function() {
         if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
         startOtpTimer();
     } catch (err) {
-        showToast(err.message, 'error');
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+            showToast('Something went wrong, please try again', 'error');
+        } else {
+            showToast(err.message || 'Something went wrong, please try again', 'error');
+        }
+    } finally {
+        hideOtpLoadingOverlay();
     }
 };
 
@@ -832,12 +880,14 @@ async function handleResendOTP() {
     const payload = validateLoginIdentifier();
     if (!payload) return;
     
+    showOtpLoadingOverlay('Resending OTP...');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     
     try {
         const res = await fetch(`${API_URL}/auth/send-otp`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
             body: JSON.stringify(payload)
         });
@@ -855,18 +905,23 @@ async function handleResendOTP() {
             stack: err.stack,
             keys: Object.getOwnPropertyNames(err)
         });
-        console.error('[LOGIN_ERROR] handleResendOTP JSON serialized:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
         if (err.name === 'AbortError') {
-            showToast('Request timed out. Server may be starting — try again in 30 seconds.', 'error');
+            showToast('Something went wrong, please try again', 'error');
         } else {
-            showToast(err.message, 'error');
+            showToast(err.message || 'Something went wrong, please try again', 'error');
         }
+    } finally {
+        hideOtpLoadingOverlay();
     }
 }
 
 // --- Auth Handling ---
 async function handleLoginAction() {
     const btn = document.getElementById('btn-login-action');
+    const inputEl = document.getElementById('login-id');
+    const channelWa = document.getElementById('marshal-pill-whatsapp');
+    const channelSms = document.getElementById('marshal-pill-sms');
+
     const payload = validateLoginIdentifier();
     if (!payload) return;
 
@@ -878,8 +933,10 @@ async function handleLoginAction() {
         return;
     }
 
+    if (btn && btn.disabled) return;
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
         if (!isVerifyStage) {
@@ -887,42 +944,60 @@ async function handleLoginAction() {
             localStorage.removeItem('marshalUser');
             currentUser = null;
             if (window.clearOtpBoxes) clearOtpBoxes('login-otp');
-            btn.innerHTML = 'Sending...';
-            btn.disabled = true;
+            
+            if (btn) {
+                btn.innerHTML = 'Sending OTP...';
+                btn.disabled = true;
+            }
+            if (inputEl) inputEl.disabled = true;
+            if (channelWa) channelWa.style.pointerEvents = 'none';
+            if (channelSms) channelSms.style.pointerEvents = 'none';
+
+            showOtpLoadingOverlay(payload.preferredChannel === 'whatsapp' ? 'Sending OTP via WhatsApp...' : 'Sending OTP...');
+
             const res = await fetch(`${API_URL}/auth/send-otp`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
                 body: JSON.stringify(payload)
             });
             clearTimeout(timeoutId);
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
 
             otpGroup.style.display = 'block';
-            btn.innerHTML = 'Verify & Login';
+            if (btn) {
+                btn.innerHTML = 'Verify & Login';
+                btn.disabled = false;
+            }
             const firstBox = document.querySelector('.otp-boxes[data-target="login-otp"] .otp-box');
             if (firstBox) firstBox.focus();
             showToast(currentLoginMode === 'email' ? 'Verification OTP sent to your email!' : 'Verification OTP sent to your mobile number!', 'success');
             if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
             startOtpTimer();
-            btn.disabled = false;
         } else {
             // Stage 2: Verify OTP
             const otp = window.getOtpValue ? getOtpValue('login-otp') : document.getElementById('login-otp').value.trim();
             if (otp.length !== 6) return showToast('Enter the 6-digit OTP', 'error');
             
-            btn.innerHTML = 'Verifying...';
+            if (btn) {
+                btn.innerHTML = 'Verifying...';
+                btn.disabled = true;
+            }
+            showOtpLoadingOverlay('Verifying OTP...');
+
             const res = await fetch(`${API_URL}/auth/verify-otp`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
                 body: JSON.stringify({ ...payload, otp, role: 'marshal' })
             });
             clearTimeout(timeoutId);
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            if (!res.ok) throw new Error(data.error || 'OTP verification failed');
 
             if (data.user.role !== 'marshal') {
-                btn.innerHTML = 'Send OTP';
+                if (btn) btn.innerHTML = 'Send OTP';
                 throw new Error('Access denied. This portal is for Drivers only.');
             }
 
@@ -937,20 +1012,24 @@ async function handleLoginAction() {
         }
     } catch (err) {
         clearTimeout(timeoutId);
-        console.error('[LOGIN_ERROR] handleLoginAction complete exception:', {
+        console.error('[LOGIN_ERROR] handleLoginAction exception:', {
             name: err.name,
-            message: err.message,
-            stack: err.stack,
-            keys: Object.getOwnPropertyNames(err)
+            message: err.message
         });
-        console.error('[LOGIN_ERROR] handleLoginAction JSON serialized:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
         if (err.name === 'AbortError') {
-            showToast('Request timed out. Server may be starting — try again in 30 seconds.', 'error');
+            showToast('Something went wrong, please try again', 'error');
         } else {
-            showToast(err.message, 'error');
+            showToast(err.message || 'Something went wrong, please try again', 'error');
         }
-        btn.disabled = false;
-        btn.innerHTML = isVerifyStage ? 'Verify & Login' : 'Send OTP';
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = isVerifyStage ? 'Verify & Login' : 'Send OTP';
+        }
+        if (inputEl) inputEl.disabled = false;
+    } finally {
+        hideOtpLoadingOverlay();
+        if (channelWa) channelWa.style.pointerEvents = 'auto';
+        if (channelSms) channelSms.style.pointerEvents = 'auto';
     }
 }
 

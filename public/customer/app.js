@@ -818,6 +818,42 @@ function startOtpCooldown(linkEl) {
     }, 1000);
 }
 
+// Shared Full-Screen Loading / Lock State for OTP operations
+function showOtpLoadingOverlay(message = 'Sending OTP...') {
+    let overlay = document.getElementById('otp-loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'otp-loading-overlay';
+        overlay.innerHTML = `
+            <div style="background: rgba(24, 24, 27, 0.95); border: 1px solid rgba(255, 215, 0, 0.3); box-shadow: 0 16px 48px rgba(0,0,0,0.85); border-radius: 20px; padding: 28px 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; max-width: 320px; width: 85%; text-align: center;">
+                <div class="otp-spinner" style="width: 44px; height: 44px; border: 3.5px solid rgba(255, 215, 0, 0.2); border-top-color: #FFD700; border-radius: 50%; animation: otpSpin 0.75s linear infinite; margin-bottom: 16px;"></div>
+                <div id="otp-loading-text" style="color: #FFFFFF; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.2px; font-family: 'Inter', sans-serif;">${message}</div>
+                <div style="color: #8B949E; font-size: 0.8rem; margin-top: 6px; font-family: 'Inter', sans-serif;">Please wait a moment...</div>
+            </div>
+            <style>
+                @keyframes otpSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            </style>
+        `;
+        overlay.style.cssText = 'position: fixed; inset: 0; z-index: 99999; background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; pointer-events: all; user-select: none; transition: opacity 0.2s ease;';
+        document.body.appendChild(overlay);
+    } else {
+        const textEl = overlay.querySelector('#otp-loading-text');
+        if (textEl) textEl.textContent = message;
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
+    }
+    document.body.style.pointerEvents = 'none';
+    overlay.style.pointerEvents = 'all';
+}
+
+function hideOtpLoadingOverlay() {
+    const overlay = document.getElementById('otp-loading-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+    document.body.style.pointerEvents = 'auto';
+}
+
 // Passwordless Auth Flow
 let currentCustomerAuthMode = 'phone'; // 'phone' | 'email'
 let lastSentPhone = '';
@@ -854,7 +890,7 @@ function switchCustomerAuthMode(mode) {
         if (btn1) {
             btn1.style.display = 'block';
             btn1.disabled = false;
-            btn1.innerHTML = 'Send Verification OTP';
+            btn1.innerHTML = 'Send OTP';
         }
         const chGroup = document.getElementById('cust-otp-channel-group');
         if (chGroup) chGroup.style.display = 'none';
@@ -868,7 +904,11 @@ function switchCustomerAuthMode(mode) {
             input.placeholder = 'Enter your 10-digit number';
             input.maxLength = 10;
         }
-        if (btn1) btn1.style.display = 'none';
+        if (btn1) {
+            btn1.style.display = 'block';
+            btn1.disabled = false;
+            btn1.innerHTML = 'Send OTP';
+        }
         const chGroup = document.getElementById('cust-otp-channel-group');
         if (chGroup) chGroup.style.display = 'flex';
     }
@@ -924,20 +964,32 @@ window.handleCustomerResendOtpSmsInstant = async function() {
         return;
     }
     payload.preferredChannel = 'sms';
+    showOtpLoadingOverlay('Dispatching SMS OTP...');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
         showToast('Dispatching OTP via SMS...', 'info');
         const res = await fetch(`${API_URL}/auth/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify(payload)
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to resend SMS OTP');
         showToast('OTP dispatched via SMS! Check your text messages.', 'success');
         if (data.otp && window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp);
     } catch (err) {
-        showToast(err.message, 'error');
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+            showToast('Something went wrong, please try again', 'error');
+        } else {
+            showToast(err.message || 'Something went wrong, please try again', 'error');
+        }
     } finally {
+        hideOtpLoadingOverlay();
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> Didn't receive it? Resend via SMS`;
@@ -979,18 +1031,24 @@ async function handleSignupStep1() {
     const retryContainer = document.getElementById('phone-retry-container');
     if (retryContainer) retryContainer.style.display = 'none';
 
-    // Disable input while request is in flight to prevent concurrent edits/triggers
+    // Disable input and button while request is in flight
     if (phoneInput) phoneInput.disabled = true;
-
     const btn = document.getElementById('btn-signup-step1');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = 'Sending OTP...';
     }
 
-    // 20-second timeout to handle Render cold start
+    const channelWhatsapp = document.getElementById('cust-pill-whatsapp');
+    const channelSms = document.getElementById('cust-pill-sms');
+    if (channelWhatsapp) channelWhatsapp.style.pointerEvents = 'none';
+    if (channelSms) channelSms.style.pointerEvents = 'none';
+
+    showOtpLoadingOverlay(payload.preferredChannel === 'whatsapp' ? 'Sending OTP via WhatsApp...' : 'Sending OTP...');
+
+    // 12-second timeout with real network AbortController
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
         const res = await fetch(`${API_URL}/auth/send-otp`, {
@@ -1035,20 +1093,21 @@ async function handleSignupStep1() {
     } catch (e) {
         clearTimeout(timeoutId);
         if (e.name === 'AbortError') {
-            showToast('Request timed out. The server may be starting up — please try again in 30 seconds.', 'error');
+            showToast('Something went wrong, please try again', 'error');
         } else {
-            showToast(e.message, 'error');
+            showToast(e.message || 'Something went wrong, please try again', 'error');
         }
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = 'Send Verification OTP';
+            btn.innerHTML = 'Send OTP';
         }
-        // Unlock input on failure so they can edit or try again
         if (phoneInput) phoneInput.disabled = false;
         lastSentPhone = '';
-        
-        // Show retry button
         if (retryContainer) retryContainer.style.display = 'block';
+    } finally {
+        hideOtpLoadingOverlay();
+        if (channelWhatsapp) channelWhatsapp.style.pointerEvents = 'auto';
+        if (channelSms) channelSms.style.pointerEvents = 'auto';
     }
 }
 
@@ -1061,12 +1120,12 @@ async function resendOTP() {
     const payload = getCustomerAuthIdentifier();
     if (!payload) return;
 
-    showToast('Resending OTP...', 'info');
+    showOtpLoadingOverlay('Resending OTP...');
     const resendLink = document.getElementById('resend-otp-link');
     if (resendLink) { resendLink.style.pointerEvents = 'none'; resendLink.style.opacity = '0.5'; }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
         const res = await fetch(`${API_URL}/auth/send-otp`, {
@@ -1087,11 +1146,13 @@ async function resendOTP() {
     } catch (e) {
         clearTimeout(timeoutId);
         if (e.name === 'AbortError') {
-            showToast('Request timed out. Please try again.', 'error');
+            showToast('Something went wrong, please try again', 'error');
         } else {
-            showToast(e.message, 'error');
+            showToast(e.message || 'Something went wrong, please try again', 'error');
         }
         if (resendLink) { resendLink.style.pointerEvents = 'auto'; resendLink.style.opacity = '1'; }
+    } finally {
+        hideOtpLoadingOverlay();
     }
 }
 
@@ -1109,13 +1170,19 @@ async function handleSignupStep2() {
         btn.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;gap:8px;"><span class="spinner" style="width:16px;height:16px;border:2px solid #000;border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin 0.8s linear infinite;"></span> Verifying & Logging In...</span>';
     }
 
+    showOtpLoadingOverlay('Verifying OTP...');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
         // 1. Verify OTP & Auto-Login
         const verifyRes = await fetch(`${API_URL}/auth/verify-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({ ...payload, otp, role: 'customer' })
         });
+        clearTimeout(timeoutId);
         const verifyData = await verifyRes.json();
         if (!verifyRes.ok) throw new Error(verifyData.error || 'OTP verification failed');
 
@@ -1143,6 +1210,7 @@ async function handleSignupStep2() {
         if (btn1) {
             btn1.style.display = 'block';
             btn1.disabled = false;
+            btn1.innerHTML = 'Send OTP';
         }
         document.getElementById('btn-signup-step2').style.display = 'none';
 
@@ -1158,13 +1226,19 @@ async function handleSignupStep2() {
         }
 
     } catch (e) {
+        clearTimeout(timeoutId);
         lastVerifiedOtp = ''; // Clear guard on failure so they can try again
-        if (typeof showToast === 'function') showToast(e.message, 'error');
-        const btn = document.getElementById('btn-signup-step2');
+        if (e.name === 'AbortError') {
+            if (typeof showToast === 'function') showToast('Something went wrong, please try again', 'error');
+        } else {
+            if (typeof showToast === 'function') showToast(e.message || 'Something went wrong, please try again', 'error');
+        }
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = 'Verify & Login';
         }
+    } finally {
+        hideOtpLoadingOverlay();
     }
 }
 
@@ -1435,7 +1509,7 @@ function openCompleteProfilePage(status) {
                 if (otpArea) otpArea.style.display = 'none';
                 if (window.clearOtpBoxes) window.clearOtpBoxes('profile-otp');
                 const btn = document.getElementById('btn-profile-send-otp');
-                if (btn) btn.innerHTML = 'Send Verification OTP';
+                if (btn) btn.innerHTML = 'Send OTP';
             }
             updateCompleteProfileButtonState();
         });
@@ -1531,7 +1605,7 @@ async function handleProfileSendPhoneOtp() {
             })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to send verification OTP');
+        if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
 
         profilePhoneSent = '+91' + phone;
         document.getElementById('profile-otp-area').style.display = 'block';
@@ -1550,7 +1624,7 @@ async function handleProfileSendPhoneOtp() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            if (!profilePhoneSent) btn.innerHTML = 'Send Verification OTP';
+            if (!profilePhoneSent) btn.innerHTML = 'Send OTP';
         }
     }
 }
@@ -1612,7 +1686,7 @@ async function submitCompleteProfile() {
         // Step A: If phone verification is required, verify OTP first
         if (status.needsPhone) {
             if (!profilePhoneSent) {
-                throw new Error('Please tap "Send Verification OTP" first.');
+                throw new Error('Please tap "Send OTP" first.');
             }
             const otpInput = document.getElementById('profile-otp');
             const otp = otpInput ? otpInput.value.trim() : '';
