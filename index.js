@@ -3400,6 +3400,101 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     return { channel: 'failed', success: false, sms: smsRes, whatsapp: waRes };
 }
 
+apiRouter.get('/system/meta-token-inspection', async (req, res) => {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN || '';
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
+    
+    if (!token) {
+        return res.json({ configured: false, error: 'WHATSAPP_ACCESS_TOKEN is not configured on server.' });
+    }
+
+    const tokenMeta = {
+        configured: true,
+        length: token.length,
+        first6: token.substring(0, 6),
+        last6: token.substring(token.length - 6),
+        phoneId: phoneId
+    };
+
+    let debugToken = null;
+    let meData = null;
+    let appData = null;
+    let testSendResult = null;
+
+    try {
+        const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`);
+        debugToken = await debugRes.json();
+    } catch (e) {
+        debugToken = { error: e.message };
+    }
+
+    try {
+        const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${token}`);
+        meData = await meRes.json();
+    } catch (e) {
+        meData = { error: e.message };
+    }
+
+    try {
+        const appRes = await fetch(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
+        appData = await appRes.json();
+    } catch (e) {
+        appData = { error: e.message };
+    }
+
+    if (req.query.phone) {
+        const testPhone = String(req.query.phone).replace(/\D/g, '').slice(-10);
+        const testOtp = req.query.otp || '123456';
+        const role = req.query.role || 'customer';
+        const targetTemplate = (role === 'marshal' || role === 'driver') ? 'otp_driver_v2' : 'otp_customer';
+        
+        try {
+            const sendRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: '91' + testPhone,
+                    type: 'template',
+                    template: {
+                        name: targetTemplate,
+                        language: { code: 'en' },
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [{ type: 'text', text: String(testOtp) }]
+                            },
+                            {
+                                type: 'button',
+                                sub_type: 'url',
+                                index: '0',
+                                parameters: [{ type: 'text', text: String(testOtp) }]
+                            }
+                        ]
+                    }
+                })
+            });
+            testSendResult = {
+                status: sendRes.status,
+                data: await sendRes.json()
+            };
+        } catch (sendErr) {
+            testSendResult = { error: sendErr.message };
+        }
+    }
+
+    res.json({
+        tokenMeta,
+        debugToken,
+        meData,
+        appData,
+        testSendResult
+    });
+});
+
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
     const phone = req.query.phone || '9093184965';
     const otp = req.query.otp || '123456';
