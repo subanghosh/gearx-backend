@@ -3206,6 +3206,76 @@ async function sendCancellationEmailReceipt({ trip, cust, tier, refundAmount, cu
     }
 }
 
+// --- DIRECT META CLOUD API WHATSAPP OTP DISPATCH HELPER ---
+async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_customer') {
+    if (!phone || !otp) return { success: false, error: 'Phone and OTP are required' };
+    const cleanPhone = '91' + String(phone).replace(/\D/g, '').slice(-10);
+    if (cleanPhone.length !== 12) {
+        console.warn('[META_WA] Invalid phone number:', phone);
+        return { success: false, error: 'Invalid phone number' };
+    }
+
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) {
+        console.warn('[META_WA] WHATSAPP_ACCESS_TOKEN is not configured in environment.');
+        return { success: false, error: 'WHATSAPP_ACCESS_TOKEN not configured' };
+    }
+
+    const templateLang = process.env.WHATSAPP_TEMPLATE_LANG || 'en_US';
+    const targetTemplate = templateName || 'otp_customer';
+    const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+    
+    const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'template',
+        template: {
+            name: targetTemplate,
+            language: { code: templateLang },
+            components: [
+                {
+                    type: 'body',
+                    parameters: [{ type: 'text', text: String(otp) }]
+                },
+                {
+                    type: 'button',
+                    sub_type: 'url',
+                    index: '0',
+                    parameters: [{ type: 'text', text: String(otp) }]
+                }
+            ]
+        }
+    };
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(5000)
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (res.ok && data && data.messages?.[0]?.id) {
+            console.log(`[META_WA] Direct WhatsApp OTP sent successfully to ${cleanPhone.slice(0, 4)}******${cleanPhone.slice(-2)} | Template: ${targetTemplate} | MessageId:`, data.messages[0].id);
+            return { success: true, data };
+        } else {
+            const errMsg = data?.error?.message || res.statusText || 'Meta WhatsApp dispatch failed';
+            console.warn(`[META_WA] Dispatch failed HTTP ${res.status} for template ${targetTemplate}:`, JSON.stringify(data));
+            return { success: false, status: res.status, error: errMsg, details: data };
+        }
+    } catch (err) {
+        console.warn(`[META_WA] Dispatch exception (${err.name}) for template ${targetTemplate}:`, err.message);
+        return { success: false, error: err.message };
+    }
+}
+
 // --- FAST2SMS WHATSAPP BUSINESS OTP DISPATCH HELPER ---
 async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
     if (!phone || !otp) return { success: false, error: 'Phone and OTP are required' };
@@ -3257,19 +3327,35 @@ async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
     }
 }
 
-// --- UNIFIED OTP DISPATCH (DYNAMIC FIRST-ATTEMPT, DUAL DISPATCH & BIDIRECTIONAL FALLBACK) ---
+// --- UNIFIED OTP DISPATCH (3-LAYER: DIRECT META -> FAST2SMS DUAL DISPATCH FALLBACK) ---
 async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 'sms') {
     if (!phone || !otp) return;
     const cleanChannel = String(preferredChannel || 'sms').toLowerCase().trim();
+    
+    // Role-based template selection for Direct Meta Cloud API WhatsApp
+    const metaTemplateName = (role === 'marshal' || role === 'driver') ? 'otp_driver_v2' : 'otp_customer';
+    
+    // Role-based template selection for Fast2SMS WhatsApp
     const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
     const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || customerOtpId;
-    const otpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
+    const fast2SmsOtpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
 
-    // Execute concurrent dual-dispatch (SMS + WhatsApp) across all logins, roles & updates for maximum delivery reliability
-    console.log(`[UNIFIED_OTP] Executing dual dispatch (SMS + WhatsApp) for role=${role}, channel=${cleanChannel} to ${phone} (OTP ID: ${otpId})...`);
+    // --- LAYER 1: Attempt Direct Meta Cloud API WhatsApp (5s Timeout) ---
+    if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+        console.log(`[UNIFIED_OTP] Layer 1: Attempting Direct Meta WhatsApp for role=${role}, template=${metaTemplateName} to ${phone}...`);
+        const metaRes = await sendDirectMetaWhatsAppOtp(phone, otp, metaTemplateName);
+        if (metaRes && metaRes.success) {
+            console.log(`[UNIFIED_OTP] Layer 1 Success: Direct Meta WhatsApp OTP (${metaTemplateName}) delivered to ${phone}`);
+            return { channel: 'meta_whatsapp', success: true, meta: metaRes };
+        }
+        console.warn(`[UNIFIED_OTP] Layer 1 Failed (${metaRes?.error || 'Unknown'}). Falling back to Layer 2/3 (Fast2SMS Dual Dispatch)...`);
+    }
+
+    // --- LAYER 2 & 3: Fallback Fast2SMS Dual-Dispatch (SMS + Fast2SMS WhatsApp) ---
+    console.log(`[UNIFIED_OTP] Layer 2/3: Executing Fast2SMS Dual Dispatch (SMS + WhatsApp) for role=${role}, channel=${cleanChannel} to ${phone} (Fast2SMS OTP ID: ${fast2SmsOtpId})...`);
     const results = await Promise.allSettled([
         sendFast2SmsOtp(phone, otp),
-        sendFast2SmsWhatsAppOtp(phone, otp, otpId)
+        sendFast2SmsWhatsAppOtp(phone, otp, fast2SmsOtpId)
     ]);
 
     const smsRes = results[0].status === 'fulfilled' ? results[0].value : { return: false, error: results[0].reason?.message };
@@ -3279,7 +3365,7 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
 
     if ((smsRes && smsRes.return !== false) || (waRes && waRes.success)) {
         return {
-            channel: 'dual_sms_whatsapp',
+            channel: 'fast2sms_dual_sms_whatsapp',
             success: true,
             sms: smsRes,
             whatsapp: waRes
