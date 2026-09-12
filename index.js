@@ -3440,12 +3440,31 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     // 3. App
     const appData = await fetchMeta(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
 
-    // 4. WABA Details (Fields with account_review_status and billing)
-    const wabaReviewStatus = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=account_review_status`);
-    const wabaAllFields = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,account_review_status,currency,timezone_id,message_template_namespace,status,primary_funding_id,health_status,ownership_type`);
+    // 4. Subscribed Apps & WABA Namespace Queries
+    const appSubscribedApps = await fetchMeta(`https://graph.facebook.com/v21.0/${appId}/subscribed_apps`);
+    const wabaNamespaceAndDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,message_template_namespace`);
+    const wabaSubscribedAppsBefore = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
 
-    // Query Message Templates: GET /1935784290711470/message_templates
-    const messageTemplates = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=100`);
+    // 5. Attempt explicit POST to link App to WABA: POST /1935784290711470/subscribed_apps
+    let postSubscribedAppsResult = null;
+    try {
+        const subPostRes = await fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        postSubscribedAppsResult = {
+            httpStatus: subPostRes.status,
+            data: await subPostRes.json().catch(e => ({ error: e.message }))
+        };
+    } catch (subPostErr) {
+        postSubscribedAppsResult = { error: subPostErr.message };
+    }
+
+    const wabaSubscribedAppsAfter = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`);
+
 
     // Phone Registration Call: POST /1329557343567092/register
     const registrationPin = req.query.pin || '628924';
@@ -3521,10 +3540,11 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
-        wabaReviewStatus,
-        wabaAllFields,
-        messageTemplates,
-        registrationResult,
+        appSubscribedApps,
+        wabaNamespaceAndDetails,
+        wabaSubscribedAppsBefore,
+        postSubscribedAppsResult,
+        wabaSubscribedAppsAfter,
         phoneStatusAfter,
         testSendResult
     });
