@@ -3440,8 +3440,9 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     // 3. App
     const appData = await fetchMeta(`https://graph.facebook.com/v21.0/app?access_token=${token}`);
 
-    // 4. WABA Details (Fields)
-    const wabaDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers{id,display_phone_number,verified_name,quality_rating},subscribed_apps`);
+    // 4. WABA Details (Fields with account_review_status and billing)
+    const wabaReviewStatus = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=account_review_status`);
+    const wabaAllFields = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,account_review_status,currency,timezone_id,message_template_namespace,status,primary_funding_id,health_status,ownership_type`);
 
     // Query Message Templates: GET /1935784290711470/message_templates
     const messageTemplates = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=100`);
@@ -3520,6 +3521,8 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
+        wabaReviewStatus,
+        wabaAllFields,
         messageTemplates,
         registrationResult,
         phoneStatusAfter,
