@@ -2934,6 +2934,10 @@ apiRouter.post('/auth/logout', authMiddleware, async (req, res) => {
 // --- FAST2SMS OTP DISPATCH HELPER (SMS) ---
 async function sendFast2SmsOtp(phone, otp) {
     if (!phone || !otp) return;
+    if (process.env.FAST2SMS_DISABLE_PLAIN_SMS === 'true') {
+        console.log('[FAST2SMS] Plain SMS disabled via config (FAST2SMS_DISABLE_PLAIN_SMS=true). Skipping SMS OTP send.');
+        return { return: false, message: 'Plain SMS disabled via configuration' };
+    }
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
         console.warn('[FAST2SMS] Invalid 10-digit phone number:', phone);
@@ -2963,6 +2967,10 @@ async function sendFast2SmsOtp(phone, otp) {
 // --- TRANSACTIONAL SMS NOTIFICATION DISPATCH HELPER ---
 async function sendTransactionalSms(phone, message) {
     if (!phone || !message) return;
+    if (process.env.FAST2SMS_DISABLE_PLAIN_SMS === 'true') {
+        console.log('[SMS_ALERT] Plain SMS disabled via config (FAST2SMS_DISABLE_PLAIN_SMS=true). Skipping SMS alert.');
+        return { return: false, message: 'Plain SMS disabled via configuration' };
+    }
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
         console.warn('[SMS_ALERT] Invalid 10-digit phone number:', phone);
