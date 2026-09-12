@@ -3546,7 +3546,7 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     }
 
     const isTest = await isExplicitlyFlaggedTestAccount({ email, phone });
-    const otp = (process.env.NODE_ENV !== 'production' || isTest) ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
+    const otp = isTest ? '123456' : String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     try {
@@ -3575,9 +3575,9 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
                 console.warn('[EMAIL] Email send failed (non-fatal):', mailErr.message);
             });
         }
-        // In production: remove otp from response, send via SMS only
+        // In production: remove otp from response, send via SMS/email only
         const resp = { message: 'OTP sent' };
-        if (process.env.NODE_ENV !== 'production' || isTest) resp.otp = otp;
+        if (isTest) resp.otp = otp;
         res.json(resp);
     } catch (err) {
         console.error('send-otp DB error:', err.message);
