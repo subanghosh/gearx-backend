@@ -3443,15 +3443,9 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
     // 4. WABA Details (Fields)
     const wabaDetails = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers{id,display_phone_number,verified_name,quality_rating},subscribed_apps`);
 
-    // User-Requested Specific Endpoints:
-    // 1. GET /1935784290711470/assigned_users?business=1746081170012300
-    const wabaAssignedUsersWithBiz1746081170012300 = await fetchMeta(`https://graph.facebook.com/v21.0/1935784290711470/assigned_users?business=1746081170012300`);
+    // Query Message Templates: GET /1935784290711470/message_templates
+    const messageTemplates = await fetchMeta(`https://graph.facebook.com/v21.0/${wabaId}/message_templates?fields=id,name,status,language,category,components&limit=100`);
 
-    // 2. GET /122105380323458099/assigned_whatsapp_business_accounts?business=1746081170012300
-    const userAssignedWabasWithBiz1746081170012300 = await fetchMeta(`https://graph.facebook.com/v21.0/122105380323458099/assigned_whatsapp_business_accounts?business=1746081170012300`);
-
-    // 3. Business Portfolio queries
-    const bizOwnedWabas = await fetchMeta(`https://graph.facebook.com/v21.0/1746081170012300/owned_whatsapp_business_accounts`);
     // Phone Registration Call: POST /1329557343567092/register
     const registrationPin = req.query.pin || '628924';
     let registrationResult = null;
@@ -3526,6 +3520,7 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
 
     res.json({
         tokenMeta,
+        messageTemplates,
         registrationResult,
         phoneStatusAfter,
         testSendResult
