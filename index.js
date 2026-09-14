@@ -3587,31 +3587,90 @@ apiRouter.get('/admin/debug-meta-waba', authMiddleware, requireRole('admin'), as
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
     const wabaId = '1935784290711470';
+    const testRecipient = req.query.phone || '9093184965';
+    const cleanPhone = '91' + String(testRecipient).replace(/\D/g, '').slice(-10);
 
     if (!token) return res.json({ error: 'No token' });
 
     try {
-        const [tokenDebug, wabaInfo, phoneInfo, subs] = await Promise.all([
-            fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`).then(r => r.json()),
-            fetch(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,account_review_status,business_verification_status,currency,timezone_id,status`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json()),
-            fetch(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,status,account_mode,code_verification_status,name_status,platform_type`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json()),
-            fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json())
-        ]);
+        // 1. Debug token
+        const debugTokenRes = await fetch(`https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`);
+        const debugTokenData = await debugTokenRes.json();
+
+        // 2. WABA details & fields
+        const wabaRes = await fetch(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,account_review_status,business_verification_status,message_template_namespace,currency,timezone_id,status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const wabaData = await wabaRes.json();
+
+        // 3. Phone number full status
+        const phoneRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,status,quality_rating,code_verification_status,name_status,is_pin_enabled,throughput,platform_type,is_official_business_account,new_name_status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const phoneData = await phoneRes.json();
+
+        // 4. Raw dispatch attempt capturing full headers and error payload
+        const dispatchPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: cleanPhone,
+            type: 'template',
+            template: {
+                name: 'redrivo_otp_auth',
+                language: { code: 'en_US' },
+                components: [
+                    {
+                        type: 'body',
+                        parameters: [{ type: 'text', text: '123456' }]
+                    },
+                    {
+                        type: 'button',
+                        sub_type: 'copy_code',
+                        index: '0',
+                        parameters: [{ type: 'text', text: '123456' }]
+                    }
+                ]
+            }
+        };
+
+        const dispatchRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(dispatchPayload)
+        });
+
+        const dispatchHeaders = {};
+        for (const [k, v] of dispatchRes.headers.entries()) {
+            dispatchHeaders[k] = v;
+        }
+        const dispatchBody = await dispatchRes.json().catch(() => null);
 
         res.json({
-            tokenDebug,
-            wabaInfo,
-            phoneInfo,
-            subscribedApps: subs
+            check1_debug_token: {
+                status: debugTokenRes.status,
+                data: debugTokenData
+            },
+            check2_waba_info: {
+                status: wabaRes.status,
+                data: wabaData
+            },
+            check3_phone_info: {
+                status: phoneRes.status,
+                data: phoneData
+            },
+            check4_raw_dispatch_attempt: {
+                endpoint: `https://graph.facebook.com/v21.0/${phoneId}/messages`,
+                http_status: dispatchRes.status,
+                headers: dispatchHeaders,
+                payload_sent: dispatchPayload,
+                raw_response_body: dispatchBody
+            }
         });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: e.message, stack: e.stack });
     }
 });
 
