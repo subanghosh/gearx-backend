@@ -451,7 +451,9 @@ const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('ss
 const pool = new Pool({ 
     connectionString: process.env.DATABASE_URL,
     ssl: isSsl ? { rejectUnauthorized: false } : false,
-    keepAlive: true
+    idleTimeoutMillis: 10000, // Closes idle client connections after 10s so Neon serverless compute can auto-suspend
+    connectionTimeoutMillis: 10000, // Waits up to 10s for Neon cold-start wake-up
+    max: 20
 });
 
 pool.on('error', (err, client) => {
@@ -1298,8 +1300,9 @@ async function syncExpiredSubscriptions() {
     }
 }
 
-// Background sync interval (every 5 minutes)
-setInterval(syncExpiredSubscriptions, 5 * 60 * 1000);
+// Background subscription expiration sync (runs once every 12 hours for low maintenance overhead, allowing DB to scale to zero)
+const SUBSCRIPTION_SYNC_INTERVAL_MS = parseInt(process.env.SUBSCRIPTION_SYNC_INTERVAL_MS, 10) || (12 * 60 * 60 * 1000);
+setInterval(syncExpiredSubscriptions, SUBSCRIPTION_SYNC_INTERVAL_MS);
 
 ensureKycColumns();
 
