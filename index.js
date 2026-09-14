@@ -3674,6 +3674,44 @@ apiRouter.get('/admin/debug-meta-waba', authMiddleware, requireRole('admin'), as
     }
 });
 
+apiRouter.get('/admin/test-app-subscription', authMiddleware, requireRole('admin'), async (req, res) => {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const wabaId = '1935784290711470';
+    const appId = '4633212553569336';
+
+    if (!token) return res.json({ error: 'No token' });
+
+    try {
+        const [getWabaSubs, postWabaSubs, getAppSubs, getAppWabas] = await Promise.all([
+            fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(async r => ({ status: r.status, headers: Object.fromEntries(r.headers.entries()), data: await r.json().catch(() => null) })),
+            
+            fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(async r => ({ status: r.status, headers: Object.fromEntries(r.headers.entries()), data: await r.json().catch(() => null) })),
+
+            fetch(`https://graph.facebook.com/v21.0/${appId}/subscribed_apps`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(async r => ({ status: r.status, headers: Object.fromEntries(r.headers.entries()), data: await r.json().catch(() => null) })),
+
+            fetch(`https://graph.facebook.com/v21.0/${appId}/whatsapp_business_accounts`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(async r => ({ status: r.status, headers: Object.fromEntries(r.headers.entries()), data: await r.json().catch(() => null) }))
+        ]);
+
+        res.json({
+            query1_get_waba_subscribed_apps: getWabaSubs,
+            query2_post_waba_subscribe_app: postWabaSubs,
+            query3_get_app_subscribed_apps: getAppSubs,
+            query4_get_app_wabas: getAppWabas
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
     const phone = req.query.phone || '9093184965';
     const otp = req.query.otp || '123456';
