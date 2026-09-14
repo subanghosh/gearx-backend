@@ -979,7 +979,11 @@ window.handleCustomerResendOtpSmsInstant = async function() {
         clearTimeout(timeoutId);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to resend SMS OTP');
-        showToast('OTP dispatched via SMS! Check your text messages.', 'success');
+        if (data.sms_disabled) {
+            showToast('SMS temporarily unavailable, OTP sent via WhatsApp!', 'info');
+        } else {
+            showToast('OTP dispatched via SMS! Check your text messages.', 'success');
+        }
         if (data.otp && window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp);
     } catch (err) {
         clearTimeout(timeoutId);
@@ -1088,7 +1092,11 @@ async function handleSignupStep1() {
             }).catch(() => {});
         }
 
-        showToast(currentCustomerAuthMode === 'email' ? 'OTP sent to your email!' : 'OTP sent to your mobile number!', 'success');
+        if (data.sms_disabled) {
+            showToast('SMS temporarily unavailable, OTP sent via WhatsApp!', 'info');
+        } else {
+            showToast(currentCustomerAuthMode === 'email' ? 'OTP sent to your email!' : 'OTP sent to your mobile number!', 'success');
+        }
         if (data.otp) { console.log('DEV OTP:', data.otp); if (window.fillOtpBoxes) fillOtpBoxes('su-otp', data.otp); }
     } catch (e) {
         clearTimeout(timeoutId);

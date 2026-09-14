@@ -2931,12 +2931,19 @@ apiRouter.post('/auth/logout', authMiddleware, async (req, res) => {
     }
 });
 
+// --- SMS DISPATCH TEMPORARY KILL-SWITCH HELPER ---
+function isSmsDispatchDisabled() {
+    return process.env.SMS_DISPATCH_TEMPORARILY_DISABLED === 'true' || 
+           process.env.FAST2SMS_DISABLE_PLAIN_SMS === 'true' || 
+           process.env.DISABLE_SMS_OTP === 'true';
+}
+
 // --- FAST2SMS OTP DISPATCH HELPER (SMS) ---
 async function sendFast2SmsOtp(phone, otp) {
     if (!phone || !otp) return;
-    if (process.env.FAST2SMS_DISABLE_PLAIN_SMS === 'true') {
-        console.log('[FAST2SMS] Plain SMS disabled via config (FAST2SMS_DISABLE_PLAIN_SMS=true). Skipping SMS OTP send.');
-        return { return: false, message: 'Plain SMS disabled via configuration' };
+    if (isSmsDispatchDisabled()) {
+        console.log('[FAST2SMS] SMS dispatch temporarily disabled via kill-switch (SMS_DISPATCH_TEMPORARILY_DISABLED=true). Skipping Fast2SMS SMS API call.');
+        return { return: false, disabled: true, message: 'SMS temporarily unavailable, please use WhatsApp' };
     }
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
@@ -2967,9 +2974,9 @@ async function sendFast2SmsOtp(phone, otp) {
 // --- TRANSACTIONAL SMS NOTIFICATION DISPATCH HELPER ---
 async function sendTransactionalSms(phone, message) {
     if (!phone || !message) return;
-    if (process.env.FAST2SMS_DISABLE_PLAIN_SMS === 'true') {
-        console.log('[SMS_ALERT] Plain SMS disabled via config (FAST2SMS_DISABLE_PLAIN_SMS=true). Skipping SMS alert.');
-        return { return: false, message: 'Plain SMS disabled via configuration' };
+    if (isSmsDispatchDisabled()) {
+        console.log('[SMS_ALERT] SMS dispatch temporarily disabled via kill-switch. Skipping SMS alert.');
+        return { return: false, disabled: true, message: 'SMS temporarily disabled' };
     }
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 10) {
@@ -3355,7 +3362,7 @@ async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
     }
 }
 
-// --- UNIFIED OTP DISPATCH (3-LAYER: DIRECT META -> FAST2SMS DUAL DISPATCH FALLBACK) ---
+// --- UNIFIED OTP DISPATCH (3-LAYER: DIRECT META -> FAST2SMS WHATSAPP / DUAL DISPATCH FALLBACK) ---
 async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 'sms') {
     if (!phone || !otp) return;
     const cleanChannel = String(preferredChannel || 'sms').toLowerCase().trim();
@@ -3371,15 +3378,38 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     // --- LAYER 1: Attempt Direct Meta Cloud API WhatsApp (5s Timeout) ---
     if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
         console.log(`[UNIFIED_OTP] Layer 1: Attempting Direct Meta WhatsApp for role=${role}, template=${metaTemplateName} to ${phone}...`);
-        const metaRes = await sendDirectMetaWhatsAppOtp(phone, otp, metaTemplateName);
-        if (metaRes && metaRes.success) {
-            console.log(`[UNIFIED_OTP] Layer 1 Success: Direct Meta WhatsApp OTP (${metaTemplateName}) delivered to ${phone}`);
-            return { channel: 'meta_whatsapp', success: true, meta: metaRes };
+        try {
+            const metaRes = await sendDirectMetaWhatsAppOtp(phone, otp, metaTemplateName);
+            if (metaRes && metaRes.success) {
+                console.log(`[UNIFIED_OTP] Layer 1 Success: Direct Meta WhatsApp OTP (${metaTemplateName}) delivered to ${phone}`);
+                return { channel: 'meta_whatsapp', success: true, meta: metaRes };
+            }
+            console.warn(`[UNIFIED_OTP] Layer 1 Failed (${metaRes?.error || 'Unknown'}). Falling back to Layer 2/3 (Fast2SMS)...`);
+        } catch (metaErr) {
+            console.warn(`[UNIFIED_OTP] Layer 1 Exception:`, metaErr.message);
         }
-        console.warn(`[UNIFIED_OTP] Layer 1 Failed (${metaRes?.error || 'Unknown'}). Falling back to Layer 2/3 (Fast2SMS Dual Dispatch)...`);
     }
 
-    // --- LAYER 2 & 3: Fallback Fast2SMS Dual-Dispatch (SMS + Fast2SMS WhatsApp) ---
+    const smsDisabled = isSmsDispatchDisabled();
+
+    // --- LAYER 2 & 3: Fallback Fast2SMS WhatsApp & Optional SMS ---
+    if (smsDisabled) {
+        console.log(`[UNIFIED_OTP] Layer 2: Executing Fast2SMS WhatsApp for role=${role}, channel=${cleanChannel} to ${phone} (SMS kill-switch ACTIVE, skipping GSM SMS)...`);
+        const waRes = await sendFast2SmsWhatsAppOtp(phone, otp, fast2SmsOtpId);
+        console.log(`[UNIFIED_OTP] Fast2SMS WhatsApp result:`, JSON.stringify(waRes));
+
+        if (waRes && waRes.success) {
+            return {
+                channel: 'fast2sms_whatsapp',
+                success: true,
+                sms_disabled: true,
+                whatsapp: waRes
+            };
+        }
+        return { channel: 'failed', success: false, sms_disabled: true, whatsapp: waRes };
+    }
+
+    // Standard Dual Dispatch (when SMS is enabled)
     console.log(`[UNIFIED_OTP] Layer 2/3: Executing Fast2SMS Dual Dispatch (SMS + WhatsApp) for role=${role}, channel=${cleanChannel} to ${phone} (Fast2SMS OTP ID: ${fast2SmsOtpId})...`);
     const results = await Promise.allSettled([
         sendFast2SmsOtp(phone, otp),
@@ -3816,6 +3846,15 @@ apiRouter.get('/admin/test-fast2sms', authMiddleware, requireRole('admin'), asyn
         });
     }
 
+    if (isSmsDispatchDisabled() && req.query.allow_sms_spend !== 'true') {
+        return res.json({
+            configured: true,
+            sms_disabled: true,
+            targetPhone: cleanPhone,
+            message: 'SMS dispatch is temporarily disabled (SMS_DISPATCH_TEMPORARILY_DISABLED=true). Set ?allow_sms_spend=true to override.'
+        });
+    }
+
     try {
         const message = `Your ReDrivo verification code is: ${otp}. Valid for 10 minutes. Do not share with anyone.`;
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${encodeURIComponent(cleanPhone)}`;
@@ -4030,8 +4069,12 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
                 console.warn('[EMAIL] Email send failed (non-fatal):', mailErr.message);
             });
         }
-        // In production: remove otp from response, send via SMS/email only
+        // In production: remove otp from response, send via WhatsApp/SMS/email only
         const resp = { message: 'OTP sent' };
+        if (phone && isSmsDispatchDisabled() && preferredChannel === 'sms') {
+            resp.sms_disabled = true;
+            resp.warning = 'SMS is temporarily unavailable. OTP has been sent via WhatsApp.';
+        }
         if (isTest) resp.otp = otp;
         res.json(resp);
     } catch (err) {

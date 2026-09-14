@@ -857,7 +857,11 @@ window.handleResendOtpSmsInstant = async function() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to dispatch SMS');
 
-        showToast('High-priority SMS OTP dispatched successfully!', 'success');
+        if (data.sms_disabled) {
+            showToast('SMS temporarily unavailable, OTP sent via WhatsApp!', 'info');
+        } else {
+            showToast('High-priority SMS OTP dispatched successfully!', 'success');
+        }
         if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
         startOtpTimer();
     } catch (err) {
@@ -895,7 +899,11 @@ async function handleResendOTP() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        showToast(currentLoginMode === 'email' ? 'OTP sent to your email!' : 'OTP resent to your mobile number!', 'success');
+        if (data.sms_disabled) {
+            showToast('SMS temporarily unavailable, OTP sent via WhatsApp!', 'info');
+        } else {
+            showToast(currentLoginMode === 'email' ? 'OTP sent to your email!' : 'OTP resent to your mobile number!', 'success');
+        }
         startOtpTimer();
     } catch (err) {
         clearTimeout(timeoutId);
@@ -972,7 +980,11 @@ async function handleLoginAction() {
             }
             const firstBox = document.querySelector('.otp-boxes[data-target="login-otp"] .otp-box');
             if (firstBox) firstBox.focus();
-            showToast(currentLoginMode === 'email' ? 'Verification OTP sent to your email!' : 'Verification OTP sent to your mobile number!', 'success');
+            if (data.sms_disabled) {
+                showToast('SMS temporarily unavailable, OTP sent via WhatsApp!', 'info');
+            } else {
+                showToast(currentLoginMode === 'email' ? 'Verification OTP sent to your email!' : 'Verification OTP sent to your mobile number!', 'success');
+            }
             if (data.otp && window.fillOtpBoxes) fillOtpBoxes('login-otp', data.otp);
             startOtpTimer();
         } else {
