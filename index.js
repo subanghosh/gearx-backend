@@ -3712,6 +3712,61 @@ apiRouter.get('/admin/test-app-subscription', authMiddleware, requireRole('admin
     }
 });
 
+apiRouter.get('/admin/debug-fast2sms-wallet', authMiddleware, requireRole('admin'), async (req, res) => {
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    if (!apiKey) return res.json({ error: 'FAST2SMS_API_KEY not configured on server' });
+
+    const testPhone = req.query.phone || ('98' + Math.floor(10000000 + Math.random() * 90000000));
+    const testMsg = 'Your ReDrivo verification code is: 123456. Valid for 10 minutes.';
+
+    try {
+        // 1. Wallet API with Header
+        const walletHeaderRes = await fetch('https://www.fast2sms.com/dev/wallet', {
+            headers: { 'authorization': apiKey }
+        });
+        const walletHeaderData = await walletHeaderRes.json().catch(() => null);
+
+        // 2. Wallet API with Query Param
+        const walletQueryRes = await fetch(`https://www.fast2sms.com/dev/wallet?authorization=${encodeURIComponent(apiKey)}`);
+        const walletQueryData = await walletQueryRes.json().catch(() => null);
+
+        // 3. Quick SMS route (route=q) test
+        const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=q&message=${encodeURIComponent(testMsg)}&flash=0&numbers=${encodeURIComponent(testPhone)}`;
+        const qRes = await fetch(qUrl);
+        const qData = await qRes.json().catch(() => null);
+
+        // 4. OTP route (route=otp) test
+        const otpUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(apiKey)}&route=otp&variables_values=123456&numbers=${encodeURIComponent(testPhone)}`;
+        const otpRes = await fetch(otpUrl);
+        const otpData = await otpRes.json().catch(() => null);
+
+        res.json({
+            apiKeyPrefix: apiKey.slice(0, 8) + '...',
+            targetPhone: testPhone,
+            wallet_api_header_auth: {
+                status: walletHeaderRes.status,
+                data: walletHeaderData
+            },
+            wallet_api_query_auth: {
+                status: walletQueryRes.status,
+                data: walletQueryData
+            },
+            route_q_quick_sms: {
+                status: qRes.status,
+                url_called: qUrl.replace(apiKey, apiKey.slice(0, 8) + '...'),
+                data: qData
+            },
+            route_otp_sms: {
+                status: otpRes.status,
+                url_called: otpUrl.replace(apiKey, apiKey.slice(0, 8) + '...'),
+                data: otpData
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
     const phone = req.query.phone || '9093184965';
     const otp = req.query.otp || '123456';
