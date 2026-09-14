@@ -3583,6 +3583,38 @@ apiRouter.get('/admin/test-meta-whatsapp', authMiddleware, requireRole('admin'),
     }
 });
 
+apiRouter.get('/admin/debug-meta-waba', authMiddleware, requireRole('admin'), async (req, res) => {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
+    const wabaId = '1935784290711470';
+
+    if (!token) return res.json({ error: 'No token' });
+
+    try {
+        const [tokenDebug, wabaInfo, phoneInfo, subs] = await Promise.all([
+            fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`).then(r => r.json()),
+            fetch(`https://graph.facebook.com/v21.0/${wabaId}?fields=id,name,account_review_status,business_verification_status,currency,timezone_id,status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()),
+            fetch(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,status,account_mode,code_verification_status,name_status,platform_type`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()),
+            fetch(`https://graph.facebook.com/v21.0/${wabaId}/subscribed_apps`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json())
+        ]);
+
+        res.json({
+            tokenDebug,
+            wabaInfo,
+            phoneInfo,
+            subscribedApps: subs
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
     const phone = req.query.phone || '9093184965';
     const otp = req.query.otp || '123456';
