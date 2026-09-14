@@ -3251,6 +3251,8 @@ async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_custome
     const templateLang = process.env.WHATSAPP_TEMPLATE_LANG || 'en_US';
     const targetTemplate = templateName || 'otp_customer';
     const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+    const isCopyCode = (targetTemplate === 'redrivo_otp_auth');
+    const buttonSubType = isCopyCode ? 'copy_code' : 'url';
     
     const payload = {
         messaging_product: 'whatsapp',
@@ -3267,7 +3269,7 @@ async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_custome
                 },
                 {
                     type: 'button',
-                    sub_type: 'url',
+                    sub_type: buttonSubType,
                     index: '0',
                     parameters: [{ type: 'text', text: String(otp) }]
                 }
@@ -3546,6 +3548,38 @@ apiRouter.get('/system/meta-token-inspection', async (req, res) => {
         phoneStatusAfter,
         testSendResult
     });
+});
+
+apiRouter.get('/admin/test-meta-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
+    const phone = req.query.phone || '9093184965';
+    const otp = req.query.otp || '123456';
+    const template = req.query.template || 'otp_customer';
+
+    if (!process.env.WHATSAPP_ACCESS_TOKEN) {
+        return res.json({
+            configured: false,
+            error: 'WHATSAPP_ACCESS_TOKEN is not configured in environment.'
+        });
+    }
+
+    try {
+        const start = Date.now();
+        const result = await sendDirectMetaWhatsAppOtp(phone, otp, template);
+        res.json({
+            configured: true,
+            targetPhone: phone,
+            template,
+            phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092',
+            tokenPrefix: process.env.WHATSAPP_ACCESS_TOKEN ? process.env.WHATSAPP_ACCESS_TOKEN.slice(0, 15) + '...' : null,
+            latencyMs: Date.now() - start,
+            result
+        });
+    } catch (err) {
+        res.status(500).json({
+            configured: true,
+            error: err.message
+        });
+    }
 });
 
 apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), async (req, res) => {
