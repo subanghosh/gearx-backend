@@ -280,7 +280,8 @@ app.use('/api', globalLimiter);
 
 // --- JWT HELPERS ---
 function signToken(payload, tokenVersion = 1) {
-    return jwt.sign({ ...payload, tokenVersion: tokenVersion || 1 }, JWT_SECRET, { expiresIn: '24h' });
+    const expiry = process.env.JWT_EXPIRES_IN || '30d';
+    return jwt.sign({ ...payload, tokenVersion: tokenVersion || 1 }, JWT_SECRET, { expiresIn: expiry });
 }
 
 async function revokeUserSessions(userId) {
@@ -3326,7 +3327,7 @@ async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
         return { success: false, error: 'FAST2SMS_API_KEY not configured' };
     }
 
-    const targetOtpId = otpId || process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
+    const targetOtpId = otpId || process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb';
     const url = 'https://www.fast2sms.com/dev/otp/send';
     const payload = {
         otp_id: targetOtpId,
@@ -3362,7 +3363,7 @@ async function sendFast2SmsWhatsAppOtp(phone, otp, otpId) {
     }
 }
 
-// --- UNIFIED OTP DISPATCH (3-LAYER: DIRECT META -> FAST2SMS WHATSAPP / DUAL DISPATCH FALLBACK) ---
+// --- UNIFIED OTP DISPATCH (SEQUENTIAL 3-LAYER WATERFALL: DIRECT META WA -> FAST2SMS WA -> FAST2SMS SMS FALLBACK) ---
 async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 'sms') {
     if (!phone || !otp) return;
     const cleanChannel = String(preferredChannel || 'sms').toLowerCase().trim();
@@ -3370,66 +3371,73 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     // Role-based template selection for Direct Meta Cloud API WhatsApp
     const metaTemplateName = (role === 'marshal' || role === 'driver') ? 'otp_driver_v2' : 'otp_customer';
     
-    // Role-based template selection for Fast2SMS WhatsApp
-    const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17';
-    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || customerOtpId;
+    // Role-based template selection for Fast2SMS WhatsApp (Pointing to live +91 62892 47097)
+    const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb';
+    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '8793c3bfe3';
     const fast2SmsOtpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
 
-    // --- LAYER 1: Attempt Direct Meta Cloud API WhatsApp (5s Timeout) ---
+    // =========================================================================
+    // LAYER 1: Direct Meta Cloud API WhatsApp (Target cost: ~₹0.135/msg)
+    // =========================================================================
     if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
-        console.log(`[UNIFIED_OTP] Layer 1: Attempting Direct Meta WhatsApp for role=${role}, template=${metaTemplateName} to ${phone}...`);
+        console.log(`[UNIFIED_OTP] Layer 1 (Sequential): Attempting Direct Meta WhatsApp for role=${role}, template=${metaTemplateName} to ${phone}...`);
         try {
             const metaRes = await sendDirectMetaWhatsAppOtp(phone, otp, metaTemplateName);
             if (metaRes && metaRes.success) {
                 console.log(`[UNIFIED_OTP] Layer 1 Success: Direct Meta WhatsApp OTP (${metaTemplateName}) delivered to ${phone}`);
                 return { channel: 'meta_whatsapp', success: true, meta: metaRes };
             }
-            console.warn(`[UNIFIED_OTP] Layer 1 Failed (${metaRes?.error || 'Unknown'}). Falling back to Layer 2/3 (Fast2SMS)...`);
+            console.warn(`[UNIFIED_OTP] Layer 1 Failed (${metaRes?.error || 'Unknown'}). Proceeding to Layer 2 (Fast2SMS WhatsApp)...`);
         } catch (metaErr) {
             console.warn(`[UNIFIED_OTP] Layer 1 Exception:`, metaErr.message);
         }
     }
 
-    const smsDisabled = isSmsDispatchDisabled();
-
-    // --- LAYER 2 & 3: Fallback Fast2SMS WhatsApp & Optional SMS ---
-    if (smsDisabled) {
-        console.log(`[UNIFIED_OTP] Layer 2: Executing Fast2SMS WhatsApp for role=${role}, channel=${cleanChannel} to ${phone} (SMS kill-switch ACTIVE, skipping GSM SMS)...`);
+    // =========================================================================
+    // LAYER 2: Fast2SMS / Jio Haptik WhatsApp (Cost: ₹0.25/msg)
+    // =========================================================================
+    console.log(`[UNIFIED_OTP] Layer 2 (Sequential): Attempting Fast2SMS WhatsApp for role=${role} to ${phone} (Fast2SMS OTP ID: ${fast2SmsOtpId})...`);
+    try {
         const waRes = await sendFast2SmsWhatsAppOtp(phone, otp, fast2SmsOtpId);
-        console.log(`[UNIFIED_OTP] Fast2SMS WhatsApp result:`, JSON.stringify(waRes));
-
         if (waRes && waRes.success) {
+            console.log(`[UNIFIED_OTP] Layer 2 Success: Fast2SMS WhatsApp OTP delivered to ${phone} | RequestId:`, waRes?.data?.request_id || 'OK');
             return {
                 channel: 'fast2sms_whatsapp',
                 success: true,
-                sms_disabled: true,
                 whatsapp: waRes
             };
         }
-        return { channel: 'failed', success: false, sms_disabled: true, whatsapp: waRes };
+        console.warn(`[UNIFIED_OTP] Layer 2 WhatsApp Failed (${waRes?.error || 'Unknown'}). Checking Layer 3 SMS fallback...`);
+    } catch (waErr) {
+        console.warn(`[UNIFIED_OTP] Layer 2 WhatsApp Exception:`, waErr.message);
     }
 
-    // Standard Dual Dispatch (when SMS is enabled)
-    console.log(`[UNIFIED_OTP] Layer 2/3: Executing Fast2SMS Dual Dispatch (SMS + WhatsApp) for role=${role}, channel=${cleanChannel} to ${phone} (Fast2SMS OTP ID: ${fast2SmsOtpId})...`);
-    const results = await Promise.allSettled([
-        sendFast2SmsOtp(phone, otp),
-        sendFast2SmsWhatsAppOtp(phone, otp, fast2SmsOtpId)
-    ]);
-
-    const smsRes = results[0].status === 'fulfilled' ? results[0].value : { return: false, error: results[0].reason?.message };
-    const waRes = results[1].status === 'fulfilled' ? results[1].value : { success: false, error: results[1].reason?.message };
-
-    console.log(`[UNIFIED_OTP] Dual dispatch results -> SMS:`, JSON.stringify(smsRes), `| WhatsApp:`, JSON.stringify(waRes));
-
-    if ((smsRes && smsRes.return !== false) || (waRes && waRes.success)) {
-        return {
-            channel: 'fast2sms_dual_sms_whatsapp',
-            success: true,
-            sms: smsRes,
-            whatsapp: waRes
-        };
+    // =========================================================================
+    // LAYER 3: Fast2SMS GSM SMS Fallback (Cost: ~₹0.18/msg - Only if WA failed)
+    // =========================================================================
+    const smsDisabled = isSmsDispatchDisabled();
+    if (smsDisabled) {
+        console.warn(`[UNIFIED_OTP] Layer 3 SMS Fallback Skipped (SMS kill-switch ACTIVE, SMS_DISPATCH_TEMPORARILY_DISABLED=true).`);
+        return { channel: 'failed', success: false, sms_disabled: true, message: 'WhatsApp dispatch failed and SMS is temporarily disabled' };
     }
-    return { channel: 'failed', success: false, sms: smsRes, whatsapp: waRes };
+
+    console.log(`[UNIFIED_OTP] Layer 3 (Sequential): Executing Fast2SMS GSM SMS fallback to ${phone}...`);
+    try {
+        const smsRes = await sendFast2SmsOtp(phone, otp);
+        if (smsRes && smsRes.return !== false) {
+            console.log(`[UNIFIED_OTP] Layer 3 Success: Fast2SMS GSM SMS OTP delivered to ${phone}`);
+            return {
+                channel: 'fast2sms_sms',
+                success: true,
+                sms: smsRes
+            };
+        }
+        console.warn(`[UNIFIED_OTP] Layer 3 SMS Failed:`, JSON.stringify(smsRes));
+        return { channel: 'failed', success: false, sms: smsRes };
+    } catch (smsErr) {
+        console.warn(`[UNIFIED_OTP] Layer 3 SMS Exception:`, smsErr.message);
+        return { channel: 'failed', success: false, error: smsErr.message };
+    }
 }
 
 apiRouter.get('/system/meta-token-inspection', async (req, res) => {
@@ -3820,8 +3828,7 @@ apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), asyn
             configured: true,
             targetPhone: phone,
             role,
-            preferredChannel,
-            customOtpId: customOtpId || process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '4b2f8dce17',
+            customOtpId: customOtpId || ((role === 'marshal' || role === 'driver') ? (process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '8793c3bfe3') : (process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb')),
             latencyMs: Date.now() - start,
             result
         });
@@ -4023,17 +4030,25 @@ apiRouter.post('/auth/send-otp', otpLimiter, async (req, res) => {
     // Clean expired OTPs (housekeeping)
     pool.query("DELETE FROM otp_verifications WHERE expiresat < NOW()").catch(() => {});
 
-    // Persistent per-account rate limit: Max 5 OTP requests per 10 minutes
+    // Persistent per-account rate limit: Max 5 OTP requests per 10 minutes & 30s minimum interval
     try {
         const rateCheck = await pool.query(
-            `SELECT COUNT(*) FROM otp_verifications 
+            `SELECT createdat FROM otp_verifications 
              WHERE (phone = $1 OR email = $2) 
-               AND createdat > NOW() - INTERVAL '10 minutes'`,
+               AND createdat > NOW() - INTERVAL '10 minutes'
+             ORDER BY createdat DESC`,
             [phone || null, email || null]
         );
-        const recentAttempts = parseInt(rateCheck.rows[0]?.count || 0, 10);
-        if (recentAttempts >= 5) {
+        const attempts = rateCheck.rows;
+        if (attempts.length >= 5) {
             return res.status(429).json({ error: 'Too many OTP requests for this account. Please wait 10 minutes before requesting again.' });
+        }
+        if (attempts.length > 0) {
+            const elapsedMs = Date.now() - new Date(attempts[0].createdat).getTime();
+            if (elapsedMs < 30000) {
+                const waitSec = Math.ceil((30000 - elapsedMs) / 1000);
+                return res.status(429).json({ error: `Please wait ${waitSec} seconds before requesting a new OTP.` });
+            }
         }
     } catch (rateErr) {
         console.warn('OTP rate limit check error:', rateErr.message);
