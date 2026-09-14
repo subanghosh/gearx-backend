@@ -3233,7 +3233,7 @@ async function sendCancellationEmailReceipt({ trip, cust, tier, refundAmount, cu
 }
 
 // --- DIRECT META CLOUD API WHATSAPP OTP DISPATCH HELPER ---
-async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_customer') {
+async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_customer', overridePhoneId = null) {
     if (!phone || !otp) return { success: false, error: 'Phone and OTP are required' };
     const cleanPhone = '91' + String(phone).replace(/\D/g, '').slice(-10);
     if (cleanPhone.length !== 12) {
@@ -3241,7 +3241,7 @@ async function sendDirectMetaWhatsAppOtp(phone, otp, templateName = 'otp_custome
         return { success: false, error: 'Invalid phone number' };
     }
 
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
+    const phoneNumberId = overridePhoneId || process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092';
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     if (!token) {
         console.warn('[META_WA] WHATSAPP_ACCESS_TOKEN is not configured in environment.');
@@ -3554,6 +3554,7 @@ apiRouter.get('/admin/test-meta-whatsapp', authMiddleware, requireRole('admin'),
     const phone = req.query.phone || '9093184965';
     const otp = req.query.otp || '123456';
     const template = req.query.template || 'otp_customer';
+    const phoneId = req.query.phone_id || null;
 
     if (!process.env.WHATSAPP_ACCESS_TOKEN) {
         return res.json({
@@ -3564,12 +3565,12 @@ apiRouter.get('/admin/test-meta-whatsapp', authMiddleware, requireRole('admin'),
 
     try {
         const start = Date.now();
-        const result = await sendDirectMetaWhatsAppOtp(phone, otp, template);
+        const result = await sendDirectMetaWhatsAppOtp(phone, otp, template, phoneId);
         res.json({
             configured: true,
             targetPhone: phone,
             template,
-            phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092',
+            phoneNumberId: phoneId || process.env.WHATSAPP_PHONE_NUMBER_ID || '1329557343567092',
             tokenPrefix: process.env.WHATSAPP_ACCESS_TOKEN ? process.env.WHATSAPP_ACCESS_TOKEN.slice(0, 15) + '...' : null,
             latencyMs: Date.now() - start,
             result
