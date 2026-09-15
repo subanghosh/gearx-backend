@@ -101,6 +101,23 @@ const API_URL = isNativeApp
     ? 'https://api.redrivo.in/api'
     : (window.location.protocol === 'file:' ? 'http://localhost:3000/api' : `${window.location.origin}/api`);
 
+window.selectedOutstationVehicleId = null;
+window.selectedOutstationTripType = 'round';
+window.selectedOutstationUsageType = 'days';
+window.selectedOutstationUsageValue = 1;
+window.selectedOutstationScheduleDate = '';
+window.selectedOutstationScheduleTime = '';
+window.outstationDistanceKm = 0;
+window.outstationDurationMins = 0;
+window.outstationRawDurationSeconds = 0;
+window.outstationEstimatedTotalFare = 0;
+window._cachedOutstationSlabs = null;
+window._cachedOutstationSlabsKey = null;
+window._cachedOutstationHourlySlabs = null;
+window._cachedOutstationHourlyKey = null;
+
+
+
 // Safety Kill Switch: Customer advance payments disabled by default in production
 window.ENABLE_CUSTOMER_ADVANCE_PAYMENT = false;
 
@@ -360,7 +377,7 @@ window.pickupDropType = 'Pickup';
 
 window.selectedVehicleCondition = 'Working';
 window.selectedPricingMode = 'distance';
-window.selectedEstimatedHours = 4;
+
 window.activeBookingTab = 'instant';
 window.selectedScheduleDate = '';
 window.selectedScheduleTime = '';
@@ -4670,6 +4687,20 @@ async function selectLocationSuggestion(vehicleId, address, lat, lng, isCustom =
         }
     }
 
+    // Auto-focus drop input if pickup was selected on Outstation screen and trigger route calculation
+    if (vehicleId === 'outstation') {
+        const dropInput = document.getElementById('drop-location-outstation') || document.getElementById('outstation-drop-input');
+        if (dropInput) {
+            setTimeout(() => { dropInput.focus(); }, 150);
+        }
+    }
+
+    if (String(vehicleId).includes('outstation')) {
+        if (typeof window.calcOutstationRouteAndFare === 'function') {
+            window.calcOutstationRouteAndFare();
+        }
+    }
+
     // Dynamic Step 4 map redrawing for garage-specific location changes
     if (String(vehicleId).startsWith('garage')) {
         if (typeof initFlowStep4Map === 'function') {
@@ -6200,7 +6231,11 @@ async function findMarshal(vehicleId, bypassActiveCheck = false) {
             status: 'pending',
             distanceKm: distance,
             pricingMode,
-            estimatedHours
+            pricing_source: pricingMode,
+            tripType: window.selectedOutstationTripType || 'round',
+            usageType: window.selectedOutstationUsageType || 'days',
+            usageValue: window.selectedOutstationUsageValue || 1,
+            estimatedHours: pricingMode === 'hourly' ? estimatedHours : (pricingMode === 'outstation' && window.selectedOutstationUsageType === 'hours' ? window.selectedOutstationUsageValue : null)
         });
         proceedWithSearch(reqId, total);
     } catch (errCreate) {
@@ -7185,28 +7220,40 @@ window.askVehicleCondition = function(vehicleId, callback) {
 };
 
 window.selectVehicleCondition = function(condition) {
-    window.selectedVehicleCondition = condition;
+    if (condition === 'Not Working') {
+        if (typeof showToast === 'function') {
+            showToast('Doorstep Flatbed Towing is launching soon in Kolkata. For now, please book for operational vehicles only.', 'info');
+        } else if (typeof alert === 'function') {
+            alert('Doorstep Flatbed Towing is launching soon in Kolkata. For now, please book for operational vehicles only.');
+        }
+        window.selectedVehicleCondition = 'Working';
+        const btnWorking = document.getElementById('btn-cond-working');
+        const btnNotworking = document.getElementById('btn-cond-notworking');
+        if (btnWorking) {
+            btnWorking.style.background = 'var(--primary)';
+            btnWorking.style.color = '#000';
+            btnWorking.style.fontWeight = '700';
+        }
+        if (btnNotworking) {
+            btnNotworking.style.background = 'transparent';
+            btnNotworking.style.color = 'var(--text-muted)';
+            btnNotworking.style.fontWeight = '600';
+        }
+        return;
+    }
+
+    window.selectedVehicleCondition = condition || 'Working';
     
     const btnWorking = document.getElementById('btn-cond-working');
     const btnNotworking = document.getElementById('btn-cond-notworking');
     if (btnWorking && btnNotworking) {
-        if (condition === 'Not Working') {
-            btnNotworking.style.background = 'var(--primary)';
-            btnNotworking.style.color = '#000';
-            btnNotworking.style.fontWeight = '700';
-            
-            btnWorking.style.background = 'transparent';
-            btnWorking.style.color = '#fff';
-            btnWorking.style.fontWeight = '600';
-        } else {
-            btnWorking.style.background = 'var(--primary)';
-            btnWorking.style.color = '#000';
-            btnWorking.style.fontWeight = '700';
-            
-            btnNotworking.style.background = 'transparent';
-            btnNotworking.style.color = '#fff';
-            btnNotworking.style.fontWeight = '600';
-        }
+        btnWorking.style.background = 'var(--primary)';
+        btnWorking.style.color = '#000';
+        btnWorking.style.fontWeight = '700';
+        
+        btnNotworking.style.background = 'transparent';
+        btnNotworking.style.color = 'var(--text-muted)';
+        btnNotworking.style.fontWeight = '600';
     }
     
     const vehicleId = (document.getElementById('booking-opt-vehicle-id') ? document.getElementById('booking-opt-vehicle-id').value : '') || (userVehicles[activeVehicleIndex] ? userVehicles[activeVehicleIndex].id : '');
@@ -7892,29 +7939,30 @@ window.renderInlineBookingPanel = function(vehicleId) {
             <div style="margin-bottom: 2px;">
                 <label style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">Vehicle Condition</label>
                 <div style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.2); padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                    <button type="button" id="btn-cond-working" onclick="selectVehicleCondition('Working')" style="flex: 1; padding: 7px; border-radius: 8px; border: none; background: ${window.selectedVehicleCondition === 'Working' ? 'var(--primary)' : 'transparent'}; color: ${window.selectedVehicleCondition === 'Working' ? '#000' : '#fff'}; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; outline: none;">
+                    <button type="button" id="btn-cond-working" onclick="selectVehicleCondition('Working')" style="flex: 1; padding: 7px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; outline: none;">
                         Starts & Runs
                     </button>
-                    <button type="button" id="btn-cond-notworking" onclick="selectVehicleCondition('Not Working')" style="flex: 1; padding: 7px; border-radius: 8px; border: none; background: ${window.selectedVehicleCondition === 'Not Working' ? 'var(--primary)' : 'transparent'}; color: ${window.selectedVehicleCondition === 'Not Working' ? '#000' : '#fff'}; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; outline: none;">
-                        Needs Towing
+                    <button type="button" id="btn-cond-notworking" onclick="selectVehicleCondition('Not Working')" style="flex: 1; padding: 7px; border-radius: 8px; border: none; background: transparent; color: var(--text-muted); font-weight: 600; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 6px; opacity: 0.85;">
+                        <span>Needs Towing</span>
+                        <span style="background: rgba(250, 204, 21, 0.15); color: var(--primary); font-size: 0.6rem; padding: 1px 5px; border-radius: 999px; font-weight: 800; border: 1px solid rgba(250, 204, 21, 0.3); letter-spacing: 0.3px;">SOON</span>
                     </button>
                 </div>
             </div>
 
             <div style="margin-bottom: 2px;">
                 <label style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">Hire Driver</label>
-                <div style="display: flex; gap: 10px; width: 100%;">
+                <div style="display: flex; gap: 8px; width: 100%;">
                     <!-- Card A: Distance -->
-                    <div id="card-pm-distance" onclick="selectPricingModel('distance')" style="flex: 1; padding: 10px; border-radius: 14px; border: 2px solid ${window.selectedPricingMode === 'distance' ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background: ${window.selectedPricingMode === 'distance' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255,255,255,0.02)'}; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <span style="font-size: 0.78rem; font-weight: 800; color: #fff;">One-way Ride</span>
-                        <span style="font-size: 0.6rem; color: var(--text-muted); margin-top: 1px;">Point-to-point</span>
-                        <span id="inline-distance-fare" style="font-size: 1rem; font-weight: 800; color: ${window.selectedPricingMode === 'distance' ? 'var(--primary)' : 'var(--text-muted)'}; margin-top: 4px;">₹0</span>
+                    <div id="card-pm-distance" onclick="selectPricingModel('distance')" style="flex: 1; padding: 9px 6px; border-radius: 14px; border: 2px solid ${window.selectedPricingMode === 'distance' ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background: ${window.selectedPricingMode === 'distance' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255,255,255,0.02)'}; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: #fff;">One-way</span>
+                        <span style="font-size: 0.58rem; color: var(--text-muted); margin-top: 1px;">Point-to-point</span>
+                        <span id="inline-distance-fare" style="font-size: 0.95rem; font-weight: 800; color: ${window.selectedPricingMode === 'distance' ? 'var(--primary)' : 'var(--text-muted)'}; margin-top: 4px;">₹0</span>
                     </div>
                     <!-- Card B: Hourly -->
-                    <div id="card-pm-hourly" onclick="selectPricingModel('hourly')" style="flex: 1; padding: 10px; border-radius: 14px; border: 2px solid ${window.selectedPricingMode === 'hourly' ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background: ${window.selectedPricingMode === 'hourly' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255,255,255,0.02)'}; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <span style="font-size: 0.78rem; font-weight: 800; color: #fff;">Hourly Rental</span>
-                        <span style="font-size: 0.6rem; color: var(--text-muted); margin-top: 1px;">By the hour</span>
-                        <span id="inline-hourly-fare" style="font-size: 1rem; font-weight: 800; color: ${window.selectedPricingMode === 'hourly' ? 'var(--primary)' : 'var(--text-muted)'}; margin-top: 4px;">₹0</span>
+                    <div id="card-pm-hourly" onclick="selectPricingModel('hourly')" style="flex: 1; padding: 9px 6px; border-radius: 14px; border: 2px solid ${window.selectedPricingMode === 'hourly' ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background: ${window.selectedPricingMode === 'hourly' ? 'rgba(250, 204, 21, 0.05)' : 'rgba(255,255,255,0.02)'}; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: #fff;">Hourly</span>
+                        <span style="font-size: 0.58rem; color: var(--text-muted); margin-top: 1px;">Local rental</span>
+                        <span id="inline-hourly-fare" style="font-size: 0.95rem; font-weight: 800; color: ${window.selectedPricingMode === 'hourly' ? 'var(--primary)' : 'var(--text-muted)'}; margin-top: 4px;">₹0</span>
                     </div>
                 </div>
             </div>
@@ -7957,8 +8005,8 @@ window.renderInlineBookingPanel = function(vehicleId) {
                 </div>
             </div>
 
-            <div id="booking-fare-breakdown" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
-                <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 6px; margin-bottom: 2px;">Fare Estimate Breakdown</div>
+            <div id="booking-fare-breakdown" style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 0 4px;">
+                <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; margin-bottom: 2px;">Fare Estimate Breakdown</div>
                 <div id="breakdown-details" style="display: flex; flex-direction: column; gap: 6px;">
                     <div style="color:var(--text-muted); font-size:0.8rem; text-align:center;">Calculating fare...</div>
                 </div>
@@ -8101,13 +8149,61 @@ window.updateBookingFareBreakdown = async function(vehicleId) {
         const hourlyRate = parseFloat(settings[`${vehicleType}_hourly_rate`] || (vehicleType === 'car' ? 150.0 : 80.0));
         const hourlyTotal = (estimatedHours * hourlyRate) + towingFee;
 
+        // 3. Compute Outstation total price
+        const outstationTripType = window.selectedOutstationTripType || 'round';
+        const outstationUsageType = window.selectedOutstationUsageType || 'days';
+        const outstationUsageValue = window.selectedOutstationUsageValue || 1;
+        const outstationHourlyRate = hourlyRate;
+
+        // Fetch slabs if not cached for current type & tripType
+        const slabCacheKey = `${vehicleType}_${outstationTripType}`;
+        if (!window._cachedOutstationSlabs || window._cachedOutstationSlabsKey !== slabCacheKey) {
+            try {
+                const slabRes = await fetch(`${API_URL}/settings/outstation-slabs?type=${vehicleType}&tripType=${outstationTripType}`);
+                if (slabRes.ok) {
+                    window._cachedOutstationSlabs = await slabRes.json();
+                    window._cachedOutstationSlabsKey = slabCacheKey;
+                }
+            } catch (e) {
+                window._cachedOutstationSlabs = [];
+            }
+        }
+
+        const activeSlabs = window._cachedOutstationSlabs || [];
+        let outstationDailyRate = 0;
+        const matchingSlab = activeSlabs.find(s => {
+            const minD = Number(s.minDays !== undefined ? s.minDays : s.mindays);
+            const maxD = Number(s.maxDays !== undefined ? s.maxDays : s.maxdays);
+            return outstationUsageValue >= minD && outstationUsageValue <= maxD;
+        });
+
+        if (matchingSlab) {
+            outstationDailyRate = Number(matchingSlab.ratePerDay !== undefined ? matchingSlab.ratePerDay : matchingSlab.rateperday);
+        } else {
+            // Fallback default from settings or system defaults
+            const fallbackKey = `${vehicleType}_outstation_${outstationTripType}_rate`;
+            outstationDailyRate = parseFloat(settings[fallbackKey] || (vehicleType === 'car' ? (outstationTripType === 'oneway' ? 2200 : 1800) : (outstationTripType === 'oneway' ? 750 : 600)));
+        }
+
+        let outstationBaseCharge = 0;
+        if (outstationUsageType === 'hours') {
+            outstationBaseCharge = outstationUsageValue * outstationHourlyRate;
+        } else {
+            outstationBaseCharge = outstationUsageValue * outstationDailyRate;
+        }
+        const outstationTotal = redrivoServiceCharge + outstationBaseCharge + towingFee;
+
         // Update card pricing elements
         const distPriceEl = document.getElementById('inline-distance-fare');
         const hourPriceEl = document.getElementById('inline-hourly-fare');
+        const outPriceEl = document.getElementById('inline-outstation-fare');
         if (distPriceEl) distPriceEl.textContent = `₹${Math.round(distanceTotal)}`;
         if (hourPriceEl) hourPriceEl.textContent = `₹${Math.round(hourlyTotal)}`;
+        if (outPriceEl) outPriceEl.textContent = `₹${Math.round(outstationTotal)}`;
 
-        let totalFare = pricingMode === 'hourly' ? hourlyTotal : distanceTotal;
+        let totalFare = distanceTotal;
+        if (pricingMode === 'hourly') totalFare = hourlyTotal;
+        if (pricingMode === 'outstation') totalFare = outstationTotal;
         let html = '';
 
         if (pricingMode === 'hourly') {
@@ -8189,33 +8285,38 @@ window.selectPricingModel = function(mode) {
 
     const cardDistance = document.getElementById('card-pm-distance');
     const cardHourly = document.getElementById('card-pm-hourly');
-    const durationGroup = document.getElementById('booking-hourly-duration-group');
+    const distFareEl = document.getElementById('inline-distance-fare');
+    const hourFareEl = document.getElementById('inline-hourly-fare');
+    const hourlyDurationGroup = document.getElementById('booking-hourly-duration-group');
 
-    if (cardDistance && cardHourly) {
-        if (mode === 'hourly') {
+    if (cardDistance) {
+        cardDistance.style.borderColor = 'rgba(255,255,255,0.08)';
+        cardDistance.style.background = 'rgba(255,255,255,0.02)';
+    }
+    if (cardHourly) {
+        cardHourly.style.borderColor = 'rgba(255,255,255,0.08)';
+        cardHourly.style.background = 'rgba(255,255,255,0.02)';
+    }
+    if (distFareEl) distFareEl.style.color = 'var(--text-muted)';
+    if (hourFareEl) hourFareEl.style.color = 'var(--text-muted)';
+
+    if (mode === 'hourly') {
+        if (cardHourly) {
             cardHourly.style.borderColor = 'var(--primary)';
             cardHourly.style.background = 'rgba(250, 204, 21, 0.05)';
-            cardHourly.querySelector('#inline-hourly-fare').style.color = 'var(--primary)';
-
-            cardDistance.style.borderColor = 'rgba(255,255,255,0.08)';
-            cardDistance.style.background = 'rgba(255,255,255,0.02)';
-            cardDistance.querySelector('#inline-distance-fare').style.color = 'var(--text-muted)';
-
-            if (durationGroup) durationGroup.style.display = 'block';
-        } else {
+        }
+        if (hourFareEl) hourFareEl.style.color = 'var(--primary)';
+        if (hourlyDurationGroup) hourlyDurationGroup.style.display = 'block';
+    } else {
+        if (cardDistance) {
             cardDistance.style.borderColor = 'var(--primary)';
             cardDistance.style.background = 'rgba(250, 204, 21, 0.05)';
-            cardDistance.querySelector('#inline-distance-fare').style.color = 'var(--primary)';
-
-            cardHourly.style.borderColor = 'rgba(255,255,255,0.08)';
-            cardHourly.style.background = 'rgba(255,255,255,0.02)';
-            cardHourly.querySelector('#inline-hourly-fare').style.color = 'var(--text-muted)';
-
-            if (durationGroup) durationGroup.style.display = 'none';
         }
+        if (distFareEl) distFareEl.style.color = 'var(--primary)';
+        if (hourlyDurationGroup) hourlyDurationGroup.style.display = 'none';
     }
-    
-    const vehicleId = userVehicles[activeVehicleIndex] ? userVehicles[activeVehicleIndex].id : '';
+
+    const vehicleId = (document.getElementById('booking-opt-vehicle-id') ? document.getElementById('booking-opt-vehicle-id').value : '') || (userVehicles[activeVehicleIndex] ? userVehicles[activeVehicleIndex].id : '');
     if (vehicleId) {
         window.updateBookingFareBreakdown(vehicleId);
     }
@@ -8279,201 +8380,63 @@ function renderHistory(trips) {
         return `
             <div class="vehicle-card" style="margin-bottom: 16px; padding: 20px; display: flex; flex-direction: column; gap: 14px; position: relative; background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(18, 18, 22, 0.6) 100%); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px;">
                 <!-- Header: Completed Run -->
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <span style="font-size: 0.65rem; font-weight: 800; color: #10b981; letter-spacing: 1.5px; text-transform: uppercase; background: rgba(16, 185, 129, 0.1); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.15);">Completed Run</span>
-                    <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">${formattedDate}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px;">Completed</span>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">${formattedDate}</span>
                 </div>
 
-                <!-- Vehicle Details + Image Row -->
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                    <div>
-                        <div style="font-size: 1.15rem; font-weight: 800; color: #ffffff; letter-spacing: -0.3px;">${vName}</div>
-                        <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px; display: block;">${vPlate}</span>
+                <!-- Vehicle Info -->
+                <div style="display: flex; gap: 14px; align-items: center;">
+                    <div style="width: 50px; height: 35px; border-radius: 8px; background: rgba(0,0,0,0.3); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                        <img src="${imageSrc}" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: contain;">
                     </div>
-                    <div style="width: 90px; height: 60px; overflow: hidden; background: rgba(255,255,255,0.02); display: flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); flex-shrink: 0;">
-                        <img src="${imageSrc}" alt="${vName}" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
-                    </div>
-                </div>
-
-                <!-- Stats Row: Distance & Price -->
-                <div style="display: flex; gap: 10px;">
-                    <div style="flex: 1; background: rgba(56,189,248,0.07); border: 1px solid rgba(56,189,248,0.15); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                        <span style="font-size: 0.58rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Distance</span>
-                        <span style="font-size: 1.05rem; font-weight: 800; color: #38bdf8; font-family: 'Montserrat', sans-serif;">${formattedDistance} km</span>
-                    </div>
-                    <div style="flex: 1; background: rgba(250, 204, 21, 0.07); border: 1px solid rgba(250, 204, 21, 0.15); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
-                        <span style="font-size: 0.58rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Price</span>
-                        <span style="font-size: 1.05rem; font-weight: 800; color: var(--primary); font-family: 'Montserrat', sans-serif;">₹${formattedPrice}</span>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span style="font-size: 0.95rem; font-weight: 800; color: #fff;">${vName}</span>
+                        <span style="font-size: 0.75rem; color: var(--primary); font-weight: 700; letter-spacing: 1px;">${vPlate}</span>
                     </div>
                 </div>
 
-                <!-- Pickup / Drop Addresses -->
-                <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
-                    <div style="display: flex; gap: 8px; align-items: flex-start;">
-                        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--primary); display: inline-block; margin-top: 5px;"></span>
+                <!-- Route Points -->
+                <div style="display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <span style="color: #facc15; font-size: 0.8rem; margin-top: 2px;">•</span>
                         <div style="display: flex; flex-direction: column;">
-                            <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Pickup</span>
-                            <span style="font-size: 0.78rem; color: #eee; font-weight: 500; line-height: 1.2;">${pickupAddr}</span>
+                            <span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Pickup</span>
+                            <span style="font-size: 0.8rem; color: #fff; font-weight: 500;">${pickupAddr}</span>
                         </div>
                     </div>
-                    <div style="height: 10px; border-left: 1px dashed rgba(255,255,255,0.15); margin-left: 2.5px;"></div>
-                    <div style="display: flex; gap: 8px; align-items: flex-start;">
-                        <span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e; display: inline-block; margin-top: 5px;"></span>
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                        <span style="color: #22c55e; font-size: 0.8rem; margin-top: 2px;">•</span>
                         <div style="display: flex; flex-direction: column;">
-                            <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Drop</span>
-                            <span style="font-size: 0.78rem; color: #eee; font-weight: 500; line-height: 1.2;">${dropAddr}</span>
+                            <span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Drop</span>
+                            <span style="font-size: 0.8rem; color: #fff; font-weight: 500;">${dropAddr}</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Marshal Info -->
+                <!-- Price & Details Footer -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+                    <div style="display: flex; gap: 12px;">
+                        <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">${formattedDistance} km</span>
+                    </div>
+                    <span style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">₹${formattedPrice}</span>
+                </div>
+
                 ${marshalHtml}
-
-                <!-- Action Buttons -->
-                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
-                    <button class="btn btn-danger" onclick="openDisputeFormForPastTrip('${t.id}', '${t.marshalId || t.marshalid || ''}')" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); font-weight: 800; font-size: 0.8rem; padding: 8px 16px; border-radius: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; width: fit-content; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                        Help / Support
-                    </button>
-                    <button class="yellow-btn" onclick="openReceiptModal('${t.id}')" style="background: rgba(250, 204, 21, 0.1); border: 1px solid var(--primary); color: var(--primary); font-weight: 800; font-size: 0.8rem; padding: 8px 16px; border-radius: 14px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; width: fit-content; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        Invoice / Report
-                    </button>
-                </div>
             </div>
         `;
-    }).reverse().join('');
+    }).join('');
 }
 
-window.switchBookingSubTab = function(tab) {
-    window.currentBookingSubTab = tab;
+
+
     
-    const activeBtn = document.getElementById('btn-booking-active');
-    const completedBtn = document.getElementById('btn-booking-completed');
-    if (activeBtn && completedBtn) {
-        if (tab === 'active') {
-            activeBtn.style.background = 'var(--primary)';
-            activeBtn.style.color = '#000';
-            activeBtn.style.fontWeight = '700';
-            
-            completedBtn.style.background = 'transparent';
-            completedBtn.style.color = '#fff';
-            completedBtn.style.fontWeight = '600';
-        } else {
-            completedBtn.style.background = 'var(--primary)';
-            completedBtn.style.color = '#000';
-            completedBtn.style.fontWeight = '700';
-            
-            activeBtn.style.background = 'transparent';
-            activeBtn.style.color = '#fff';
-            activeBtn.style.fontWeight = '600';
-        }
-    }
-    
-    updateBookingTabVisibility();
-};
-
-function updateBookingTabVisibility() {
-    const tab = window.currentBookingSubTab || 'active';
-    
-    const activeSections = [
-        document.getElementById('requests-section'),
-        document.getElementById('trips-section'),
-        document.getElementById('inspection-approval-section'),
-        document.getElementById('approval-section')
-    ];
-    const completedSection = document.getElementById('history-list');
-    const historyHeader = document.getElementById('completed-history-header');
-    
-    if (tab === 'active') {
-        if (completedSection) completedSection.style.display = 'none';
-        if (historyHeader) historyHeader.style.display = 'none';
-        
-        const myRequests = window.userRequests || [];
-        const activeReqs = myRequests.filter(r => !['pending', 'scheduled', 'completed', 'cancelled', 'returned', 'drop_completed', 'marshal_assigned'].includes(r.status));
-        const activeTrips = (window._myTrips || []).filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.status !== 'drop_completed' && t.status !== 'pending_payment');
-        const pendingApprovals = activeTrips.filter(t => t.status === 'pending_approval');
-        const pendingInspections = myRequests.filter(r => r.status === 'pending_inspection_approval');
-        
-        const reqSection = document.getElementById('requests-section');
-        const tripSection = document.getElementById('trips-section');
-        const appSection = document.getElementById('approval-section');
-        const insSection = document.getElementById('inspection-approval-section');
-        
-        if (reqSection) reqSection.style.display = activeReqs.length > 0 ? 'block' : 'none';
-        if (tripSection) tripSection.style.display = activeTrips.length > 0 ? 'block' : 'none';
-        if (appSection) appSection.style.display = pendingApprovals.length > 0 ? 'block' : 'none';
-        if (insSection) insSection.style.display = pendingInspections.length > 0 ? 'block' : 'none';
-    } else {
-        activeSections.forEach(sec => {
-            if (sec) sec.style.display = 'none';
-        });
-        if (completedSection) completedSection.style.display = 'block';
-        if (historyHeader) historyHeader.style.display = 'block';
-    }
-}
-
-async function openReceiptModal(tripId) {
-    try {
-        const audit = await apiGet(`/trips/${tripId}/audit`);
-        const allTrips = await apiGet('/trips');
-        const trip = allTrips.find(t => t.id === tripId);
-        if (trip && audit) {
-            openAuditModal({ trip, audit });
-        } else {
-            showToast('Audit report data not found.', 'error');
-        }
-    } catch (e) {
-        showToast('Error loading service report: ' + e.message, 'error');
-    }
-}
-
-function focusGarage() {
-    switchTab('garage');
-    const btnGarage = document.getElementById('nav-btn-garage');
-    const btnFocusGarage = document.getElementById('nav-btn-focus-garage');
-    if (btnGarage) btnGarage.classList.remove('active');
-    if (btnFocusGarage) btnFocusGarage.classList.add('active');
-
-    const sheet = document.getElementById('garage-container');
-    if (sheet) {
-        sheet.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-}
-
-function getInitialsAvatar(name) {
-    const initials = (name || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs><linearGradient id="yg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FBBF24"/><stop offset="100%" stop-color="#D97706"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(#yg)"/><text x="50" y="55" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="38" font-weight="800" fill="#000" text-anchor="middle" dominant-baseline="middle">${initials}</text></svg>`;
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 function updateUserAvatar() {
     if (!currentUser) return;
-    let rawPhoto = currentUser.profilePictureUrl || 
-                   currentUser.profilepictureurl || 
-                   currentUser.facePhotoUrl || 
-                   currentUser.facephotourl || 
-                   currentUser.photo || 
-                   null;
-    
-    // If Google avatar has low resolution param like =s96-c, upgrade to =s512-c
-    if (rawPhoto && rawPhoto.includes('googleusercontent.com') && rawPhoto.includes('=s')) {
-        rawPhoto = rawPhoto.replace(/=s\d+(-c)?/, '=s512-c');
-    }
-
-    let avatarUrl = rawPhoto || getInitialsAvatar(currentUser.name);
-    
-    if (avatarUrl && !avatarUrl.startsWith('http') && !avatarUrl.startsWith('data:')) {
-        const baseUrl = API_URL.replace('/api', '');
-        avatarUrl = `${baseUrl}/${avatarUrl}`;
-    }
-    
-    const headerAvatar = document.getElementById('header-user-avatar');
-    if (headerAvatar) {
-        headerAvatar.src = avatarUrl;
-        headerAvatar.onerror = () => { headerAvatar.src = getInitialsAvatar(currentUser.name); };
-    }
-    
+    const avatarUrl = currentUser.photo ? (currentUser.photo.startsWith('http') ? currentUser.photo : `${API_URL.substring(0, API_URL.lastIndexOf('/api'))}/${currentUser.photo}`) : getInitialsAvatar(currentUser.name);
     const modalAvatar = document.getElementById('profile-modal-avatar');
     if (modalAvatar) {
         modalAvatar.src = avatarUrl;
@@ -8973,7 +8936,11 @@ window.confirmScheduleBooking = async function() {
             drop_address: dropAddress,
             vehicle_condition: window.selectedVehicleCondition || 'Working',
             pricingMode: window.selectedPricingMode || 'distance',
-            estimatedHours: window.selectedPricingMode === 'hourly' ? (window.selectedEstimatedHours || 4) : null,
+            pricing_source: window.selectedPricingMode || 'distance',
+            tripType: window.selectedOutstationTripType || 'round',
+            usageType: window.selectedOutstationUsageType || 'days',
+            usageValue: window.selectedOutstationUsageValue || 1,
+            estimatedHours: window.selectedPricingMode === 'hourly' ? (window.selectedEstimatedHours || 4) : (window.selectedPricingMode === 'outstation' && window.selectedOutstationUsageType === 'hours' ? window.selectedOutstationUsageValue : null),
             route_stops: window.routeStops || [],
             status: 'scheduled'
         });
@@ -10275,18 +10242,30 @@ window.selectGarageFlowVehicle = function(vehicleId) {
 };
 
 window.selectGarageFlowCondition = function(condition) {
-    window.tempSelectedVehicleCondition = condition;
+    if (condition === 'Not Working') {
+        if (typeof showToast === 'function') {
+            showToast('Doorstep Flatbed Towing is launching soon in Kolkata. For now, please book for operational vehicles only.', 'info');
+        } else if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Coming Soon',
+                text: 'Doorstep Flatbed Towing is launching soon in Kolkata. For now, please book for operational vehicles only.',
+                icon: 'info',
+                confirmButtonColor: '#facc15',
+                confirmButtonText: 'Got it',
+                background: '#12161D',
+                color: '#fff'
+            });
+        }
+        return;
+    }
+
+    window.tempSelectedVehicleCondition = 'Working';
     
     // Toggle active class on card elements
     const cards = document.querySelectorAll('.condition-card');
     cards.forEach(card => card.classList.remove('active'));
-    if (condition === 'Working') {
-        const card = document.querySelector('.condition-card.working-card');
-        if (card) card.classList.add('active');
-    } else {
-        const card = document.querySelector('.condition-card.towed-card');
-        if (card) card.classList.add('active');
-    }
+    const card = document.querySelector('.condition-card.working-card');
+    if (card) card.classList.add('active');
     
     window.onConditionSelected = function(chosenCondition) {
         window.selectedVehicleCondition = chosenCondition;
@@ -10299,25 +10278,7 @@ window.selectGarageFlowCondition = function(condition) {
         window.goToGarageFlowStep(4);
     };
     
-    if (condition === 'Not Working') {
-        Swal.fire({
-            title: 'Towing Required',
-            text: 'Since this vehicle is not in working condition, the assigned Driver will arrange towing assistance. Additional charges may apply based on towing distance, and arrival times may vary. Proceed?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#facc15',
-            cancelButtonColor: '#27272a',
-            confirmButtonText: 'Yes, proceed',
-            background: '#12161D',
-            color: '#fff'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.onConditionSelected('Not Working');
-            }
-        });
-    } else {
-        window.onConditionSelected('Working');
-    }
+    window.onConditionSelected('Working');
 };
 
 window.setupGarageFlowRouting = function(g, flowType, vehicleId, condition) {
@@ -12326,3 +12287,851 @@ function checkAndRenderSettlementModal(myTrips) {
 
 // Individual portal isolation test: 2026-09-11
 // Second isolation proof touch: 2026-09-11 13:36
+
+
+// ============================================================================
+// DEDICATED FULL-SCREEN OUTSTATION BOOKING MODULE (PART 3)
+// ============================================================================
+
+function getOutstationVehiclesList() {
+    if (typeof userVehicles !== 'undefined' && Array.isArray(userVehicles) && userVehicles.length > 0) {
+        return userVehicles;
+    }
+    if (typeof window.userVehicles !== 'undefined' && Array.isArray(window.userVehicles) && window.userVehicles.length > 0) {
+        return window.userVehicles;
+    }
+    return [];
+}
+
+window.openOutstationBookingScreen = function() {
+    const screen = document.getElementById('outstation-booking-screen');
+    if (!screen) return;
+
+    const vehicles = getOutstationVehiclesList();
+    // Determine active vehicle
+    if (!window.selectedOutstationVehicleId && vehicles.length > 0) {
+        const v = vehicles[activeVehicleIndex] || vehicles[0];
+        window.selectedOutstationVehicleId = v ? v.id : null;
+    }
+    window.updateOutstationVehicleCard();
+
+    // Pre-fill pickup if global pickup is set
+    const globalPickup = document.getElementById('pickup-location-global');
+    const outPickup = document.getElementById('pickup-location-outstation') || document.getElementById('outstation-pickup-input');
+    if (globalPickup && outPickup) {
+        if (!outPickup.value && globalPickup.value) {
+            outPickup.value = globalPickup.value;
+            outPickup.setAttribute('data-address', globalPickup.getAttribute('data-address') || globalPickup.value);
+            outPickup.setAttribute('data-lat', globalPickup.getAttribute('data-lat') || '');
+            outPickup.setAttribute('data-lng', globalPickup.getAttribute('data-lng') || '');
+        }
+    }
+
+    // Pre-fill drop if global drop is set
+    const globalDrop = document.getElementById('drop-location-global');
+    const outDrop = document.getElementById('drop-location-outstation') || document.getElementById('outstation-drop-input');
+    if (globalDrop && outDrop) {
+        if (!outDrop.value && globalDrop.value) {
+            outDrop.value = globalDrop.value;
+            outDrop.setAttribute('data-address', globalDrop.getAttribute('data-address') || globalDrop.value);
+            outDrop.setAttribute('data-lat', globalDrop.getAttribute('data-lat') || '');
+            outDrop.setAttribute('data-lng', globalDrop.getAttribute('data-lng') || '');
+        }
+    }
+
+    window.initOutstationScheduleDatesAndTimes();
+    window.renderOutstationUsagePills();
+    window.selectOutstationTripType(window.selectedOutstationTripType || 'round');
+
+    screen.style.display = 'flex';
+
+    if (outPickup && outDrop && outPickup.getAttribute('data-lat') && outDrop.getAttribute('data-lat')) {
+        window.calcOutstationRouteAndFare();
+    } else {
+        window.updateOutstationFareBreakdown();
+    }
+};
+
+window.closeOutstationBookingScreen = function() {
+    const screen = document.getElementById('outstation-booking-screen');
+    if (screen) screen.style.display = 'none';
+};
+
+window.updateOutstationVehicleCard = function() {
+    const card = document.getElementById('outstation-vehicle-card');
+    if (!card) return;
+
+    const vehicles = getOutstationVehiclesList();
+    if (!vehicles || vehicles.length === 0) {
+        const nameEl = document.getElementById('outstation-vehicle-name');
+        if (nameEl) nameEl.textContent = 'No vehicle selected';
+        const plateEl = document.getElementById('outstation-vehicle-plate');
+        if (plateEl) plateEl.textContent = 'Add Vehicle';
+        const specsEl = document.getElementById('outstation-vehicle-specs');
+        if (specsEl) specsEl.textContent = '';
+        return;
+    }
+
+    let v = vehicles.find(veh => veh.id === window.selectedOutstationVehicleId);
+    if (!v) {
+        v = vehicles[activeVehicleIndex] || vehicles[0];
+        if (v) window.selectedOutstationVehicleId = v.id;
+    }
+
+    if (v) {
+        const fallbackImg = typeof getVehicleIllustration === 'function' ? getVehicleIllustration(v.type) : '';
+        const imgEl = document.getElementById('outstation-vehicle-img');
+        if (imgEl) {
+            imgEl.src = v.photo || fallbackImg;
+            imgEl.onerror = function() { this.onerror = null; this.src = fallbackImg; };
+        }
+        const nameEl = document.getElementById('outstation-vehicle-name');
+        if (nameEl) nameEl.textContent = `${v.make} ${v.model}`;
+        const plateEl = document.getElementById('outstation-vehicle-plate');
+        if (plateEl) plateEl.textContent = v.plate;
+        const specsEl = document.getElementById('outstation-vehicle-specs');
+        if (specsEl) specsEl.textContent = `${v.transmission || 'Manual'} • ${v.fuel || 'Petrol'} • ${v.seats || '5'} Seats`;
+    }
+};
+
+window.openVehicleSwitcherModal = function() {
+    const modal = document.getElementById('vehicle-switcher-modal');
+    const container = document.getElementById('vehicle-switcher-list-container');
+    if (!modal || !container) return;
+
+    const vehicles = getOutstationVehiclesList();
+    if (!vehicles || vehicles.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.85rem;">No vehicles found. Add a vehicle first.</div>`;
+    } else {
+        container.innerHTML = vehicles.map((v, idx) => {
+            const fallbackImg = typeof getVehicleIllustration === 'function' ? getVehicleIllustration(v.type) : '';
+            const imageSrc = v.photo || fallbackImg;
+            const isSelected = (v.id === window.selectedOutstationVehicleId) || (!window.selectedOutstationVehicleId && idx === activeVehicleIndex);
+
+            return `
+                <div onclick="selectVehicleForOutstation('${v.id}')" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: ${isSelected ? 'rgba(250, 204, 21, 0.12)' : 'rgba(255, 255, 255, 0.03)'}; border: 1.5px solid ${isSelected ? 'var(--primary)' : 'rgba(255,255,255,0.06)'}; border-radius: 14px; cursor: pointer; transition: all 0.2s;">
+                    <div style="width: 48px; height: 36px; border-radius: 8px; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                        <img src="${imageSrc}" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: contain;" />
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 700; color: #fff; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${v.make} ${v.model}</div>
+                        <div style="font-size: 0.7rem; color: ${isSelected ? 'var(--primary)' : 'var(--text-muted)'}; font-weight: 600;">${v.plate} • ${v.fuel || 'Petrol'}</div>
+                    </div>
+                    ${isSelected ? '<span style="color: var(--primary); font-size: 0.75rem; font-weight: 800; background: rgba(250, 204, 21, 0.2); padding: 2px 8px; border-radius: 6px;">SELECTED</span>' : '<span class="material-symbols-outlined" style="color: #a1a1aa; font-size: 1.2rem;">chevron_right</span>'}
+                </div>
+            `;
+        }).join('');
+    }
+
+    modal.style.display = 'flex';
+};
+
+window.closeVehicleSwitcherModal = function() {
+    const modal = document.getElementById('vehicle-switcher-modal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.selectVehicleForOutstation = function(vehicleId) {
+    window.selectedOutstationVehicleId = vehicleId;
+    const vehicles = getOutstationVehiclesList();
+    if (vehicles.length > 0) {
+        const idx = vehicles.findIndex(v => v.id === vehicleId);
+        if (idx >= 0) activeVehicleIndex = idx;
+    }
+    window.updateOutstationVehicleCard();
+    window.closeVehicleSwitcherModal();
+    window.updateOutstationFareBreakdown();
+};
+
+window.getOutstationFeasibilityState = function() {
+    const rawOneWaySeconds = Number(window.outstationRawDurationSeconds) || 0;
+    const tripType = window.selectedOutstationTripType || 'round';
+    const isRound = tripType === 'round';
+
+    // Raw one-way drive time (doubled for round trip, zero added buffer)
+    const totalDrivingSeconds = isRound ? (rawOneWaySeconds * 2) : rawOneWaySeconds;
+    const totalDrivingHours = totalDrivingSeconds / 3600;
+    const totalDrivingMins = Math.round(totalDrivingSeconds / 60);
+
+    // 12-hour daily driving cap
+    const MAX_DAILY_DRIVE_HOURS = 12.0;
+    const exceedsDailyCap = totalDrivingHours > MAX_DAILY_DRIVE_HOURS;
+    const minFeasibleDays = exceedsDailyCap ? Math.ceil(totalDrivingHours / MAX_DAILY_DRIVE_HOURS) : 1;
+    const hoursTierAllowed = !exceedsDailyCap;
+
+    return {
+        rawOneWaySeconds,
+        totalDrivingSeconds,
+        totalDrivingHours,
+        totalDrivingMins,
+        isRound,
+        exceedsDailyCap,
+        minFeasibleDays,
+        hoursTierAllowed
+    };
+};
+
+window.selectOutstationTripType = function(tripType) {
+    window.selectedOutstationTripType = tripType;
+    window._cachedOutstationSlabs = null;
+    window._cachedOutstationHourlySlabs = null;
+
+    const btnRound = document.getElementById('btn-outstation-round');
+    const btnOneway = document.getElementById('btn-outstation-oneway');
+    if (btnRound && btnOneway) {
+        if (tripType === 'round') {
+            btnRound.style.background = 'var(--primary)';
+            btnRound.style.color = '#000';
+            btnOneway.style.background = 'transparent';
+            btnOneway.style.color = '#fff';
+        } else {
+            btnOneway.style.background = 'var(--primary)';
+            btnOneway.style.color = '#000';
+            btnRound.style.background = 'transparent';
+            btnRound.style.color = '#fff';
+        }
+    }
+
+    const routeTypeBadge = document.getElementById('outstation-route-type-badge');
+    if (routeTypeBadge) {
+        routeTypeBadge.textContent = tripType === 'round' ? 'Round Trip Est.' : 'One-Way Est.';
+    }
+
+    if (typeof window.calcOutstationRouteAndFare === 'function') {
+        window.calcOutstationRouteAndFare();
+    } else {
+        if (typeof window.renderOutstationUsagePills === 'function') {
+            window.renderOutstationUsagePills();
+        }
+        window.updateOutstationFareBreakdown();
+    }
+};
+
+window.renderOutstationUsagePills = function() {
+    const container = document.getElementById('outstation-usage-pills-container');
+    const hintEl = document.getElementById('outstation-feasibility-hint');
+    if (!container) return;
+
+    const feasibility = window.getOutstationFeasibilityState();
+    let currentType = window.selectedOutstationUsageType || 'days';
+    let currentValue = window.selectedOutstationUsageValue || 1;
+
+    // Feasibility Floor Enforcements:
+    if (feasibility.totalDrivingHours > 0) {
+        if (!feasibility.hoursTierAllowed && currentType === 'hours') {
+            currentType = 'days';
+            currentValue = Math.max(1, feasibility.minFeasibleDays);
+            window.selectedOutstationUsageType = currentType;
+            window.selectedOutstationUsageValue = currentValue;
+        } else if (currentType === 'days' && currentValue < feasibility.minFeasibleDays) {
+            currentValue = feasibility.minFeasibleDays;
+            window.selectedOutstationUsageValue = currentValue;
+        }
+    }
+
+    // Feasibility Hint UI
+    if (hintEl) {
+        if (feasibility.totalDrivingHours > 0) {
+            if (feasibility.exceedsDailyCap) {
+                hintEl.style.color = '#f59e0b';
+                hintEl.innerHTML = `<span>⚠️ ${feasibility.totalDrivingHours.toFixed(1)}h drive requires min. ${feasibility.minFeasibleDays} Days (12h/day cap)</span>`;
+            } else {
+                hintEl.style.color = 'var(--primary)';
+                hintEl.innerHTML = `<span>${feasibility.totalDrivingHours.toFixed(1)}h driving (within 12h daily limit)</span>`;
+            }
+        } else {
+            hintEl.textContent = '';
+        }
+    }
+
+    const allOptions = [
+        { type: 'hours', value: 12, label: '12 Hrs', group: 'Hours' },
+        { type: 'hours', value: 16, label: '16 Hrs', group: 'Hours' },
+        { type: 'hours', value: 20, label: '20 Hrs', group: 'Hours' },
+        { type: 'days', value: 1, label: '1 Day', group: 'Days' },
+        { type: 'days', value: 2, label: '2 Days', group: 'Days' },
+        { type: 'days', value: 3, label: '3 Days', group: 'Days' },
+        { type: 'days', value: 4, label: '4 Days', group: 'Days' },
+        { type: 'days', value: 5, label: '5 Days', group: 'Days' },
+        { type: 'days', value: 6, label: '6 Days', group: 'Days' },
+        { type: 'days', value: 7, label: '7 Days', group: 'Days' }
+    ];
+
+    container.innerHTML = allOptions.map(opt => {
+        let isDisabled = false;
+        let disabledReason = '';
+
+        if (feasibility.totalDrivingHours > 0) {
+            if (opt.type === 'hours') {
+                if (!feasibility.hoursTierAllowed) {
+                    isDisabled = true;
+                    disabledReason = `Exceeds 12h daily drive cap (${feasibility.totalDrivingHours.toFixed(1)}h)`;
+                }
+            } else if (opt.type === 'days') {
+                if (opt.value < feasibility.minFeasibleDays) {
+                    isDisabled = true;
+                    disabledReason = `Min ${feasibility.minFeasibleDays} days required for ${feasibility.totalDrivingHours.toFixed(1)}h drive`;
+                }
+            }
+        }
+
+        const isSelected = (!isDisabled && currentType === opt.type && currentValue === opt.value);
+
+        if (isDisabled) {
+            return `
+                <div class="outstation-usage-chip disabled" 
+                     title="${disabledReason}"
+                     style="flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 7px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1.5px solid rgba(255, 255, 255, 0.04); cursor: not-allowed; opacity: 0.35; pointer-events: none;">
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #71717a; white-space: nowrap; text-decoration: line-through;">${opt.label}</span>
+                    <span style="font-size: 0.58rem; color: #52525b; font-weight: 600; text-transform: uppercase;">${opt.group}</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="outstation-usage-chip ${isSelected ? 'active' : ''}" 
+                 onclick="selectOutstationUsage('${opt.type}', ${opt.value})" 
+                 data-usage-type="${opt.type}" 
+                 data-usage-value="${opt.value}"
+                 style="flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 7px 14px; border-radius: 12px; background: ${isSelected ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)'}; border: 1.5px solid ${isSelected ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)'}; cursor: pointer; transition: all 0.2s;">
+                <span style="font-size: 0.78rem; font-weight: 800; color: ${isSelected ? '#000' : '#fff'}; white-space: nowrap;">${opt.label}</span>
+                <span style="font-size: 0.58rem; color: ${isSelected ? 'rgba(0,0,0,0.7)' : 'var(--text-muted)'}; font-weight: 600; text-transform: uppercase;">${opt.group}</span>
+            </div>
+        `;
+    }).join('');
+};
+
+window.selectOutstationUsage = function(type, value) {
+    const feasibility = window.getOutstationFeasibilityState();
+    if (feasibility.totalDrivingHours > 0) {
+        if (type === 'hours' && !feasibility.hoursTierAllowed) {
+            if (typeof showToast === 'function') {
+                showToast(`Driving time (${feasibility.totalDrivingHours.toFixed(1)}h) exceeds 12h safety cap. Please select at least ${feasibility.minFeasibleDays} Days.`, 'warning');
+            }
+            return;
+        }
+        if (type === 'days' && Number(value) < feasibility.minFeasibleDays) {
+            if (typeof showToast === 'function') {
+                showToast(`Driving time (${feasibility.totalDrivingHours.toFixed(1)}h) requires at least ${feasibility.minFeasibleDays} Days.`, 'warning');
+            }
+            return;
+        }
+    }
+
+    window.selectedOutstationUsageType = type;
+    window.selectedOutstationUsageValue = Number(value);
+    if (typeof window.renderOutstationUsagePills === 'function') {
+        window.renderOutstationUsagePills();
+    }
+    if (typeof window.updateOutstationFareBreakdown === 'function') {
+        window.updateOutstationFareBreakdown();
+    }
+};
+
+window.initOutstationScheduleDatesAndTimes = function() {
+    const dateContainer = document.getElementById('outstation-date-pills-container');
+    const hiddenDateInput = document.getElementById('outstation-schedule-date');
+    if (dateContainer && hiddenDateInput) {
+        const dates = [];
+        const today = new Date();
+        for (let i = 0; i < 7; i++) {
+            const d = new Date();
+            d.setDate(today.getDate() + i);
+            dates.push(d);
+        }
+
+        dateContainer.innerHTML = dates.map((d, idx) => {
+            const dateStr = d.toISOString().split('T')[0];
+            let label = '';
+            if (idx === 0) label = 'Today';
+            else if (idx === 1) label = 'Tomorrow';
+            else {
+                label = d.toLocaleDateString('en-US', { weekday: 'short' });
+            }
+            const dayNum = d.getDate();
+            const month = d.toLocaleDateString('en-US', { month: 'short' });
+            const isActive = window.selectedOutstationScheduleDate ? (window.selectedOutstationScheduleDate === dateStr) : (idx === 0);
+            if (isActive) {
+                hiddenDateInput.value = dateStr;
+                window.selectedOutstationScheduleDate = dateStr;
+            }
+            return `
+                <div class="outstation-date-chip ${isActive ? 'active' : ''}" data-date="${dateStr}" onclick="selectOutstationScheduleDate(this)" style="flex: 0 0 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border-radius: 12px; background: ${isActive ? 'rgba(250, 204, 21, 0.15)' : 'rgba(255, 255, 255, 0.03)'}; border: 1.5px solid ${isActive ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)'}; cursor: pointer; transition: all 0.2s;">
+                    <span style="font-size: 0.6rem; color: ${isActive ? 'var(--primary)' : 'var(--text-muted)'}; font-weight: 700; text-transform: uppercase;">${label}</span>
+                    <span style="font-size: 1rem; color: #fff; font-weight: 800; margin: 2px 0;">${dayNum}</span>
+                    <span style="font-size: 0.58rem; color: var(--text-muted); font-weight: 500;">${month}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    const timeContainer = document.getElementById('outstation-time-slots-container');
+    const hiddenTimeInput = document.getElementById('outstation-schedule-time');
+    if (timeContainer && hiddenTimeInput) {
+        const slots = [
+            "06:00 AM", "07:00 AM", "08:00 AM",
+            "09:00 AM", "10:00 AM", "11:00 AM",
+            "12:00 PM", "02:00 PM", "04:00 PM",
+            "06:00 PM", "08:00 PM", "10:00 PM"
+        ];
+        timeContainer.innerHTML = slots.map((slot, idx) => {
+            const isActive = window.selectedOutstationScheduleTime ? (window.selectedOutstationScheduleTime === slot) : (idx === 0);
+            if (isActive) {
+                hiddenTimeInput.value = slot;
+                window.selectedOutstationScheduleTime = slot;
+            }
+            return `
+                <div class="outstation-time-chip ${isActive ? 'active' : ''}" data-time="${slot}" onclick="selectOutstationScheduleTime(this)" style="display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 10px; background: ${isActive ? 'rgba(250, 204, 21, 0.1)' : 'rgba(255,255,255,0.03)'}; border: 1.5px solid ${isActive ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; cursor: pointer; transition: all 0.2s; font-size: 0.72rem; font-weight: 700; color: ${isActive ? 'var(--primary)' : '#eee'};">
+                    ${slot}
+                </div>
+            `;
+        }).join('');
+    }
+};
+
+window.selectOutstationScheduleDate = function(el) {
+    document.querySelectorAll('.outstation-date-chip').forEach(c => {
+        c.classList.remove('active');
+        c.style.background = 'rgba(255, 255, 255, 0.03)';
+        c.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+        const firstSpan = c.querySelector('span');
+        if (firstSpan) firstSpan.style.color = 'var(--text-muted)';
+    });
+    el.classList.add('active');
+    el.style.background = 'rgba(250, 204, 21, 0.15)';
+    el.style.borderColor = 'var(--primary)';
+    const firstSpan = el.querySelector('span');
+    if (firstSpan) firstSpan.style.color = 'var(--primary)';
+
+    const dateStr = el.getAttribute('data-date');
+    window.selectedOutstationScheduleDate = dateStr;
+    const hidden = document.getElementById('outstation-schedule-date');
+    if (hidden) hidden.value = dateStr;
+};
+
+window.selectOutstationScheduleTime = function(el) {
+    document.querySelectorAll('.outstation-time-chip').forEach(c => {
+        c.classList.remove('active');
+        c.style.background = 'rgba(255, 255, 255, 0.03)';
+        c.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+        c.style.color = '#eee';
+    });
+    el.classList.add('active');
+    el.style.background = 'rgba(250, 204, 21, 0.1)';
+    el.style.borderColor = 'var(--primary)';
+    el.style.color = 'var(--primary)';
+
+    const timeStr = el.getAttribute('data-time');
+    window.selectedOutstationScheduleTime = timeStr;
+    const hidden = document.getElementById('outstation-schedule-time');
+    if (hidden) hidden.value = timeStr;
+};
+
+window.calcOutstationRouteAndFare = function() {
+    const pInput = document.getElementById('pickup-location-outstation') || document.getElementById('outstation-pickup-input');
+    const dInput = document.getElementById('drop-location-outstation') || document.getElementById('outstation-drop-input');
+    if (!pInput || !dInput) return;
+
+    const pLat = parseFloat(pInput.getAttribute('data-lat'));
+    const pLng = parseFloat(pInput.getAttribute('data-lng'));
+    const dLat = parseFloat(dInput.getAttribute('data-lat'));
+    const dLng = parseFloat(dInput.getAttribute('data-lng'));
+
+    if (isNaN(pLat) || isNaN(pLng) || isNaN(dLat) || isNaN(dLng)) {
+        if (typeof window.renderOutstationUsagePills === 'function') window.renderOutstationUsagePills();
+        window.updateOutstationFareBreakdown();
+        return;
+    }
+
+    const applyRouteResults = function(oneWayKm, oneWaySeconds) {
+        window.outstationRawDistanceKm = oneWayKm;
+        window.outstationRawDurationSeconds = oneWaySeconds;
+
+        const feasibility = window.getOutstationFeasibilityState();
+        const totalDistKm = feasibility.isRound ? (oneWayKm * 2) : oneWayKm;
+        window.outstationDistanceKm = totalDistKm;
+        window.outstationDurationMins = feasibility.totalDrivingMins;
+
+        const distEl = document.getElementById('outstation-est-distance');
+        const durEl = document.getElementById('outstation-est-duration');
+        const badge = document.getElementById('outstation-route-stats');
+        if (distEl) distEl.textContent = `${totalDistKm.toFixed(1)} km`;
+        if (durEl) {
+            const h = Math.floor(feasibility.totalDrivingMins / 60);
+            const m = feasibility.totalDrivingMins % 60;
+            durEl.textContent = h > 0 ? `${h}h ${m}m (${feasibility.totalDrivingMins} mins)` : `${feasibility.totalDrivingMins} mins`;
+        }
+        if (badge) badge.style.display = 'flex';
+
+        if (typeof window.renderOutstationUsagePills === 'function') {
+            window.renderOutstationUsagePills();
+        }
+        window.updateOutstationFareBreakdown();
+    };
+
+    if (typeof google === 'undefined' || !google.maps || !google.maps.DirectionsService) {
+        const straightDist = typeof calcDistanceKm === 'function' ? calcDistanceKm(pLat, pLng, dLat, dLng) : 50;
+        const distKm = parseFloat((straightDist * 1.3).toFixed(1));
+        const mins = Math.round(distKm * 2.2);
+        applyRouteResults(distKm, mins * 60);
+        return;
+    }
+
+    const directionsService = new google.maps.DirectionsService();
+    const request = {
+        origin: new google.maps.LatLng(pLat, pLng),
+        destination: new google.maps.LatLng(dLat, dLng),
+        travelMode: google.maps.TravelMode.DRIVING
+    };
+
+    directionsService.route(request, function(response, status) {
+        if (status === 'OK' && response && response.routes && response.routes[0]) {
+            const route = response.routes[0];
+            let totalMeters = 0;
+            let totalSeconds = 0;
+            route.legs.forEach(leg => {
+                totalMeters += leg.distance.value;
+                totalSeconds += leg.duration.value;
+            });
+
+            const km = parseFloat((totalMeters / 1000).toFixed(1));
+            applyRouteResults(km, totalSeconds);
+        } else {
+            const straightDist = typeof calcDistanceKm === 'function' ? calcDistanceKm(pLat, pLng, dLat, dLng) : 50;
+            const distKm = parseFloat((straightDist * 1.3).toFixed(1));
+            const mins = Math.round(distKm * 2.2);
+            applyRouteResults(distKm, mins * 60);
+        }
+    });
+};
+
+window.updateOutstationFareBreakdown = async function() {
+    const details = document.getElementById('outstation-breakdown-details');
+    if (!details) return;
+
+    try {
+        if (typeof loadSystemSettings === 'function') {
+            await loadSystemSettings();
+        }
+        const settings = window.redrivoSystemSettings || {};
+
+        const vehicles = getOutstationVehiclesList();
+        let v = vehicles.find(veh => veh.id === window.selectedOutstationVehicleId);
+        if (!v && vehicles.length > 0) v = vehicles[activeVehicleIndex] || vehicles[0];
+
+        const isBike = v && (String(v.type || '').toLowerCase().includes('bike') || String(v.type || '').toLowerCase().includes('motorcycle') || String(v.category || '').toLowerCase().includes('bike'));
+        const vehicleType = isBike ? 'bike' : 'car';
+        const tripType = window.selectedOutstationTripType || 'round';
+        const usageType = window.selectedOutstationUsageType || 'days';
+        const usageValue = window.selectedOutstationUsageValue || 1;
+
+        const platformBaseCharge = typeof getEffectivePlatformBaseCharge === 'function' ? getEffectivePlatformBaseCharge(vehicleType) : 99;
+
+        // Fetch dynamic Day slabs
+        const daySlabCacheKey = `${vehicleType}_${tripType}`;
+        if (!window._cachedOutstationSlabs || window._cachedOutstationSlabsKey !== daySlabCacheKey) {
+            try {
+                const slabRes = await fetch(`${API_URL}/settings/outstation-slabs?type=${vehicleType}&tripType=${tripType}`);
+                if (slabRes.ok) {
+                    window._cachedOutstationSlabs = await slabRes.json();
+                    window._cachedOutstationSlabsKey = daySlabCacheKey;
+                } else {
+                    window._cachedOutstationSlabs = [];
+                }
+            } catch (e) {
+                window._cachedOutstationSlabs = [];
+            }
+        }
+
+        // Fetch dynamic Hourly slabs
+        const hourlySlabCacheKey = `${vehicleType}`;
+        if (!window._cachedOutstationHourlySlabs || window._cachedOutstationHourlyKey !== hourlySlabCacheKey) {
+            try {
+                const hSlabRes = await fetch(`${API_URL}/settings/outstation-hourly-slabs?type=${vehicleType}`);
+                if (hSlabRes.ok) {
+                    window._cachedOutstationHourlySlabs = await hSlabRes.json();
+                    window._cachedOutstationHourlyKey = hourlySlabCacheKey;
+                } else {
+                    window._cachedOutstationHourlySlabs = [];
+                }
+            } catch (e) {
+                window._cachedOutstationHourlySlabs = [];
+            }
+        }
+
+        const activeDaySlabs = window._cachedOutstationSlabs || [];
+        const activeHourlySlabs = window._cachedOutstationHourlySlabs || [];
+        const hasAnyDaySlabs = activeDaySlabs.length > 0;
+        const hasAnyHourlySlabs = activeHourlySlabs.length > 0;
+
+        let hasValidRate = false;
+        let driverPayoutBase = 0;
+        let rateDisplay = '';
+
+        if (usageType === 'hours') {
+            const matchingHourlySlab = activeHourlySlabs.find(s => Number(s.hours) === Number(usageValue));
+            if (matchingHourlySlab) {
+                const hourlyRate = Number(matchingHourlySlab.ratePerHour !== undefined ? matchingHourlySlab.ratePerHour : matchingHourlySlab.rateperhour);
+                if (hourlyRate >= 0 && isFinite(hourlyRate)) {
+                    driverPayoutBase = usageValue * hourlyRate;
+                    rateDisplay = `₹${hourlyRate.toFixed(0)} / hr`;
+                    hasValidRate = true;
+                }
+            }
+        } else {
+            // Days tier: query day_incentive_slabs
+            const matchingDaySlab = activeDaySlabs.find(s => {
+                const minD = Number(s.min_days !== undefined ? s.min_days : (s.minDays !== undefined ? s.minDays : s.mindays));
+                const maxD = Number(s.max_days !== undefined ? s.max_days : (s.maxDays !== undefined ? s.maxDays : s.maxdays));
+                return usageValue >= minD && usageValue <= maxD;
+            });
+
+            if (matchingDaySlab) {
+                const dailyRate = Number(matchingDaySlab.rate_per_day !== undefined ? matchingDaySlab.rate_per_day : (matchingDaySlab.ratePerDay !== undefined ? matchingDaySlab.ratePerDay : matchingDaySlab.rateperday));
+                if (dailyRate >= 0 && isFinite(dailyRate)) {
+                    driverPayoutBase = usageValue * dailyRate;
+                    rateDisplay = `₹${dailyRate.toFixed(0)} / day`;
+                    hasValidRate = true;
+                }
+            }
+        }
+
+        // Strict Unconfigured / Empty-State Handling (ZERO silent fallbacks)
+        if (!hasValidRate) {
+            window.outstationEstimatedTotalFare = 0;
+            let title = '';
+            let description = '';
+            let btnText = '';
+
+            if (!hasAnyDaySlabs && !hasAnyHourlySlabs) {
+                title = 'Outstation Pricing Not Available';
+                description = `Outstation rates are not yet configured for ${vehicleType.toUpperCase()} bookings. Please check back later or contact support.`;
+                btnText = 'Outstation Rates Not Available';
+            } else if (usageType === 'hours') {
+                title = 'Hourly Package Not Configured';
+                description = hasAnyDaySlabs
+                    ? `Outstation package pricing for <strong>${usageValue} Hours</strong> is not yet configured for ${vehicleType.toUpperCase()}. Please choose a <strong>Multi-Day</strong> rental option.`
+                    : `Outstation hourly rates are not yet configured for ${vehicleType.toUpperCase()}.`;
+                btnText = `Rates Not Configured (${usageValue}h)`;
+            } else {
+                title = 'Multi-Day Slab Not Configured';
+                description = hasAnyHourlySlabs
+                    ? `Outstation daily rates for <strong>${usageValue} Day(s)</strong> (${tripType === 'round' ? 'Round Trip' : 'One-Way'}) are not yet configured for ${vehicleType.toUpperCase()}. Please choose an <strong>Hourly</strong> package option.`
+                    : `Outstation multi-day rates are not yet configured for ${vehicleType.toUpperCase()}.`;
+                btnText = `Rates Not Configured (${usageValue}d)`;
+            }
+
+            details.innerHTML = `
+                <div style="background: rgba(239, 68, 68, 0.08); border: 1.5px solid rgba(239, 68, 68, 0.25); border-radius: 12px; padding: 14px 16px; text-align: center;">
+                    <div style="font-weight: 800; color: #ef4444; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <span class="material-symbols-outlined" style="font-size: 1.1rem; color: #ef4444;">error</span>
+                        <span>${title}</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.45;">
+                        ${description}
+                    </div>
+                </div>
+            `;
+
+            const broadcastBtn = document.getElementById('btn-broadcast-outstation');
+            if (broadcastBtn) {
+                broadcastBtn.style.background = '#334155';
+                broadcastBtn.style.color = '#94a3b8';
+                broadcastBtn.style.cursor = 'not-allowed';
+                broadcastBtn.style.opacity = '0.55';
+                broadcastBtn.style.boxShadow = 'none';
+                broadcastBtn.innerHTML = `<span>${btnText}</span>`;
+            }
+            return;
+        }
+
+        const totalEstimated = platformBaseCharge + driverPayoutBase;
+        window.outstationEstimatedTotalFare = totalEstimated;
+
+        const usageLabel = usageType === 'hours' ? `${usageValue} Hours` : (usageValue === 1 ? '1 Day' : `${usageValue} Days`);
+        const tripTypeLabel = tripType === 'round' ? 'Round Trip' : 'One-Way Trip';
+
+        details.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #fff;">
+                <span style="color: var(--text-muted);">Trip Type</span>
+                <span style="font-weight: 700;">${tripTypeLabel}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #fff;">
+                <span style="color: var(--text-muted);">Platform Base Charge</span>
+                <span style="font-weight: 700;">₹${platformBaseCharge}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #fff;">
+                <span style="color: var(--text-muted);">${usageType === 'hours' ? 'Driver Hourly Rate' : 'Driver Daily Rate'}</span>
+                <span style="font-weight: 700;">${rateDisplay}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #fff;">
+                <span style="color: var(--text-muted);">Estimated Usage</span>
+                <span style="font-weight: 700;">${usageLabel}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: #fff;">
+                <span style="color: var(--text-muted);">Driver Base Payout</span>
+                <span style="font-weight: 700;">₹${driverPayoutBase.toFixed(0)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px; font-size: 0.95rem; color: #fff;">
+                <span style="font-weight: 800; color: var(--primary);">Estimated Total</span>
+                <span style="font-weight: 900; color: var(--primary); font-size: 1.1rem;">₹${Math.round(totalEstimated)}</span>
+            </div>
+        `;
+
+        const broadcastBtn = document.getElementById('btn-broadcast-outstation');
+        if (broadcastBtn) {
+            broadcastBtn.style.background = 'var(--primary)';
+            broadcastBtn.style.color = '#000';
+            broadcastBtn.style.cursor = 'pointer';
+            broadcastBtn.style.opacity = '1';
+            broadcastBtn.style.boxShadow = '0 6px 20px rgba(250, 204, 21, 0.25)';
+            broadcastBtn.innerHTML = `
+                <span>Broadcast Request to Outstation Drivers (₹${Math.round(totalEstimated)})</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            `;
+        }
+    } catch (err) {
+        console.error("Failed to update outstation fare breakdown:", err);
+        details.innerHTML = '<div style="color: var(--danger); font-size: 0.78rem; text-align: center;">Failed to calculate fare estimate.</div>';
+    }
+};
+
+window.proceedWithOutstationBooking = async function() {
+    if (typeof currentUser === 'undefined' || !currentUser) {
+        if (typeof showToast === 'function') showToast('Please log in first', 'error');
+        return;
+    }
+
+    if (!window.outstationEstimatedTotalFare || window.outstationEstimatedTotalFare <= 0) {
+        if (typeof showToast === 'function') showToast('Outstation rates are not yet configured for this selection', 'error');
+        return;
+    }
+
+    // Feasibility Floor Guard
+    const feasibility = typeof window.getOutstationFeasibilityState === 'function' ? window.getOutstationFeasibilityState() : null;
+    if (feasibility && feasibility.totalDrivingHours > 0) {
+        if (!feasibility.hoursTierAllowed && window.selectedOutstationUsageType === 'hours') {
+            if (typeof showToast === 'function') showToast(`Total driving time (${feasibility.totalDrivingHours.toFixed(1)}h) exceeds 12h daily cap. Minimum ${feasibility.minFeasibleDays} Days required.`, 'error');
+            return;
+        }
+        if (window.selectedOutstationUsageType === 'days' && (window.selectedOutstationUsageValue || 1) < feasibility.minFeasibleDays) {
+            if (typeof showToast === 'function') showToast(`Total driving time (${feasibility.totalDrivingHours.toFixed(1)}h) requires minimum ${feasibility.minFeasibleDays} Days.`, 'error');
+            return;
+        }
+    }
+
+    const vehicles = getOutstationVehiclesList();
+    let v = vehicles.find(veh => veh.id === window.selectedOutstationVehicleId);
+    if (!v && vehicles.length > 0) v = vehicles[activeVehicleIndex] || vehicles[0];
+
+    if (!v) {
+        if (typeof showToast === 'function') showToast('Please add or select a vehicle first', 'error');
+        return;
+    }
+
+    const pInput = document.getElementById('pickup-location-outstation') || document.getElementById('outstation-pickup-input');
+    const dInput = document.getElementById('drop-location-outstation') || document.getElementById('outstation-drop-input');
+
+    const pAddress = pInput ? (pInput.getAttribute('data-address') || pInput.value).trim() : '';
+    const pLat = pInput ? parseFloat(pInput.getAttribute('data-lat')) : NaN;
+    const pLng = pInput ? parseFloat(pInput.getAttribute('data-lng')) : NaN;
+
+    const dAddress = dInput ? (dInput.getAttribute('data-address') || dInput.value).trim() : '';
+    const dLat = dInput ? parseFloat(dInput.getAttribute('data-lat')) : NaN;
+    const dLng = dInput ? parseFloat(dInput.getAttribute('data-lng')) : NaN;
+
+    if (!pAddress || isNaN(pLat) || isNaN(pLng)) {
+        if (typeof showToast === 'function') showToast('Please select a valid pickup location from the suggestions', 'warning');
+        if (pInput) pInput.focus();
+        return;
+    }
+
+    if (!dAddress || isNaN(dLat) || isNaN(dLng)) {
+        if (typeof showToast === 'function') showToast('Please select a valid destination/drop location from the suggestions', 'warning');
+        if (dInput) dInput.focus();
+        return;
+    }
+
+    const dateStr = window.selectedOutstationScheduleDate || (document.getElementById('outstation-schedule-date') ? document.getElementById('outstation-schedule-date').value : '');
+    const timeStr = window.selectedOutstationScheduleTime || (document.getElementById('outstation-schedule-time') ? document.getElementById('outstation-schedule-time').value : '');
+
+    if (!dateStr || !timeStr) {
+        if (typeof showToast === 'function') showToast('Please select departure date and time', 'warning');
+        return;
+    }
+
+    // Hard Guard against multiple active bookings
+    try {
+        if (typeof apiGet === 'function') {
+            const reqs = await apiGet('/requests');
+            const myReqs = reqs.filter(r => (r.customerId || r.customerid) === currentUser.id);
+            const activeReq = myReqs.find(r => (r.vehicleId || r.vehicleid) === v.id && !['completed','cancelled','returned','drop_completed'].includes(r.status));
+            if (activeReq) {
+                if (typeof showToast === 'function') showToast('This vehicle already has an active booking. Track your current order.', 'error');
+                return;
+            }
+        }
+    } catch(e) {
+        console.warn('Booking guard check failed:', e);
+    }
+
+    // Check user details
+    if (!currentUser.name || currentUser.name === 'New Partner' || !currentUser.email || currentUser.email === 'pending@redrivo.com') {
+        const modalPending = document.getElementById('ud-pending-vehicle-id');
+        if (modalPending) modalPending.value = v.id;
+        window.userProfileTriggeredByBooking = true;
+        const udModal = document.getElementById('user-details-modal');
+        if (udModal) udModal.style.display = 'flex';
+        return;
+    }
+
+    const triggerCondition = typeof askVehicleCondition === 'function' ? askVehicleCondition : (id, cb) => cb('Working');
+    triggerCondition(v.id, async (condition) => {
+        window.selectedVehicleCondition = condition || 'Working';
+        const totalFare = window.outstationEstimatedTotalFare;
+
+        const payload = {
+            customerId: currentUser.id,
+            vehicleId: v.id,
+            service_type: 'driver',
+            pricing_source: 'outstation',
+            outstation_trip_type: window.selectedOutstationTripType || 'round',
+            outstation_usage_type: window.selectedOutstationUsageType || 'days',
+            outstation_usage_value: window.selectedOutstationUsageValue || 1,
+            pickup_address: pAddress,
+            pickup_lat: pLat,
+            pickup_lng: pLng,
+            drop_address: dAddress,
+            drop_lat: dLat,
+            drop_lng: dLng,
+            distance_km: window.outstationDistanceKm || 0,
+            duration_mins: window.outstationDurationMins || 0,
+            schedule_date: dateStr,
+            schedule_time: timeStr,
+            vehicle_condition: window.selectedVehicleCondition,
+            totalCustomerPrice: totalFare,
+            totalcustomerprice: totalFare,
+            estimated_fare: totalFare
+        };
+
+        if (typeof showToast === 'function') showToast('Broadcasting request to outstation drivers...', 'info');
+
+        try {
+            if (typeof apiPost === 'function') {
+                const res = await apiPost('/requests', payload);
+                if (res && res.id) {
+                    window.closeOutstationBookingScreen();
+                    if (typeof showToast === 'function') showToast('Outstation booking request broadcast successfully!', 'success');
+                    if (typeof showFindingMarshalScreen === 'function') {
+                        showFindingMarshalScreen(res.id);
+                    }
+                } else {
+                    if (typeof showToast === 'function') showToast('Failed to create outstation booking request.', 'error');
+                }
+            }
+        } catch (err) {
+            console.error("Outstation booking error:", err);
+            if (typeof showToast === 'function') showToast(err.message || 'Error dispatching outstation request', 'error');
+        }
+    });
+};

@@ -74,6 +74,6 @@ migrate_*.js
 !package.json
 !package-lock.json
 
-# APK binaries (distributed via Railway persistent volume / Cloudflare Pages)
+# APK binaries (allow public/downloads for deployment)
 *.apk
-public/downloads/*.apk
+!public/downloads/*.apk

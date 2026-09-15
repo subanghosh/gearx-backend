@@ -465,6 +465,35 @@ pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_test_account BOOLEAN DEFAULT FALSE;
     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE;
+    ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS pricing_source VARCHAR(32) DEFAULT 'distance';
+    ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS final_agreed_amount NUMERIC(10, 2);
+
+    CREATE TABLE IF NOT EXISTS day_incentive_slabs (
+        id VARCHAR(64) PRIMARY KEY,
+        minDays REAL NOT NULL DEFAULT 1,
+        maxDays REAL NOT NULL,
+        tripType VARCHAR(16) NOT NULL DEFAULT 'round' CHECK (tripType IN ('round', 'oneway')),
+        ratePerDay NUMERIC(10, 2) NOT NULL,
+        vehicle_type VARCHAR(16) DEFAULT 'car'
+    );
+    CREATE INDEX IF NOT EXISTS idx_day_slabs_veh_trip ON day_incentive_slabs(vehicle_type, tripType);
+
+    CREATE TABLE IF NOT EXISTS bid_offers (
+        id VARCHAR(64) PRIMARY KEY,
+        service_request_id VARCHAR(64) NOT NULL REFERENCES service_requests(id) ON DELETE CASCADE,
+        marshal_id VARCHAR(64) NOT NULL,
+        round_number INT NOT NULL DEFAULT 1 CHECK (round_number IN (1, 2)),
+        offered_by VARCHAR(16) NOT NULL CHECK (offered_by IN ('customer', 'driver')),
+        amount NUMERIC(10, 2) NOT NULL,
+        floor_amount NUMERIC(10, 2) NOT NULL,
+        ceiling_amount NUMERIC(10, 2) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'expired', 'countered')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_bid_offers_req ON bid_offers(service_request_id);
+    CREATE INDEX IF NOT EXISTS idx_bid_offers_marshal ON bid_offers(marshal_id);
+    CREATE INDEX IF NOT EXISTS idx_bid_offers_status ON bid_offers(status);
 `).catch(e => console.warn('Schema check warning:', e.message));
 
 const db = {
@@ -1014,6 +1043,36 @@ function initializeDatabase() {
                     db.run("INSERT INTO hourly_incentive_slabs (id, maxHours, ratePerHour, vehicle_type) VALUES ('hslab_bike_3', 999.0, 35.0, 'bike')");
                 }
             });
+        });
+
+        // Day Incentive Slabs Table (Dedicated for Multi-Day Outstation Bookings - Created Empty)
+        db.run(`CREATE TABLE IF NOT EXISTS day_incentive_slabs (
+            id TEXT PRIMARY KEY,
+            minDays REAL NOT NULL DEFAULT 1,
+            maxDays REAL NOT NULL,
+            tripType TEXT NOT NULL DEFAULT 'round',
+            ratePerDay REAL NOT NULL,
+            vehicle_type TEXT DEFAULT 'car'
+        )`);
+
+        // Bid Offers Table
+        db.run(`CREATE TABLE IF NOT EXISTS bid_offers (
+            id TEXT PRIMARY KEY,
+            service_request_id TEXT NOT NULL,
+            marshal_id TEXT NOT NULL,
+            round_number INTEGER NOT NULL DEFAULT 1,
+            offered_by TEXT NOT NULL,
+            amount REAL NOT NULL,
+            floor_amount REAL NOT NULL,
+            ceiling_amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        )`);
+
+        // Service Requests Outstation Columns
+        ['pricing_source TEXT DEFAULT \'distance\'', 'final_agreed_amount REAL'].forEach(col => {
+            db.run(`ALTER TABLE service_requests ADD COLUMN ${col}`, () => {});
         });
 
         // Seed Admin (hash password in production)
@@ -2022,6 +2081,145 @@ apiRouter.post('/settings/hourly-slabs', authMiddleware, requireRole('admin'), a
         await client.query('ROLLBACK');
         console.error('Atomic transaction failed for hourly slabs, rolled back:', err.message);
         res.status(500).json({ error: 'Failed to update hourly rate slabs: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Outstation Day Rate Slabs Routes (Dedicated for Multi-Day Outstation with Atomic Transaction)
+apiRouter.get('/settings/outstation-slabs', (req, res) => {
+    const type = (req.query.type || 'car').toLowerCase();
+    const tripType = req.query.tripType ? req.query.tripType.toLowerCase() : null;
+
+    let query = `SELECT id, mindays as "minDays", maxdays as "maxDays", triptype as "tripType", rateperday as "ratePerDay", vehicle_type as "vehicleType" 
+                 FROM day_incentive_slabs 
+                 WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1`;
+    const params = [type];
+    if (tripType && ['round', 'oneway'].includes(tripType)) {
+        query += ` AND LOWER(triptype) = $2`;
+        params.push(tripType);
+    }
+    query += ` ORDER BY triptype ASC, mindays ASC`;
+
+    pool.query(query, params).then(result => {
+        return res.json(result.rows || []);
+    }).catch(err => {
+        console.error('Error fetching outstation day slabs:', err.message);
+        res.status(500).json({ error: err.message });
+    });
+});
+
+apiRouter.post('/settings/outstation-slabs', authMiddleware, requireRole('admin'), async (req, res) => {
+    const { slabs } = req.body;
+    const type = (req.body.type || 'car').toLowerCase();
+    if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
+
+    // Strict pre-validation: validate all entries before touching database
+    for (let i = 0; i < slabs.length; i++) {
+        const s = slabs[i];
+        const minD = Number(s.minDays !== undefined ? s.minDays : s.mindays);
+        const maxD = Number(s.maxDays !== undefined ? s.maxDays : s.maxdays);
+        const rate = Number(s.ratePerDay !== undefined ? s.ratePerDay : s.rateperday);
+        const tripType = String(s.tripType || s.triptype || 'round').toLowerCase();
+        if (isNaN(minD) || minD < 1 || isNaN(maxD) || maxD < minD || isNaN(rate) || rate < 0 || !['round', 'oneway'].includes(tripType) || !isFinite(minD) || !isFinite(maxD) || !isFinite(rate)) {
+            return res.status(400).json({ 
+                error: `Invalid slab at index ${i}: minDays must be >= 1, maxDays >= minDays, ratePerDay >= 0, and tripType must be 'round' or 'oneway'` 
+            });
+        }
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query("DELETE FROM day_incentive_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1", [type]);
+
+        for (let idx = 0; idx < slabs.length; idx++) {
+            const slab = slabs[idx];
+            const tripType = String(slab.tripType || slab.triptype || 'round').toLowerCase();
+            const id = `dslab_${type}_${tripType}_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const minD = Number(slab.minDays !== undefined ? slab.minDays : slab.mindays);
+            const maxD = Number(slab.maxDays !== undefined ? slab.maxDays : slab.maxdays);
+            const rate = Number(slab.ratePerDay !== undefined ? slab.ratePerDay : slab.rateperday);
+            await client.query(
+                "INSERT INTO day_incentive_slabs (id, mindays, maxdays, triptype, rateperday, vehicle_type) VALUES ($1, $2, $3, $4, $5, $6)",
+                [id, minD, maxD, tripType, rate, type]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Atomic transaction failed for outstation day slabs, rolled back:', err.message);
+        res.status(500).json({ error: 'Failed to update outstation day rate slabs: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Outstation Hourly Rate Slabs Routes (Dedicated for 12/16/20h Outstation with Atomic Transaction)
+apiRouter.get('/settings/outstation-hourly-slabs', (req, res) => {
+    const type = (req.query.type || 'car').toLowerCase();
+
+    const query = `SELECT id, hours, rateperhour as "ratePerHour", vehicle_type as "vehicleType" 
+                   FROM outstation_hourly_slabs 
+                   WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1
+                   ORDER BY hours ASC`;
+
+    pool.query(query, [type]).then(result => {
+        return res.json(result.rows || []);
+    }).catch(err => {
+        console.error('Error fetching outstation hourly slabs:', err.message);
+        res.status(500).json({ error: err.message });
+    });
+});
+
+apiRouter.post('/settings/outstation-hourly-slabs', authMiddleware, requireRole('admin'), async (req, res) => {
+    const { slabs } = req.body;
+    const type = (req.body.type || 'car').toLowerCase();
+    if (!Array.isArray(slabs)) return res.status(400).json({ error: 'Slabs array is required' });
+
+    const validHours = [12, 16, 20];
+    const seenHours = new Set();
+
+    // Strict pre-validation: validate all entries before touching database
+    for (let i = 0; i < slabs.length; i++) {
+        const s = slabs[i];
+        const h = Number(s.hours);
+        const rate = Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour);
+        if (isNaN(h) || !validHours.includes(h) || isNaN(rate) || rate < 0 || !isFinite(rate)) {
+            return res.status(400).json({ 
+                error: `Invalid slab at index ${i}: hours must be one of [12, 16, 20] and ratePerHour must be >= 0` 
+            });
+        }
+        if (seenHours.has(h)) {
+            return res.status(400).json({ error: `Duplicate package for ${h} Hours detected` });
+        }
+        seenHours.add(h);
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query("DELETE FROM outstation_hourly_slabs WHERE LOWER(COALESCE(vehicle_type, 'car')) = $1", [type]);
+
+        for (let idx = 0; idx < slabs.length; idx++) {
+            const slab = slabs[idx];
+            const h = Number(slab.hours);
+            const rate = Number(slab.ratePerHour !== undefined ? slab.ratePerHour : slab.rateperhour);
+            const id = `ohslab_${type}_${h}h_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            await client.query(
+                "INSERT INTO outstation_hourly_slabs (id, hours, rateperhour, vehicle_type) VALUES ($1, $2, $3, $4)",
+                [id, h, rate, type]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Atomic transaction failed for outstation hourly slabs, rolled back:', err.message);
+        res.status(500).json({ error: 'Failed to update outstation hourly rate slabs: ' + err.message });
     } finally {
         client.release();
     }
@@ -11674,28 +11872,75 @@ apiRouter.get('/traction/live-metrics', authMiddleware, requireRole('investor', 
 
 app.use('/api', apiRouter);
 
+// Authoritative verification: Check if a file is an active vehicle exterior photo in the vehicles table
+async function isRegisteredVehiclePhoto(filename) {
+    if (!filename) return false;
+    const cleanName = path.basename(filename);
+    const keyWithPrefix = `uploads/${cleanName}`;
+    
+    try {
+        const pgCheck = await pool.query(
+            `SELECT id FROM vehicles WHERE photo = $1 OR photo = $2 OR photo LIKE '%' || $1 LIMIT 1`,
+            [keyWithPrefix, cleanName]
+        );
+        if (pgCheck.rows && pgCheck.rows.length > 0) return true;
+    } catch (e) {
+        // Fallback to SQLite check
+    }
+
+    try {
+        const sqCheck = await new Promise((resolve) => {
+            db.get(
+                "SELECT id FROM vehicles WHERE photo = ? OR photo = ? OR photo LIKE ? LIMIT 1",
+                [keyWithPrefix, cleanName, `%${cleanName}`],
+                (err, row) => resolve(!!row)
+            );
+        });
+        if (sqCheck) return true;
+    } catch (e) {}
+
+    return false;
+}
+
 app.get('/uploads/:filename', async (req, res) => {
-    const { exp, sig } = req.query;
-    if (!exp || !sig) {
-        return res.status(401).json({ error: 'Access denied: Authentication credentials missing.' });
-    }
-
-    const expNum = parseInt(exp, 10);
-    if (isNaN(expNum) || Date.now() > expNum * 1000) {
-        return res.status(401).json({ error: 'Access denied: Link has expired.' });
-    }
-
     const filename = path.basename(req.params.filename);
-    const stringToSign = `${filename}:${exp}`;
-    const expectedSig = crypto.createHmac('sha256', FILE_SIGNING_SECRET).update(stringToSign).digest('hex');
+    const { exp, sig } = req.query;
 
-    const sigBuffer = Buffer.from(String(sig), 'utf8');
-    const expectedBuffer = Buffer.from(expectedSig, 'utf8');
-    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
-        return res.status(403).json({ error: 'Access denied: Invalid signature.' });
+    let isAuthenticated = false;
+    let isVehiclePhoto = false;
+
+    // 1. If HMAC credentials are provided, validate them
+    if (exp && sig) {
+        const expNum = parseInt(exp, 10);
+        if (!isNaN(expNum) && Date.now() <= expNum * 1000) {
+            const stringToSign = `${filename}:${exp}`;
+            const expectedSig = crypto.createHmac('sha256', FILE_SIGNING_SECRET).update(stringToSign).digest('hex');
+            const sigBuffer = Buffer.from(String(sig), 'utf8');
+            const expectedBuffer = Buffer.from(expectedSig, 'utf8');
+            if (sigBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+                isAuthenticated = true;
+            }
+        }
+    }
+
+    // 2. If not authenticated via HMAC, check authoritative database record in vehicles.photo
+    if (!isAuthenticated) {
+        isVehiclePhoto = await isRegisteredVehiclePhoto(filename);
+        if (!isVehiclePhoto) {
+            if (!exp || !sig) {
+                return res.status(401).json({ error: 'Access denied: Authentication credentials missing.' });
+            } else {
+                return res.status(403).json({ error: 'Access denied: Invalid or expired signature.' });
+            }
+        }
     }
 
     res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    if (isVehiclePhoto) {
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+    } else {
+        res.setHeader('Cache-Control', 'private, max-age=900');
+    }
 
     // 1. Try Cloudflare R2 first
     if (isR2Configured()) {
@@ -11705,7 +11950,6 @@ app.get('/uploads/:filename', async (req, res) => {
             if (r2Obj && r2Obj.Body) {
                 if (r2Obj.ContentType) res.setHeader('Content-Type', r2Obj.ContentType);
                 if (r2Obj.ContentLength) res.setHeader('Content-Length', r2Obj.ContentLength);
-                res.setHeader('Cache-Control', 'private, max-age=900');
                 return r2Obj.Body.pipe(res);
             }
         } catch (r2Err) {

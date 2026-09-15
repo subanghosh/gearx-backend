@@ -7598,12 +7598,14 @@ async function renderIncentives(container) {
         let withdrawalsList = [];
         let pendingCount = 0;
         try {
-            const [wRes, countRes, sysRes, slabsRes, hourlySlabsRes, globalRes, ratesRes] = await Promise.all([
+            const [wRes, countRes, sysRes, slabsRes, hourlySlabsRes, outstationSlabsRes, outstationHourlySlabsRes, globalRes, ratesRes, cancelRes] = await Promise.all([
                 fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`).catch(() => null),
                 fetch(`${API_URL}/admin/withdrawals?status=requested`).catch(() => null),
                 fetch(`${API_URL}/system-settings`).catch(() => null),
                 fetch(`${API_URL}/settings/incentives?type=${window._incentiveVehicleType}`).catch(() => null),
                 fetch(`${API_URL}/settings/hourly-slabs?type=${window._hourlySlabsVehicleType}`).catch(() => null),
+                fetch(`${API_URL}/settings/outstation-slabs?type=${window._outstationSlabsVehicleType || 'car'}`).catch(() => null),
+                fetch(`${API_URL}/settings/outstation-hourly-slabs?type=${window._outstationSlabsVehicleType || 'car'}`).catch(() => null),
                 fetch(`${API_URL}/settings/global`).catch(() => null),
                 fetch(`${API_URL}/payout-model-rates`).catch(() => null),
                 fetch(`${API_URL}/settings/cancellation`).catch(() => null)
@@ -7633,6 +7635,28 @@ async function renderIncentives(container) {
                 if (Array.isArray(hSlabsData) && hSlabsData.length > 0) {
                     window._currentHourlySlabs = hSlabsData.map(s => ({
                         maxHours: Number(s.maxHours !== undefined ? s.maxHours : s.maxhours),
+                        ratePerHour: Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour)
+                    }));
+                }
+            }
+            if (outstationSlabsRes && outstationSlabsRes.ok) {
+                const oSlabsData = await outstationSlabsRes.json();
+                if (Array.isArray(oSlabsData)) {
+                    window._currentOutstationSlabs = oSlabsData.map(s => ({
+                        id: s.id,
+                        minDays: Number(s.minDays !== undefined ? s.minDays : s.mindays),
+                        maxDays: Number(s.maxDays !== undefined ? s.maxDays : s.maxdays),
+                        tripType: s.tripType || s.triptype || 'round',
+                        ratePerDay: Number(s.ratePerDay !== undefined ? s.ratePerDay : s.rateperday)
+                    }));
+                }
+            }
+            if (outstationHourlySlabsRes && outstationHourlySlabsRes.ok) {
+                const ohSlabsData = await outstationHourlySlabsRes.json();
+                if (Array.isArray(ohSlabsData)) {
+                    window._currentOutstationHourlySlabs = ohSlabsData.map(s => ({
+                        id: s.id,
+                        hours: Number(s.hours),
                         ratePerHour: Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour)
                     }));
                 }
@@ -7708,6 +7732,10 @@ async function renderIncentives(container) {
         }
         if (window._slabsEditMode === undefined) window._slabsEditMode = false;
         if (window._hourlySlabsEditMode === undefined) window._hourlySlabsEditMode = false;
+        if (window._outstationSlabsVehicleType === undefined) window._outstationSlabsVehicleType = 'car';
+        if (window._outstationSlabsEditMode === undefined) window._outstationSlabsEditMode = false;
+        if (window._outstationTripTypeFilter === undefined) window._outstationTripTypeFilter = 'all';
+        if (!window._currentOutstationSlabs) window._currentOutstationSlabs = [];
         if (window._globalEditMode === undefined) window._globalEditMode = false;
         if (window._payoutRatesEditMode === undefined) window._payoutRatesEditMode = false;
         if (window._cancellationEditMode === undefined) window._cancellationEditMode = false;
@@ -7727,6 +7755,9 @@ async function renderIncentives(container) {
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'hourly_slabs' ? 'active' : ''}" onclick="window._driverOpsTab='hourly_slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'hourly_slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'hourly_slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="clock" style="width:16px; height:16px;"></i> Hourly Rate Slabs
+                </button>
+                <button class="tab-btn ${window._driverOpsTab === 'outstation_slabs' ? 'active' : ''}" onclick="window._driverOpsTab='outstation_slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'outstation_slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'outstation_slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                    <i data-lucide="map-pin" style="width:16px; height:16px;"></i> Outstation Rate Slabs
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'fare_rules' ? 'active' : ''}" onclick="window._driverOpsTab='fare_rules'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'fare_rules' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'fare_rules' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Fares & Payout Rules
@@ -7999,6 +8030,190 @@ async function renderIncentives(container) {
                     </div>
                 </div>
                 `;
+            }
+
+            // TAB: OUTSTATION RATE SLABS
+            else if (window._driverOpsTab === 'outstation_slabs') {
+                window._outstationSlabsSubTab = window._outstationSlabsSubTab || 'multiday';
+                const isHourly = window._outstationSlabsSubTab === 'hourly';
+
+                html += `
+                <div class="card" style="margin-top:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Outstation Driver Rate Slabs</h2>
+                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Configure dedicated driver payout pricing for outstation bookings.</p>
+                        </div>
+
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <!-- Vehicle Type Toggle -->
+                            <button class="tab-btn ${window._outstationSlabsVehicleType === 'car' ? 'active' : ''}" onclick="window._outstationSlabsVehicleType='car'; window._currentOutstationSlabs=null; window._currentOutstationHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._outstationSlabsVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._outstationSlabsVehicleType === 'car' ? '#000' : '#fff'};">
+                                Car Slabs
+                            </button>
+                            <button class="tab-btn ${window._outstationSlabsVehicleType === 'bike' ? 'active' : ''}" onclick="window._outstationSlabsVehicleType='bike'; window._currentOutstationSlabs=null; window._currentOutstationHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._outstationSlabsVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._outstationSlabsVehicleType === 'bike' ? '#000' : '#fff'};">
+                                Bike Slabs
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mode Toggle Sub-Bar (Hourly vs Multi-Day) -->
+                    <div style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px;">
+                        <button onclick="window._outstationSlabsSubTab='multiday'; renderIncentives(document.getElementById('app'))" style="display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-weight:700; font-size:0.85rem; border:1.5px solid ${!isHourly ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background:${!isHourly ? 'rgba(250, 204, 21, 0.15)' : 'rgba(255,255,255,0.02)'}; color:${!isHourly ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; transition:all 0.2s;">
+                            <span>📅 Multi-Day Slabs</span>
+                        </button>
+                        <button onclick="window._outstationSlabsSubTab='hourly'; renderIncentives(document.getElementById('app'))" style="display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-weight:700; font-size:0.85rem; border:1.5px solid ${isHourly ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background:${isHourly ? 'rgba(250, 204, 21, 0.15)' : 'rgba(255,255,255,0.02)'}; color:${isHourly ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; transition:all 0.2s;">
+                            <span>🕒 Hourly Packages (12/16/20h)</span>
+                        </button>
+                    </div>
+                `;
+
+                if (isHourly) {
+                    const disabledHourly = window._outstationHourlyEditMode ? '' : 'disabled';
+                    const hourlySlabs = window._currentOutstationHourlySlabs || [];
+
+                    html += `
+                        <div style="margin-bottom:16px;">
+                            <div style="font-weight:700; color:#fff; font-size:0.95rem; margin-bottom:4px;">Outstation Hourly Package Rates (12 / 16 / 20 Hours)</div>
+                            <div style="font-size:0.8rem; color:var(--text-muted);">Configure driver payout rate per hour for single-day outstation trips within the 12-hour driving limit.</div>
+                        </div>
+
+                        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
+                                    <th style="padding:10px;">Duration Package</th>
+                                    <th style="padding:10px;">Driver Rate (₹/Hour)</th>
+                                    <th style="padding:10px;">Total Base Payout (₹)</th>
+                                    ${window._outstationHourlyEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    if (hourlySlabs.length === 0) {
+                        html += `
+                            <tr>
+                                <td colspan="${window._outstationHourlyEditMode ? 4 : 3}" style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.88rem;">
+                                    No outstation hourly package rates configured for ${window._outstationSlabsVehicleType.toUpperCase()} yet. The customer app will disable hourly booking and indicate unconfigured rates until added here.
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        hourlySlabs.forEach((slab, index) => {
+                            const payout = (Number(slab.hours) * Number(slab.ratePerHour || 0)).toFixed(0);
+                            html += `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding:10px;">
+                                        <select onchange="window._currentOutstationHourlySlabs[${index}].hours=Number(this.value); window.drawIncentivesUI()" ${disabledHourly} style="padding:8px 12px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
+                                            <option value="12" ${Number(slab.hours) === 12 ? 'selected' : ''}>12 Hours Package</option>
+                                            <option value="16" ${Number(slab.hours) === 16 ? 'selected' : ''}>16 Hours Package</option>
+                                            <option value="20" ${Number(slab.hours) === 20 ? 'selected' : ''}>20 Hours Package</option>
+                                        </select>
+                                    </td>
+                                    <td style="padding:10px;">
+                                        <input type="number" step="10" min="0" value="${slab.ratePerHour || 0}" onchange="window._currentOutstationHourlySlabs[${index}].ratePerHour=parseFloat(this.value); window.drawIncentivesUI()" ${disabledHourly} style="width:130px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
+                                    </td>
+                                    <td style="padding:10px; font-weight:800; color:#FACC15; font-family:monospace; font-size:0.95rem;">
+                                        ₹${payout} (${slab.hours}h &times; ₹${slab.ratePerHour || 0})
+                                    </td>
+                                    ${window._outstationHourlyEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentOutstationHourlySlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
+                                </tr>
+                            `;
+                        });
+                    }
+
+                    html += `
+                            </tbody>
+                        </table>
+
+                        <div style="display:flex; gap:10px;">
+                            ${window._outstationHourlyEditMode ? `
+                                <button onclick="window._currentOutstationHourlySlabs = window._currentOutstationHourlySlabs || []; const usedH = window._currentOutstationHourlySlabs.map(s => Number(s.hours)); const nextH = [12, 16, 20].find(h => !usedH.includes(h)) || 12; window._currentOutstationHourlySlabs.push({ hours: nextH, ratePerHour: (window._outstationSlabsVehicleType === 'bike' ? 50 : 120) }); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Package Rate</button>
+                                <button onclick="saveOutstationHourlyIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Hourly Slabs</button>
+                            ` : `
+                                <button onclick="window._outstationHourlyEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Hourly Slabs</button>
+                            `}
+                        </div>
+                    </div>
+                    `;
+                } else {
+                    // MULTI-DAY SLABS SUB-VIEW
+                    const disabledAttr = window._outstationSlabsEditMode ? '' : 'disabled';
+                    const filter = window._outstationTripTypeFilter || 'all';
+                    const slabsToDisplay = (window._currentOutstationSlabs || []).filter(s => {
+                        if (filter === 'all') return true;
+                        return s.tripType === filter;
+                    });
+
+                    html += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <div style="font-weight:700; color:#fff; font-size:0.95rem; margin-bottom:4px;">Outstation Multi-Day Rate Slabs</div>
+                                <div style="font-size:0.8rem; color:var(--text-muted);">Configure flat driver daily payout rates for multi-day outstation bookings.</div>
+                            </div>
+                            <!-- Trip Type Filter -->
+                            <select onchange="window._outstationTripTypeFilter=this.value; renderIncentives(document.getElementById('app'))" style="padding:8px 12px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.82rem; font-weight:600;">
+                                <option value="all" ${filter === 'all' ? 'selected' : ''}>All Trip Types</option>
+                                <option value="round" ${filter === 'round' ? 'selected' : ''}>Round Trip Only</option>
+                                <option value="oneway" ${filter === 'oneway' ? 'selected' : ''}>One-Way Only</option>
+                            </select>
+                        </div>
+
+                        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+                            <thead>
+                                <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
+                                    <th style="padding:10px;">From (Days)</th>
+                                    <th style="padding:10px;">To (Days)</th>
+                                    <th style="padding:10px;">Trip Type</th>
+                                    <th style="padding:10px;">Driver Payout Rate (₹/Day)</th>
+                                    ${window._outstationSlabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    if (slabsToDisplay.length === 0) {
+                        html += `
+                            <tr>
+                                <td colspan="${window._outstationSlabsEditMode ? 5 : 4}" style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.88rem;">
+                                    No outstation day slabs configured for ${window._outstationSlabsVehicleType.toUpperCase()} yet. Click <strong>+ Add Slab</strong> to create the first rate tier.
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        slabsToDisplay.forEach((slab, index) => {
+                            const realIndex = window._currentOutstationSlabs.indexOf(slab);
+                            html += `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding:10px;"><input type="number" step="1" min="1" value="${slab.minDays || 1}" onchange="window._currentOutstationSlabs[${realIndex}].minDays=parseFloat(this.value)" ${disabledAttr} style="width:100px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                                    <td style="padding:10px;"><input type="number" step="1" min="1" value="${slab.maxDays || 999}" onchange="window._currentOutstationSlabs[${realIndex}].maxDays=parseFloat(this.value)" ${disabledAttr} style="width:100px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
+                                    <td style="padding:10px;">
+                                        <select onchange="window._currentOutstationSlabs[${realIndex}].tripType=this.value" ${disabledAttr} style="padding:8px 12px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:600;">
+                                            <option value="round" ${slab.tripType === 'round' ? 'selected' : ''}>Round Trip</option>
+                                            <option value="oneway" ${slab.tripType === 'oneway' ? 'selected' : ''}>One-Way</option>
+                                        </select>
+                                    </td>
+                                    <td style="padding:10px;"><input type="number" step="50" min="0" value="${slab.ratePerDay || 0}" onchange="window._currentOutstationSlabs[${realIndex}].ratePerDay=parseFloat(this.value)" ${disabledAttr} style="width:130px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
+                                    ${window._outstationSlabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentOutstationSlabs.splice(${realIndex}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
+                                </tr>
+                            `;
+                        });
+                    }
+
+                    html += `
+                            </tbody>
+                        </table>
+
+                        <div style="display:flex; gap:10px;">
+                            ${window._outstationSlabsEditMode ? `
+                                <button onclick="window._currentOutstationSlabs.push({minDays: 1, maxDays: 999, tripType: (window._outstationTripTypeFilter === 'oneway' ? 'oneway' : 'round'), ratePerDay: (window._outstationSlabsVehicleType === 'bike' ? 600 : 1500)}); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Slab</button>
+                                <button onclick="saveOutstationIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Slabs</button>
+                            ` : `
+                                <button onclick="window._outstationSlabsEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Slabs</button>
+                            `}
+                        </div>
+                    </div>
+                    `;
+                }
             }
 
             // TAB 3: BASE FARES & PAYOUT RULES
@@ -8510,6 +8725,66 @@ async function renderIncentives(container) {
                 } else {
                     const errData = await sres.json().catch(() => ({}));
                     alert('Failed to save hourly slabs: ' + (errData.error || sres.statusText));
+                }
+            } catch(e) {
+                alert('Error: ' + e.message);
+            }
+        };
+
+        window.saveOutstationIncentives = async function() {
+            if (!Array.isArray(window._currentOutstationSlabs)) return;
+            window._currentOutstationSlabs.sort((a,b) => (a.minDays || 0) - (b.minDays || 0));
+            try {
+                const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
+                const sres = await fetch(`${API_URL}/settings/outstation-slabs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ 
+                        slabs: window._currentOutstationSlabs,
+                        type: window._outstationSlabsVehicleType 
+                    })
+                });
+                if(sres.ok) {
+                    window._outstationSlabsEditMode = false;
+                    alert('Outstation rate slabs saved successfully!');
+                    window._currentOutstationSlabs = null;
+                    renderIncentives(container);
+                } else {
+                    const errData = await sres.json().catch(() => ({}));
+                    alert('Failed to save outstation slabs: ' + (errData.error || sres.statusText));
+                }
+            } catch(e) {
+                alert('Error: ' + e.message);
+            }
+        };
+
+        window.saveOutstationHourlyIncentives = async function() {
+            if (!Array.isArray(window._currentOutstationHourlySlabs)) return;
+            window._currentOutstationHourlySlabs.sort((a,b) => Number(a.hours || 0) - Number(b.hours || 0));
+            try {
+                const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
+                const sres = await fetch(`${API_URL}/settings/outstation-hourly-slabs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ 
+                        slabs: window._currentOutstationHourlySlabs,
+                        type: window._outstationSlabsVehicleType || 'car'
+                    })
+                });
+                if(sres.ok) {
+                    window._outstationHourlyEditMode = false;
+                    alert('Outstation hourly rate slabs saved successfully!');
+                    window._currentOutstationHourlySlabs = null;
+                    renderIncentives(container);
+                } else {
+                    const errData = await sres.json().catch(() => ({}));
+                    alert('Failed to save outstation hourly slabs: ' + (errData.error || sres.statusText));
                 }
             } catch(e) {
                 alert('Error: ' + e.message);
