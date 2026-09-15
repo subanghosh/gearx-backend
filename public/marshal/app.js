@@ -9617,18 +9617,16 @@ window.openDriverBidRequestPreview = function(customData = null) {
 
     if (customData) {
         if (customData.offer) window.driverBidPreviewState.baseOffer = customData.offer;
-        if (customData.offer) window.driverBidPreviewState.selectedBid = customData.offer;
+        if (customData.ceiling) window.driverBidPreviewState.maxCeiling = customData.ceiling;
     }
+    
+    // Always start preview with the customer's base offer
+    window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
 
     const offerEl = document.getElementById('driver-preview-offer-amount');
     if (offerEl) offerEl.textContent = window.driverBidPreviewState.baseOffer;
 
-    const actionBtn = document.getElementById('driver-preview-main-action-btn');
-    if (actionBtn) {
-        actionBtn.textContent = `ACCEPT ₹${window.driverBidPreviewState.baseOffer}`;
-        actionBtn.style.background = '#22c55e';
-        actionBtn.style.color = '#000';
-    }
+    window.updateDriverCounterUI();
 
     // Reset countdown timer
     window.driverBidPreviewState.timeRemaining = 60;
@@ -9685,29 +9683,108 @@ window.closeDriverBidRequestPreview = function() {
     if (modal) modal.style.display = 'none';
 };
 
-window.selectDriverCounterBid = function(amount, el) {
-    window.driverBidPreviewState.selectedBid = amount;
+window.stepDriverCounterBid = function(delta) {
+    const floor = window.driverBidPreviewState.baseOffer || 550;
+    const ceiling = window.driverBidPreviewState.maxCeiling || 850;
+    let current = window.driverBidPreviewState.selectedBid || floor;
+    
+    current += delta;
+    if (current < floor) current = floor;
+    if (current > ceiling) current = ceiling;
+    
+    window.driverBidPreviewState.selectedBid = current;
+    window.updateDriverCounterUI();
+};
+
+window.activateDriverBidInput = function() {
+    const disp = document.getElementById('driver-counter-amount-display');
+    const input = document.getElementById('driver-counter-amount-input');
+    if (!disp || !input) return;
+    
+    input.value = window.driverBidPreviewState.selectedBid || window.driverBidPreviewState.baseOffer;
+    disp.style.display = 'none';
+    input.style.display = 'inline-block';
+    input.focus();
+    input.select();
+};
+
+window.finishDriverBidInput = function() {
+    const disp = document.getElementById('driver-counter-amount-display');
+    const input = document.getElementById('driver-counter-amount-input');
+    if (!disp || !input) return;
+    
+    const floor = window.driverBidPreviewState.baseOffer || 550;
+    const ceiling = window.driverBidPreviewState.maxCeiling || 850;
+    
+    let parsed = parseInt(input.value, 10);
+    if (isNaN(parsed) || parsed < floor) {
+        parsed = floor;
+    } else if (parsed > ceiling) {
+        parsed = ceiling;
+    }
+    
+    window.driverBidPreviewState.selectedBid = parsed;
+    input.style.display = 'none';
+    disp.style.display = 'inline-block';
+    window.updateDriverCounterUI();
+};
+
+window.updateDriverCounterUI = function() {
+    const floor = window.driverBidPreviewState.baseOffer || 550;
+    const ceiling = window.driverBidPreviewState.maxCeiling || 850;
+    const current = window.driverBidPreviewState.selectedBid || floor;
+    
+    const disp = document.getElementById('driver-counter-amount-display');
+    const subLabel = document.getElementById('driver-counter-sub-label');
+    const minusBtn = document.getElementById('driver-counter-btn-minus');
+    const plusBtn = document.getElementById('driver-counter-btn-plus');
     const actionBtn = document.getElementById('driver-preview-main-action-btn');
     
-    // Update button states
-    document.querySelectorAll('.driver-counter-btn').forEach(btn => {
-        btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-        btn.style.background = 'rgba(0, 0, 0, 0.3)';
-    });
+    if (disp) disp.textContent = current;
     
-    if (el) {
-        el.style.borderColor = '#22c55e';
-        el.style.background = 'rgba(34, 197, 94, 0.15)';
-    }
-
-    if (actionBtn) {
-        if (amount === window.driverBidPreviewState.baseOffer) {
-            actionBtn.textContent = `ACCEPT ₹${amount}`;
-            actionBtn.style.background = '#22c55e';
-            actionBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.4)';
+    // Minus button state
+    if (minusBtn) {
+        if (current <= floor) {
+            minusBtn.style.opacity = '0.35';
+            minusBtn.style.cursor = 'not-allowed';
         } else {
-            actionBtn.textContent = `COUNTER ₹${amount}`;
+            minusBtn.style.opacity = '1';
+            minusBtn.style.cursor = 'pointer';
+        }
+    }
+    
+    // Plus button state (silent ceiling enforcement)
+    if (plusBtn) {
+        if (current >= ceiling) {
+            plusBtn.style.opacity = '0.4';
+            plusBtn.style.cursor = 'not-allowed';
+        } else {
+            plusBtn.style.opacity = '1';
+            plusBtn.style.cursor = 'pointer';
+        }
+    }
+    
+    // Dynamic Primary Action Button Behavior
+    if (current === floor) {
+        if (subLabel) {
+            subLabel.textContent = 'Customer Rate';
+            subLabel.style.color = '#22c55e';
+        }
+        if (actionBtn) {
+            actionBtn.textContent = `ACCEPT ₹${current}`;
+            actionBtn.style.background = '#22c55e';
+            actionBtn.style.color = '#000';
+            actionBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.4)';
+        }
+    } else {
+        if (subLabel) {
+            subLabel.textContent = `Counter +₹${current - floor}`;
+            subLabel.style.color = '#facc15';
+        }
+        if (actionBtn) {
+            actionBtn.textContent = `SEND ₹${current}`;
             actionBtn.style.background = '#facc15';
+            actionBtn.style.color = '#000';
             actionBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.4)';
         }
     }
@@ -9719,7 +9796,7 @@ window.submitDriverBidPreview = function() {
     
     if (typeof showToast === 'function') {
         if (isCounter) {
-            showToast(`Counter-bid of ₹${chosenBid} sent to customer. Awaiting acceptance...`, 'success');
+            showToast(`Counter-bid of ₹${chosenBid} sent to customer. Awaiting customer response...`, 'success');
         } else {
             showToast(`Request accepted for ₹${chosenBid}! Assigning trip...`, 'success');
         }
