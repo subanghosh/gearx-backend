@@ -9690,6 +9690,140 @@ window.openDriverBidRequestPreview = function(customData = null) {
     }, 1000);
 
     modal.style.display = 'flex';
+    setTimeout(() => {
+        if (typeof window.initDriverBidPreviewMap === 'function') {
+            window.initDriverBidPreviewMap();
+        }
+    }, 60);
+};
+
+let driverBidPreviewMap = null;
+let driverBidPreviewDirectionsRenderer = null;
+let driverBidPreviewMarkers = [];
+
+window.initDriverBidPreviewMap = function() {
+    const canvas = document.getElementById('driver-bid-map-canvas');
+    if (!canvas) return;
+
+    if (typeof google === 'undefined' || !google.maps) {
+        setTimeout(window.initDriverBidPreviewMap, 300);
+        return;
+    }
+
+    const driverPos = { lat: 22.5650, lng: 88.4280 };
+    const pickupPos = { lat: 22.5697, lng: 88.4337 }; // Mani Casadona, Newtown
+    const dropPos = { lat: 22.5830, lng: 88.3426 };   // Howrah Station
+
+    if (!driverBidPreviewMap) {
+        driverBidPreviewMap = new google.maps.Map(canvas, {
+            center: { lat: 22.5726, lng: 88.3880 },
+            zoom: 12,
+            disableDefaultUI: true,
+            gestureHandling: 'greedy',
+            styles: typeof lightMapStyle !== 'undefined' ? lightMapStyle : []
+        });
+    } else {
+        google.maps.event.trigger(driverBidPreviewMap, 'resize');
+    }
+
+    // Clear old preview markers
+    driverBidPreviewMarkers.forEach(m => { if (m && m.setMap) m.setMap(null); });
+    driverBidPreviewMarkers = [];
+
+    // Driver Marker (Live position icon)
+    const driverMarker = new google.maps.Marker({
+        position: driverPos,
+        map: driverBidPreviewMap,
+        title: 'Driver Location (You)',
+        icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="16" fill="#FACC15" stroke="#FFFFFF" stroke-width="3" />
+                    <path d="M11 19L18 9L25 19H20V27H16V19H11Z" fill="#000000" />
+                </svg>
+            `),
+            scaledSize: new google.maps.Size(36, 36),
+            anchor: new google.maps.Point(18, 18)
+        }
+    });
+    driverBidPreviewMarkers.push(driverMarker);
+
+    // Pickup Marker (Green Pin)
+    const pickupMarker = new google.maps.Marker({
+        position: pickupPos,
+        map: driverBidPreviewMap,
+        title: 'Pickup: Mani Casadona',
+        icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#22C55E"/>
+                    <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+                </svg>
+            `),
+            scaledSize: new google.maps.Size(32, 40),
+            anchor: new google.maps.Point(16, 40)
+        }
+    });
+    driverBidPreviewMarkers.push(pickupMarker);
+
+    // Drop Marker (Destination Pin)
+    const dropMarker = new google.maps.Marker({
+        position: dropPos,
+        map: driverBidPreviewMap,
+        title: 'Drop: Howrah Railway Station',
+        icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#EF4444"/>
+                    <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+                </svg>
+            `),
+            scaledSize: new google.maps.Size(32, 40),
+            anchor: new google.maps.Point(16, 40)
+        }
+    });
+    driverBidPreviewMarkers.push(dropMarker);
+
+    // Route Directions from Pickup to Drop
+    if (!driverBidPreviewDirectionsRenderer) {
+        driverBidPreviewDirectionsRenderer = new google.maps.DirectionsRenderer({
+            map: driverBidPreviewMap,
+            suppressMarkers: true,
+            polylineOptions: {
+                strokeColor: '#0F172A',
+                strokeOpacity: 0.9,
+                strokeWeight: 5
+            }
+        });
+    } else {
+        driverBidPreviewDirectionsRenderer.setMap(driverBidPreviewMap);
+    }
+
+    const directionsService = new google.maps.DirectionsService();
+    directionsService.route({
+        origin: pickupPos,
+        destination: dropPos,
+        travelMode: google.maps.TravelMode.DRIVING
+    }, (response, status) => {
+        if (status === 'OK' && response) {
+            driverBidPreviewDirectionsRenderer.setDirections(response);
+            
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(driverPos);
+            bounds.extend(pickupPos);
+            bounds.extend(dropPos);
+            if (response.routes[0] && response.routes[0].bounds) {
+                bounds.union(response.routes[0].bounds);
+            }
+            driverBidPreviewMap.fitBounds(bounds, { top: 60, bottom: 20, left: 30, right: 30 });
+        } else {
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(driverPos);
+            bounds.extend(pickupPos);
+            bounds.extend(dropPos);
+            driverBidPreviewMap.fitBounds(bounds, 40);
+        }
+    });
 };
 
 window.closeDriverBidRequestPreview = function() {
