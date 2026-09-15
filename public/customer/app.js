@@ -13728,6 +13728,9 @@ window.openHireDriverSearchingPreview = function() {
     }, 1000);
     
     searchingScreen.style.display = 'flex';
+    if (typeof window.initSearchingPreviewMap === 'function') {
+        setTimeout(() => window.initSearchingPreviewMap(), 50);
+    }
 };
 
 window.closeHireDriverSearchingPreview = function() {
