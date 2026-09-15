@@ -13258,3 +13258,334 @@ window.proceedWithOutstationBooking = async function() {
         }
     });
 };
+
+
+// =========================================================================
+// UI MOCKUP ONLY: Unified "Hire Driver" Screen Preview
+// =========================================================================
+window.previewHireDriverState = {
+    tripType: 'oneway', // 'oneway' | 'round'
+    timing: 'instant',  // 'instant' | 'schedule'
+    pricingMode: 'km',  // 'km' | 'hourly' | 'daywise'
+    selectedHours: 4,
+    selectedDays: 1,
+    offerAmount: 450,
+    floorAmount: 350
+};
+
+window.openHireDriverPreviewScreen = function() {
+    const screen = document.getElementById('hire-driver-preview-screen');
+    if (!screen) return;
+    
+    // Sync current vehicle if available
+    const vName = document.getElementById('preview-vehicle-name');
+    const vPlate = document.getElementById('preview-vehicle-plate');
+    const vImg = document.getElementById('preview-vehicle-img');
+    const vSpecs = document.getElementById('preview-vehicle-specs');
+    
+    if (window.selectedVehicle) {
+        if (vName) vName.textContent = `${window.selectedVehicle.make || ''} ${window.selectedVehicle.model || 'Vehicle'}`.trim();
+        if (vPlate) vPlate.textContent = window.selectedVehicle.plate || 'WB01AB1234';
+        if (vSpecs) vSpecs.textContent = `${window.selectedVehicle.transmission || 'Manual'} • ${window.selectedVehicle.fuelType || 'Petrol'}`;
+        if (vImg) vImg.src = window.selectedVehicle.photo || getVehicleIllustration(window.selectedVehicle.type || 'Car');
+    }
+    
+    // Render pills
+    renderPreviewHourlyPills();
+    renderPreviewDaywisePills();
+    renderPreviewSchedulePickers();
+    updatePreviewUI();
+    
+    screen.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeHireDriverPreviewScreen = function() {
+    const screen = document.getElementById('hire-driver-preview-screen');
+    if (screen) screen.style.display = 'none';
+    document.body.style.overflow = '';
+};
+
+window.setPreviewTripType = function(type) {
+    window.previewHireDriverState.tripType = type;
+    const btnOne = document.getElementById('preview-btn-triptype-oneway');
+    const btnRound = document.getElementById('preview-btn-triptype-round');
+    const badge = document.getElementById('preview-km-badge');
+    const distText = document.getElementById('preview-km-dist-text');
+    
+    if (type === 'oneway') {
+        if (btnOne) { btnOne.style.background = 'var(--primary)'; btnOne.style.color = '#000'; }
+        if (btnRound) { btnRound.style.background = 'transparent'; btnRound.style.color = '#fff'; }
+        if (badge) { badge.textContent = 'One-Way'; badge.style.color = 'var(--primary)'; }
+        if (distText) distText.innerHTML = '18.5 km <span style="color: #facc15; font-size: 0.78rem;">(~42 mins)</span>';
+        if (window.previewHireDriverState.pricingMode === 'km') {
+            window.previewHireDriverState.floorAmount = 350;
+            window.previewHireDriverState.offerAmount = 450;
+        }
+    } else {
+        if (btnOne) { btnOne.style.background = 'transparent'; btnOne.style.color = '#fff'; }
+        if (btnRound) { btnRound.style.background = 'var(--primary)'; btnRound.style.color = '#000'; }
+        if (badge) { badge.textContent = 'Round Trip'; badge.style.color = '#38bdf8'; }
+        if (distText) distText.innerHTML = '37.0 km <span style="color: #38bdf8; font-size: 0.78rem;">(~1h 24m)</span>';
+        if (window.previewHireDriverState.pricingMode === 'km') {
+            window.previewHireDriverState.floorAmount = 600;
+            window.previewHireDriverState.offerAmount = 750;
+        }
+    }
+    updatePreviewOfferDisplay();
+};
+
+window.setPreviewTiming = function(timing) {
+    window.previewHireDriverState.timing = timing;
+    const btnInstant = document.getElementById('preview-btn-timing-instant');
+    const btnSchedule = document.getElementById('preview-btn-timing-schedule');
+    const instantSec = document.getElementById('preview-timing-instant-details');
+    const scheduleSec = document.getElementById('preview-timing-schedule-details');
+    
+    if (timing === 'instant') {
+        if (btnInstant) { btnInstant.style.background = 'var(--primary)'; btnInstant.style.color = '#000'; }
+        if (btnSchedule) { btnSchedule.style.background = 'transparent'; btnSchedule.style.color = '#fff'; }
+        if (instantSec) instantSec.style.display = 'flex';
+        if (scheduleSec) scheduleSec.style.display = 'none';
+    } else {
+        if (btnInstant) { btnInstant.style.background = 'transparent'; btnInstant.style.color = '#fff'; }
+        if (btnSchedule) { btnSchedule.style.background = 'var(--primary)'; btnSchedule.style.color = '#000'; }
+        if (instantSec) instantSec.style.display = 'none';
+        if (scheduleSec) scheduleSec.style.display = 'flex';
+    }
+};
+
+window.setPreviewPricingMode = function(mode) {
+    window.previewHireDriverState.pricingMode = mode;
+    const btnKm = document.getElementById('preview-btn-mode-km');
+    const btnHr = document.getElementById('preview-btn-mode-hourly');
+    const btnDay = document.getElementById('preview-btn-mode-daywise');
+    
+    const secKm = document.getElementById('preview-section-km');
+    const secHr = document.getElementById('preview-section-hourly');
+    const secDay = document.getElementById('preview-section-daywise');
+    
+    [btnKm, btnHr, btnDay].forEach(b => {
+        if (b) { b.style.background = 'transparent'; b.style.color = '#fff'; }
+    });
+    
+    if (secKm) secKm.style.display = 'none';
+    if (secHr) secHr.style.display = 'none';
+    if (secDay) secDay.style.display = 'none';
+    
+    if (mode === 'km') {
+        if (btnKm) { btnKm.style.background = 'var(--primary)'; btnKm.style.color = '#000'; }
+        if (secKm) secKm.style.display = 'flex';
+        window.previewHireDriverState.floorAmount = window.previewHireDriverState.tripType === 'round' ? 600 : 350;
+        window.previewHireDriverState.offerAmount = window.previewHireDriverState.tripType === 'round' ? 750 : 450;
+    } else if (mode === 'hourly') {
+        if (btnHr) { btnHr.style.background = 'var(--primary)'; btnHr.style.color = '#000'; }
+        if (secHr) secHr.style.display = 'flex';
+        const hrs = window.previewHireDriverState.selectedHours || 4;
+        window.previewHireDriverState.floorAmount = hrs * 150;
+        window.previewHireDriverState.offerAmount = hrs * 150 + 50;
+    } else if (mode === 'daywise') {
+        if (btnDay) { btnDay.style.background = 'var(--primary)'; btnDay.style.color = '#000'; }
+        if (secDay) secDay.style.display = 'flex';
+        const days = window.previewHireDriverState.selectedDays || 1;
+        window.previewHireDriverState.floorAmount = days * 1800;
+        window.previewHireDriverState.offerAmount = days * 1800 + 200;
+    }
+    
+    updatePreviewOfferDisplay();
+};
+
+window.renderPreviewHourlyPills = function() {
+    const container = document.getElementById('preview-hourly-pills');
+    if (!container) return;
+    const options = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20];
+    const selected = window.previewHireDriverState.selectedHours || 4;
+    
+    container.innerHTML = options.map(hrs => {
+        const isSel = hrs === selected;
+        const estRate = hrs * 150;
+        return `
+            <div onclick="selectPreviewHour(${hrs})" style="flex-shrink: 0; padding: 8px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
+                <div style="font-size: 0.85rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${hrs} ${hrs === 1 ? 'Hr' : 'Hrs'}</div>
+                <div style="font-size: 0.68rem; color: ${isSel ? '#fff' : '#a1a1aa'}; font-weight: 600;">₹${estRate}</div>
+            </div>
+        `;
+    }).join('');
+};
+
+window.selectPreviewHour = function(hrs) {
+    window.previewHireDriverState.selectedHours = hrs;
+    window.previewHireDriverState.floorAmount = hrs * 150;
+    window.previewHireDriverState.offerAmount = hrs * 150 + 50;
+    renderPreviewHourlyPills();
+    updatePreviewOfferDisplay();
+};
+
+window.renderPreviewDaywisePills = function() {
+    const container = document.getElementById('preview-daywise-pills');
+    if (!container) return;
+    const options = [1, 2, 3, 4, 5, 7];
+    const selected = window.previewHireDriverState.selectedDays || 1;
+    
+    container.innerHTML = options.map(days => {
+        const isSel = days === selected;
+        const estRate = days * 1800;
+        return `
+            <div onclick="selectPreviewDay(${days})" style="flex-shrink: 0; padding: 8px 16px; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
+                <div style="font-size: 0.85rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${days} ${days === 1 ? 'Day' : 'Days'}</div>
+                <div style="font-size: 0.68rem; color: ${isSel ? '#fff' : '#a1a1aa'}; font-weight: 600;">₹${estRate.toLocaleString('en-IN')}</div>
+            </div>
+        `;
+    }).join('');
+};
+
+window.selectPreviewDay = function(days) {
+    window.previewHireDriverState.selectedDays = days;
+    window.previewHireDriverState.floorAmount = days * 1800;
+    window.previewHireDriverState.offerAmount = days * 1800 + 200;
+    renderPreviewDaywisePills();
+    updatePreviewOfferDisplay();
+};
+
+window.renderPreviewSchedulePickers = function() {
+    const dateContainer = document.getElementById('preview-schedule-date-pills');
+    const timeContainer = document.getElementById('preview-schedule-time-slots');
+    
+    if (dateContainer) {
+        const dates = [
+            { label: 'Today', sub: '15 Sep' },
+            { label: 'Tomorrow', sub: '16 Sep' },
+            { label: 'Wed', sub: '17 Sep' },
+            { label: 'Thu', sub: '18 Sep' },
+            { label: 'Fri', sub: '19 Sep' },
+            { label: 'Sat', sub: '20 Sep' }
+        ];
+        dateContainer.innerHTML = dates.map((d, i) => `
+            <div onclick="selectPreviewDate(${i}, this)" style="flex-shrink: 0; padding: 8px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: ${i === 0 ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${i === 0 ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
+                <div style="font-size: 0.78rem; font-weight: 800; color: ${i === 0 ? 'var(--primary)' : '#fff'};">${d.label}</div>
+                <div style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600;">${d.sub}</div>
+            </div>
+        `).join('');
+    }
+    
+    if (timeContainer) {
+        const times = ['06:00 AM', '08:00 AM', '10:00 AM', '12:00 PM', '02:00 PM', '04:00 PM', '06:00 PM', '08:00 PM', '10:00 PM'];
+        timeContainer.innerHTML = times.map((t, i) => `
+            <div onclick="selectPreviewTime(${i}, this)" style="padding: 6px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: ${i === 1 ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.06)'}; background: ${i === 1 ? 'rgba(250,204,21,0.12)' : 'rgba(0,0,0,0.2)'}; text-align: center; font-size: 0.75rem; font-weight: 700; color: ${i === 1 ? 'var(--primary)' : '#fff'};">
+                ${t}
+            </div>
+        `).join('');
+    }
+};
+
+window.selectPreviewDate = function(idx, el) {
+    const container = document.getElementById('preview-schedule-date-pills');
+    if (!container) return;
+    Array.from(container.children).forEach(c => {
+        c.style.border = '1px solid rgba(255,255,255,0.08)';
+        c.style.background = 'rgba(0,0,0,0.3)';
+        c.querySelector('div').style.color = '#fff';
+    });
+    el.style.border = '1.5px solid var(--primary)';
+    el.style.background = 'rgba(250,204,21,0.15)';
+    el.querySelector('div').style.color = 'var(--primary)';
+};
+
+window.selectPreviewTime = function(idx, el) {
+    const container = document.getElementById('preview-schedule-time-slots');
+    if (!container) return;
+    Array.from(container.children).forEach(c => {
+        c.style.border = '1px solid rgba(255,255,255,0.06)';
+        c.style.background = 'rgba(0,0,0,0.2)';
+        c.style.color = '#fff';
+    });
+    el.style.border = '1.5px solid var(--primary)';
+    el.style.background = 'rgba(250,204,21,0.12)';
+    el.style.color = 'var(--primary)';
+};
+
+window.stepPreviewOffer = function(delta) {
+    const floor = window.previewHireDriverState.floorAmount || 350;
+    let current = window.previewHireDriverState.offerAmount || 450;
+    current += delta;
+    if (current < floor) {
+        current = floor;
+        if (typeof showToast === 'function') {
+            showToast(`Minimum offer floor is ₹${floor} (placeholder)`, 'info');
+        }
+    }
+    window.previewHireDriverState.offerAmount = current;
+    updatePreviewOfferDisplay();
+};
+
+window.updatePreviewOfferDisplay = function() {
+    const disp = document.getElementById('preview-offer-amount-display');
+    const floorLabel = document.getElementById('preview-offer-floor-label');
+    const minusBtn = document.getElementById('preview-btn-offer-minus');
+    
+    const offer = window.previewHireDriverState.offerAmount || 450;
+    const floor = window.previewHireDriverState.floorAmount || 350;
+    
+    if (disp) disp.textContent = offer.toLocaleString('en-IN');
+    if (floorLabel) floorLabel.textContent = `Floor ₹${floor.toLocaleString('en-IN')} (placeholder)`;
+    
+    if (minusBtn) {
+        if (offer <= floor) {
+            minusBtn.style.opacity = '0.4';
+            minusBtn.style.cursor = 'not-allowed';
+        } else {
+            minusBtn.style.opacity = '1';
+            minusBtn.style.cursor = 'pointer';
+        }
+    }
+};
+
+window.updatePreviewUI = function() {
+    setPreviewTripType(window.previewHireDriverState.tripType);
+    setPreviewTiming(window.previewHireDriverState.timing);
+    setPreviewPricingMode(window.previewHireDriverState.pricingMode);
+    updatePreviewOfferDisplay();
+};
+
+window.triggerPreviewSearch = function() {
+    const state = window.previewHireDriverState;
+    const msg = `[Mockup Review] Search initiated with Offer: ₹${state.offerAmount} (${state.pricingMode.toUpperCase()} mode, ${state.tripType === 'round' ? 'Round Trip' : 'One-Way'}, ${state.timing === 'instant' ? 'Instant' : 'Scheduled'})`;
+    
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Search Driver (UI Preview)',
+            html: `
+                <div style="text-align: left; font-size: 0.88rem; color: #a1a1aa; line-height: 1.6;">
+                    <p style="margin: 0 0 10px 0; color: #fff;"><strong>This is a design preview mockup.</strong> No actual request was dispatched.</p>
+                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                        <div><strong>Trip Type:</strong> ${state.tripType === 'round' ? 'Round Trip' : 'One-Way'}</div>
+                        <div><strong>Pickup:</strong> ${state.timing === 'instant' ? '⚡ Instant (~15-25m)' : '📅 Scheduled'}</div>
+                        <div><strong>Pricing Mode:</strong> ${state.pricingMode.toUpperCase()} (${state.pricingMode === 'hourly' ? state.selectedHours + ' Hrs' : state.pricingMode === 'daywise' ? state.selectedDays + ' Days' : 'By Distance'})</div>
+                        <div style="margin-top: 6px; font-size: 1rem; color: #facc15;"><strong>Your Offer:</strong> ₹${state.offerAmount}</div>
+                    </div>
+                </div>
+            `,
+            icon: 'info',
+            confirmButtonText: 'Great, got it!',
+            confirmButtonColor: '#facc15',
+            background: '#12161D',
+            color: '#fff'
+        });
+    } else if (typeof showToast === 'function') {
+        showToast(msg, 'success');
+    } else {
+        alert(msg);
+    }
+};
+
+// URL Hash listener for direct navigation (e.g. #preview-hire-driver)
+window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#preview-hire-driver') {
+        window.openHireDriverPreviewScreen();
+    }
+});
+if (window.location.hash === '#preview-hire-driver') {
+    window.addEventListener('DOMContentLoaded', () => {
+        window.openHireDriverPreviewScreen();
+    });
+}
