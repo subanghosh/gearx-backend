@@ -13261,14 +13261,15 @@ window.proceedWithOutstationBooking = async function() {
 
 
 // =========================================================================
-// UI MOCKUP ONLY: Unified "Hire Driver" Screen Preview
+// UI MOCKUP ONLY: Unified "Hire Driver" Screen Preview Logic
 // =========================================================================
 window.previewHireDriverState = {
-    tripType: 'oneway', // 'oneway' | 'round'
-    timing: 'instant',  // 'instant' | 'schedule'
-    pricingMode: 'km',  // 'km' | 'hourly' | 'daywise'
+    tripType: 'oneway',        // 'oneway' | 'round'
+    timing: 'instant',         // 'instant' | 'schedule'
+    pricingMode: 'km',         // 'km' | 'hourly' | 'daywise' | 'outstation'
     selectedHours: 4,
     selectedDays: 1,
+    selectedOutstation: '1 Day',
     offerAmount: 450,
     floorAmount: 350
 };
@@ -13287,12 +13288,13 @@ window.openHireDriverPreviewScreen = function() {
         if (vName) vName.textContent = `${window.selectedVehicle.make || ''} ${window.selectedVehicle.model || 'Vehicle'}`.trim();
         if (vPlate) vPlate.textContent = window.selectedVehicle.plate || 'WB01AB1234';
         if (vSpecs) vSpecs.textContent = `${window.selectedVehicle.transmission || 'Manual'} • ${window.selectedVehicle.fuelType || 'Petrol'}`;
-        if (vImg) vImg.src = window.selectedVehicle.photo || getVehicleIllustration(window.selectedVehicle.type || 'Car');
+        if (vImg) vImg.src = window.selectedVehicle.photo || (typeof getVehicleIllustration === 'function' ? getVehicleIllustration(window.selectedVehicle.type || 'Car') : 'images/sedan.png');
     }
     
-    // Render pills
+    // Render all pill components
     renderPreviewHourlyPills();
     renderPreviewDaywisePills();
+    renderPreviewOutstationPills();
     renderPreviewSchedulePickers();
     updatePreviewUI();
     
@@ -13306,6 +13308,74 @@ window.closeHireDriverPreviewScreen = function() {
     document.body.style.overflow = '';
 };
 
+// -------------------------------------------------------------------------
+// Screen Navigation Helpers
+// -------------------------------------------------------------------------
+let previewSearchingInterval = null;
+
+window.openHireDriverSearchingPreview = function() {
+    const searchingScreen = document.getElementById('hire-driver-searching-preview');
+    if (!searchingScreen) return;
+    
+    // Update offer and mode label on the searching screen
+    const state = window.previewHireDriverState;
+    const offerDisp = document.getElementById('searching-preview-offer-display');
+    const badge = document.getElementById('searching-preview-mode-badge');
+    
+    if (offerDisp) offerDisp.textContent = `₹${state.offerAmount.toLocaleString('en-IN')}`;
+    if (badge) {
+        let modeLabel = 'By Km';
+        if (state.pricingMode === 'hourly') modeLabel = `${state.selectedHours} Hrs`;
+        if (state.pricingMode === 'daywise') modeLabel = `${state.selectedDays} Days`;
+        if (state.pricingMode === 'outstation') modeLabel = `Outstation (${state.selectedOutstation})`;
+        badge.textContent = `${state.tripType === 'round' ? 'Round Trip' : 'One-Way'} • ${modeLabel}`;
+    }
+    
+    // Start ticking timer
+    let seconds = 1;
+    const timerEl = document.getElementById('searching-preview-timer');
+    if (timerEl) timerEl.textContent = '1s';
+    if (previewSearchingInterval) clearInterval(previewSearchingInterval);
+    previewSearchingInterval = setInterval(() => {
+        seconds++;
+        if (timerEl) timerEl.textContent = `${seconds}s`;
+    }, 1000);
+    
+    searchingScreen.style.display = 'flex';
+};
+
+window.closeHireDriverSearchingPreview = function() {
+    if (previewSearchingInterval) {
+        clearInterval(previewSearchingInterval);
+        previewSearchingInterval = null;
+    }
+    const searchingScreen = document.getElementById('hire-driver-searching-preview');
+    if (searchingScreen) searchingScreen.style.display = 'none';
+};
+
+window.openHireDriverAcceptedPreview = function() {
+    closeHireDriverSearchingPreview();
+    const acceptedScreen = document.getElementById('hire-driver-accepted-preview');
+    if (!acceptedScreen) return;
+    
+    const state = window.previewHireDriverState;
+    const fareDisp = document.getElementById('accepted-preview-fare-display');
+    const plateDisp = document.getElementById('accepted-preview-plate');
+    
+    if (fareDisp) fareDisp.textContent = `₹${state.offerAmount.toLocaleString('en-IN')}`;
+    if (plateDisp && window.selectedVehicle) plateDisp.textContent = window.selectedVehicle.plate || 'WB01AB1234';
+    
+    acceptedScreen.style.display = 'flex';
+};
+
+window.closeHireDriverAcceptedPreview = function() {
+    const acceptedScreen = document.getElementById('hire-driver-accepted-preview');
+    if (acceptedScreen) acceptedScreen.style.display = 'none';
+};
+
+// -------------------------------------------------------------------------
+// Existing Screen State Updaters
+// -------------------------------------------------------------------------
 window.setPreviewTripType = function(type) {
     window.previewHireDriverState.tripType = type;
     const btnOne = document.getElementById('preview-btn-triptype-oneway');
@@ -13360,41 +13430,110 @@ window.setPreviewPricingMode = function(mode) {
     const btnKm = document.getElementById('preview-btn-mode-km');
     const btnHr = document.getElementById('preview-btn-mode-hourly');
     const btnDay = document.getElementById('preview-btn-mode-daywise');
+    const btnOut = document.getElementById('preview-btn-mode-outstation');
     
     const secKm = document.getElementById('preview-section-km');
     const secHr = document.getElementById('preview-section-hourly');
     const secDay = document.getElementById('preview-section-daywise');
+    const secOut = document.getElementById('preview-section-outstation');
     
-    [btnKm, btnHr, btnDay].forEach(b => {
+    const dropInput = document.getElementById('preview-global-drop');
+    const destLabel = document.getElementById('preview-destination-label');
+    
+    [btnKm, btnHr, btnDay, btnOut].forEach(b => {
         if (b) { b.style.background = 'transparent'; b.style.color = '#fff'; }
     });
     
     if (secKm) secKm.style.display = 'none';
     if (secHr) secHr.style.display = 'none';
     if (secDay) secDay.style.display = 'none';
+    if (secOut) secOut.style.display = 'none';
     
     if (mode === 'km') {
         if (btnKm) { btnKm.style.background = 'var(--primary)'; btnKm.style.color = '#000'; }
         if (secKm) secKm.style.display = 'flex';
+        if (destLabel) destLabel.textContent = 'Destination / Drop';
+        if (dropInput && dropInput.value === '') dropInput.value = 'Howrah Railway Station, Kolkata';
         window.previewHireDriverState.floorAmount = window.previewHireDriverState.tripType === 'round' ? 600 : 350;
         window.previewHireDriverState.offerAmount = window.previewHireDriverState.tripType === 'round' ? 750 : 450;
     } else if (mode === 'hourly') {
         if (btnHr) { btnHr.style.background = 'var(--primary)'; btnHr.style.color = '#000'; }
         if (secHr) secHr.style.display = 'flex';
+        if (destLabel) destLabel.textContent = 'Primary Drop / Route (Optional)';
         const hrs = window.previewHireDriverState.selectedHours || 4;
         window.previewHireDriverState.floorAmount = hrs * 150;
         window.previewHireDriverState.offerAmount = hrs * 150 + 50;
     } else if (mode === 'daywise') {
         if (btnDay) { btnDay.style.background = 'var(--primary)'; btnDay.style.color = '#000'; }
         if (secDay) secDay.style.display = 'flex';
+        if (destLabel) destLabel.textContent = 'Destination / Tour Route';
         const days = window.previewHireDriverState.selectedDays || 1;
         window.previewHireDriverState.floorAmount = days * 1800;
         window.previewHireDriverState.offerAmount = days * 1800 + 200;
+    } else if (mode === 'outstation') {
+        if (btnOut) { btnOut.style.background = 'var(--primary)'; btnOut.style.color = '#000'; }
+        if (secOut) secOut.style.display = 'flex';
+        if (destLabel) destLabel.textContent = 'Outstation Destination City';
+        
+        // Outstation rule: CLEAR previous destination value so customer selects outstation city
+        if (dropInput) {
+            dropInput.value = '';
+            dropInput.placeholder = 'Enter outstation destination (e.g. Digha, Mandarmoni, Puri)';
+        }
+        
+        window.previewHireDriverState.floorAmount = 2200;
+        window.previewHireDriverState.offerAmount = 2500;
     }
     
     updatePreviewOfferDisplay();
 };
 
+window.handlePreviewDropInput = function(val) {
+    const suggestions = document.getElementById('preview-drop-suggestions');
+    if (!suggestions) return;
+    
+    if (!val || val.trim().length === 0) {
+        suggestions.style.display = 'none';
+        return;
+    }
+    
+    const samplePlaces = [
+        'Digha, West Bengal',
+        'Mandarmoni, West Bengal',
+        'Puri, Odisha',
+        'Darjeeling, West Bengal',
+        'Siliguri, West Bengal',
+        'Mayapur, West Bengal',
+        'Bolpur / Santiniketan, West Bengal',
+        'Howrah Railway Station, Kolkata',
+        'Netaji Subhash Chandra Bose Airport, Kolkata'
+    ].filter(p => p.toLowerCase().includes(val.toLowerCase()));
+    
+    if (samplePlaces.length === 0) {
+        suggestions.style.display = 'none';
+        return;
+    }
+    
+    suggestions.innerHTML = samplePlaces.map(place => `
+        <div onclick="selectPreviewDropSuggestion('${place}')" style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
+            <span>${place}</span>
+        </div>
+    `).join('');
+    
+    suggestions.style.display = 'block';
+};
+
+window.selectPreviewDropSuggestion = function(place) {
+    const input = document.getElementById('preview-global-drop');
+    const suggestions = document.getElementById('preview-drop-suggestions');
+    if (input) input.value = place;
+    if (suggestions) suggestions.style.display = 'none';
+};
+
+// -------------------------------------------------------------------------
+// Duration Pill Renderers
+// -------------------------------------------------------------------------
 window.renderPreviewHourlyPills = function() {
     const container = document.getElementById('preview-hourly-pills');
     if (!container) return;
@@ -13444,6 +13583,38 @@ window.selectPreviewDay = function(days) {
     window.previewHireDriverState.floorAmount = days * 1800;
     window.previewHireDriverState.offerAmount = days * 1800 + 200;
     renderPreviewDaywisePills();
+    updatePreviewOfferDisplay();
+};
+
+window.renderPreviewOutstationPills = function() {
+    const container = document.getElementById('preview-outstation-pills');
+    if (!container) return;
+    const options = [
+        { label: '12 Hrs', floor: 2200, offer: 2500 },
+        { label: '16 Hrs', floor: 2800, offer: 3100 },
+        { label: '20 Hrs', floor: 3400, offer: 3800 },
+        { label: '1 Day', floor: 3500, offer: 4000 },
+        { label: '2 Days', floor: 7000, offer: 7800 },
+        { label: '3 Days', floor: 10500, offer: 11500 }
+    ];
+    const selected = window.previewHireDriverState.selectedOutstation || '1 Day';
+    
+    container.innerHTML = options.map(opt => {
+        const isSel = opt.label === selected;
+        return `
+            <div onclick="selectPreviewOutstation('${opt.label}', ${opt.floor}, ${opt.offer})" style="flex-shrink: 0; padding: 8px 14px; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
+                <div style="font-size: 0.85rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${opt.label}</div>
+                <div style="font-size: 0.68rem; color: ${isSel ? '#fff' : '#a1a1aa'}; font-weight: 600;">₹${opt.floor.toLocaleString('en-IN')}</div>
+            </div>
+        `;
+    }).join('');
+};
+
+window.selectPreviewOutstation = function(label, floor, offer) {
+    window.previewHireDriverState.selectedOutstation = label;
+    window.previewHireDriverState.floorAmount = floor;
+    window.previewHireDriverState.offerAmount = offer;
+    renderPreviewOutstationPills();
     updatePreviewOfferDisplay();
 };
 
@@ -13504,6 +13675,9 @@ window.selectPreviewTime = function(idx, el) {
     el.style.color = 'var(--primary)';
 };
 
+// -------------------------------------------------------------------------
+// Stepper Logic
+// -------------------------------------------------------------------------
 window.stepPreviewOffer = function(delta) {
     const floor = window.previewHireDriverState.floorAmount || 350;
     let current = window.previewHireDriverState.offerAmount || 450;
@@ -13547,45 +13721,26 @@ window.updatePreviewUI = function() {
     updatePreviewOfferDisplay();
 };
 
+// SEARCH BUTTON ACTION: Opens Searching Screen A!
 window.triggerPreviewSearch = function() {
-    const state = window.previewHireDriverState;
-    const msg = `[Mockup Review] Search initiated with Offer: ₹${state.offerAmount} (${state.pricingMode.toUpperCase()} mode, ${state.tripType === 'round' ? 'Round Trip' : 'One-Way'}, ${state.timing === 'instant' ? 'Instant' : 'Scheduled'})`;
-    
-    if (typeof Swal !== 'undefined') {
-        Swal.fire({
-            title: 'Search Driver (UI Preview)',
-            html: `
-                <div style="text-align: left; font-size: 0.88rem; color: #a1a1aa; line-height: 1.6;">
-                    <p style="margin: 0 0 10px 0; color: #fff;"><strong>This is a design preview mockup.</strong> No actual request was dispatched.</p>
-                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-                        <div><strong>Trip Type:</strong> ${state.tripType === 'round' ? 'Round Trip' : 'One-Way'}</div>
-                        <div><strong>Pickup:</strong> ${state.timing === 'instant' ? '⚡ Instant (~15-25m)' : '📅 Scheduled'}</div>
-                        <div><strong>Pricing Mode:</strong> ${state.pricingMode.toUpperCase()} (${state.pricingMode === 'hourly' ? state.selectedHours + ' Hrs' : state.pricingMode === 'daywise' ? state.selectedDays + ' Days' : 'By Distance'})</div>
-                        <div style="margin-top: 6px; font-size: 1rem; color: #facc15;"><strong>Your Offer:</strong> ₹${state.offerAmount}</div>
-                    </div>
-                </div>
-            `,
-            icon: 'info',
-            confirmButtonText: 'Great, got it!',
-            confirmButtonColor: '#facc15',
-            background: '#12161D',
-            color: '#fff'
-        });
-    } else if (typeof showToast === 'function') {
-        showToast(msg, 'success');
-    } else {
-        alert(msg);
-    }
+    openHireDriverSearchingPreview();
 };
 
-// URL Hash listener for direct navigation (e.g. #preview-hire-driver)
+// URL Hash routing for direct access to preview screens
 window.addEventListener('hashchange', () => {
     if (window.location.hash === '#preview-hire-driver') {
         window.openHireDriverPreviewScreen();
+    } else if (window.location.hash === '#preview-searching-driver') {
+        window.openHireDriverSearchingPreview();
+    } else if (window.location.hash === '#preview-driver-accepted') {
+        window.openHireDriverAcceptedPreview();
     }
 });
+
 if (window.location.hash === '#preview-hire-driver') {
-    window.addEventListener('DOMContentLoaded', () => {
-        window.openHireDriverPreviewScreen();
-    });
+    window.addEventListener('DOMContentLoaded', () => window.openHireDriverPreviewScreen());
+} else if (window.location.hash === '#preview-searching-driver') {
+    window.addEventListener('DOMContentLoaded', () => window.openHireDriverSearchingPreview());
+} else if (window.location.hash === '#preview-driver-accepted') {
+    window.addEventListener('DOMContentLoaded', () => window.openHireDriverAcceptedPreview());
 }

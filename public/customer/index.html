@@ -1674,7 +1674,7 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- DESIGN PREVIEW: Unified Hire Driver Screen Mockup                         -->
+    <!-- 1. MAIN DESIGN PREVIEW: Unified Hire Driver Screen Mockup                 -->
     <!-- ========================================================================= -->
     <div id="hire-driver-preview-screen" style="display: none; position: fixed; inset: 0; background: #0B0E14; z-index: 12500; flex-direction: column; overflow-y: auto; font-family: 'Plus Jakarta Sans', sans-serif;">
         <!-- Top App Bar -->
@@ -1691,6 +1691,17 @@
             </div>
             <button type="button" onclick="closeHireDriverPreviewScreen()" style="background: none; border: none; color: #a1a1aa; font-size: 0.8rem; font-weight: 700; cursor: pointer; outline: none;">
                 Close
+            </button>
+        </div>
+
+        <!-- Quick Preview Jump Bar (for design review) -->
+        <div style="background: rgba(99, 102, 241, 0.1); border-bottom: 1px solid rgba(129, 140, 248, 0.2); padding: 8px 20px; display: flex; align-items: center; gap: 10px; overflow-x: auto;" class="no-scrollbar">
+            <span style="font-size: 0.7rem; color: #818cf8; font-weight: 800; text-transform: uppercase; white-space: nowrap;">Screen Previews:</span>
+            <button type="button" onclick="openHireDriverSearchingPreview()" style="background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); color: var(--primary); padding: 4px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                🔍 Searching Screen
+            </button>
+            <button type="button" onclick="openHireDriverAcceptedPreview()" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; padding: 4px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                🚘 Driver Accepted
             </button>
         </div>
 
@@ -1716,7 +1727,47 @@
                 </button>
             </div>
 
-            <!-- 2. Trip Type Toggle (One-way vs Round Trip) -->
+            <!-- 2. TOP PERSISTENT LOCATION PICKERS (Moved directly below Vehicle Card, ABOVE Trip Type) -->
+            <div id="preview-persistent-locations-card" style="background: rgba(18, 22, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                <!-- Pickup Point -->
+                <div style="position: relative; width: 100%;">
+                    <label style="font-size: 0.7rem; color: #facc15; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #facc15; display: inline-block;"></span>
+                        Pickup Point
+                    </label>
+                    <div style="position: relative; width: 100%;">
+                        <input type="text" id="preview-global-pickup" value="Mani Casadona, New Town, Kolkata" placeholder="Enter pickup address" style="width: 100%; padding: 12px 14px 12px 38px; border-radius: 12px; border: 1px solid rgba(250, 204, 21, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.88rem; font-weight: 600; outline: none; box-sizing: border-box;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                    </div>
+                </div>
+
+                <!-- Destination / Drop -->
+                <div style="position: relative; width: 100%;">
+                    <label style="font-size: 0.7rem; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block;"></span>
+                        <span id="preview-destination-label">Destination / Drop</span>
+                    </label>
+                    <div style="position: relative; width: 100%;">
+                        <input type="text" id="preview-global-drop" value="Howrah Railway Station, Kolkata" placeholder="Enter drop destination" oninput="handlePreviewDropInput(this.value)" style="width: 100%; padding: 12px 14px 12px 38px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.88rem; font-weight: 600; outline: none; box-sizing: border-box;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                    </div>
+                    <!-- Live Autocomplete Suggestions Mock Dropdown -->
+                    <div id="preview-drop-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #12161D; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; margin-top: 4px; z-index: 100; max-height: 180px; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Distance Estimate Summary Row -->
+                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Est. Distance:</span>
+                        <span id="preview-km-dist-text" style="font-size: 0.88rem; color: #fff; font-weight: 800;">18.5 km <span style="color: #facc15; font-size: 0.78rem;">(~42 mins)</span></span>
+                    </div>
+                    <span id="preview-km-badge" style="font-size: 0.68rem; color: var(--primary); font-weight: 700; background: rgba(250,204,21,0.12); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(250,204,21,0.25);">One-Way</span>
+                </div>
+            </div>
+
+            <!-- 3. Trip Type Toggle (One-way vs Round Trip) -->
             <div style="display: flex; flex-direction: column; gap: 6px;">
                 <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Trip Type</label>
                 <div style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.35); padding: 4px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08);">
@@ -1729,11 +1780,9 @@
                 </div>
             </div>
 
-            <!-- 3. Pickup Type Toggle (Instant vs Schedule) -->
+            <!-- 4. Pickup Type Toggle (Instant vs Schedule) -->
             <div style="background: rgba(18, 22, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">Pickup Timing</label>
-                </div>
+                <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">Pickup Timing</label>
                 
                 <div style="display: flex; gap: 8px; background: rgba(0, 0, 0, 0.35); padding: 4px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08);">
                     <button type="button" id="preview-btn-timing-instant" onclick="setPreviewTiming('instant')" style="flex: 1; padding: 10px; border-radius: 10px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -1767,110 +1816,68 @@
                 </div>
             </div>
 
-            <!-- 4. Pricing Mode Selector (Km vs Hourly vs Day-wise) -->
+            <!-- 5. 4-Way Pricing Mode Selector (Km / Hours / Day-wise / Outstation) -->
             <div style="display: flex; flex-direction: column; gap: 6px;">
                 <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Pricing Mode</label>
-                <div style="display: flex; gap: 6px; background: rgba(0, 0, 0, 0.35); padding: 4px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.08);">
-                    <button type="button" id="preview-btn-mode-km" onclick="setPreviewPricingMode('km')" style="flex: 1; padding: 10px 4px; border-radius: 10px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
-                        By Km
+                <!-- 2x2 Grid for clean mobile fit -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0, 0, 0, 0.35); padding: 6px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <button type="button" id="preview-btn-mode-km" onclick="setPreviewPricingMode('km')" style="padding: 10px 6px; border-radius: 10px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
+                        📍 By Km
                     </button>
-                    <button type="button" id="preview-btn-mode-hourly" onclick="setPreviewPricingMode('hourly')" style="flex: 1; padding: 10px 4px; border-radius: 10px; border: none; background: transparent; color: #fff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
-                        By Hours
+                    <button type="button" id="preview-btn-mode-hourly" onclick="setPreviewPricingMode('hourly')" style="padding: 10px 6px; border-radius: 10px; border: none; background: transparent; color: #fff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
+                        ⏱️ By Hours
                     </button>
-                    <button type="button" id="preview-btn-mode-daywise" onclick="setPreviewPricingMode('daywise')" style="flex: 1; padding: 10px 4px; border-radius: 10px; border: none; background: transparent; color: #fff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
-                        Day-wise
+                    <button type="button" id="preview-btn-mode-daywise" onclick="setPreviewPricingMode('daywise')" style="padding: 10px 6px; border-radius: 10px; border: none; background: transparent; color: #fff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
+                        🗓️ Day-wise
+                    </button>
+                    <button type="button" id="preview-btn-mode-outstation" onclick="setPreviewPricingMode('outstation')" style="padding: 10px 6px; border-radius: 10px; border: none; background: transparent; color: #fff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; outline: none; text-align: center;">
+                        🚗 Outstation
                     </button>
                 </div>
             </div>
 
-            <!-- 5. Mode-Specific Detail Area -->
+            <!-- 6. Mode-Specific Detail Area -->
             <div id="preview-mode-detail-container" style="background: rgba(18, 22, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 14px;">
                 
-                <!-- 5A. Km Mode Section (Locations + Distance) -->
-                <div id="preview-section-km" style="display: flex; flex-direction: column; gap: 12px;">
-                    <!-- Pickup Input -->
-                    <div style="position: relative; width: 100%;">
-                        <label style="font-size: 0.7rem; color: #facc15; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #facc15; display: inline-block;"></span>
-                            Pickup Point
-                        </label>
-                        <div style="position: relative; width: 100%;">
-                            <input type="text" id="preview-km-pickup" value="Mani Casadona, New Town, Kolkata" placeholder="Enter pickup address" style="width: 100%; padding: 12px 14px 12px 38px; border-radius: 12px; border: 1px solid rgba(250, 204, 21, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.88rem; font-weight: 600; outline: none; box-sizing: border-box;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        </div>
-                    </div>
-
-                    <!-- Drop Input -->
-                    <div style="position: relative; width: 100%;">
-                        <label style="font-size: 0.7rem; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block;"></span>
-                            Destination / Drop
-                        </label>
-                        <div style="position: relative; width: 100%;">
-                            <input type="text" id="preview-km-drop" value="Howrah Railway Station, Kolkata" placeholder="Enter drop address" style="width: 100%; padding: 12px 14px 12px 38px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.88rem; font-weight: 600; outline: none; box-sizing: border-box;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        </div>
-                    </div>
-
-                    <!-- Computed Distance Card -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Est. Distance:</span>
-                            <span id="preview-km-dist-text" style="font-size: 0.88rem; color: #fff; font-weight: 800;">18.5 km <span style="color: #facc15; font-size: 0.78rem;">(~42 mins)</span></span>
-                        </div>
-                        <span id="preview-km-badge" style="font-size: 0.68rem; color: var(--primary); font-weight: 700; background: rgba(250,204,21,0.12); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(250,204,21,0.25);">One-Way</span>
-                    </div>
+                <!-- 6A. Km Mode Info -->
+                <div id="preview-section-km" style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="font-size: 0.78rem; color: #fff; font-weight: 700;">Point-to-Point City Trip</div>
+                    <div style="font-size: 0.72rem; color: #a1a1aa; line-height: 1.4;">Direct one-way or round-trip drive. Distance is computed directly from pickup to destination address above.</div>
                 </div>
 
-                <!-- 5B. Hourly Mode Section (Pills Selector) -->
-                <div id="preview-section-hourly" style="display: none; flex-direction: column; gap: 12px;">
-                    <!-- Pickup Input -->
-                    <div style="position: relative; width: 100%;">
-                        <label style="font-size: 0.7rem; color: #facc15; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #facc15; display: inline-block;"></span>
-                            Pickup Location
-                        </label>
-                        <div style="position: relative; width: 100%;">
-                            <input type="text" id="preview-hourly-pickup" value="Mani Casadona, New Town, Kolkata" placeholder="Enter pickup address" style="width: 100%; padding: 12px 14px 12px 38px; border-radius: 12px; border: 1px solid rgba(250, 204, 21, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.88rem; font-weight: 600; outline: none; box-sizing: border-box;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        </div>
+                <!-- 6B. Hourly Mode Section (Pills Selector) -->
+                <div id="preview-section-hourly" style="display: none; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Select Hourly Package</label>
+                        <span style="font-size: 0.68rem; color: #a1a1aa;">Local city rental</span>
                     </div>
-
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Select Duration</label>
-                            <span style="font-size: 0.68rem; color: #a1a1aa;">Local city rental duration</span>
-                        </div>
-                        <div id="preview-hourly-pills" style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;" class="no-scrollbar"></div>
-                    </div>
+                    <div id="preview-hourly-pills" style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;" class="no-scrollbar"></div>
                 </div>
 
-                <!-- 5C. Day-wise Mode Section (Pills Selector) -->
-                <div id="preview-section-daywise" style="display: none; flex-direction: column; gap: 12px;">
-                    <!-- Pickup & Destination City -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div style="position: relative; width: 100%;">
-                            <label style="font-size: 0.68rem; color: #facc15; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block;">Pickup City</label>
-                            <input type="text" id="preview-day-pickup" value="Kolkata" placeholder="Pickup City" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(250, 204, 21, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.85rem; font-weight: 600; outline: none; box-sizing: border-box;">
-                        </div>
-                        <div style="position: relative; width: 100%;">
-                            <label style="font-size: 0.68rem; color: #22c55e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; display: block;">Destination</label>
-                            <input type="text" id="preview-day-drop" value="Digha, WB" placeholder="Destination City" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(34, 197, 94, 0.35); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.85rem; font-weight: 600; outline: none; box-sizing: border-box;">
-                        </div>
+                <!-- 6C. Day-wise Mode Section (Pills Selector) -->
+                <div id="preview-section-daywise" style="display: none; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Select Multi-Day Duration</label>
+                        <span style="font-size: 0.68rem; color: #a1a1aa;">Full-day vehicle hire</span>
                     </div>
+                    <div id="preview-daywise-pills" style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;" class="no-scrollbar"></div>
+                </div>
 
-                    <div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Select Days</label>
-                            <span style="font-size: 0.68rem; color: #a1a1aa;">Multi-day intercity travel</span>
-                        </div>
-                        <div id="preview-daywise-pills" style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;" class="no-scrollbar"></div>
+                <!-- 6D. Outstation Mode Section (Duration / Package Selector) -->
+                <div id="preview-section-outstation" style="display: none; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Outstation Package Duration</label>
+                        <span style="font-size: 0.68rem; color: var(--primary); font-weight: 700;">Intercity</span>
+                    </div>
+                    <div id="preview-outstation-pills" style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;" class="no-scrollbar"></div>
+                    <div style="background: rgba(250, 204, 21, 0.08); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 10px; padding: 8px 12px; font-size: 0.72rem; color: #e4e4e7; line-height: 1.4;">
+                        ℹ️ <strong>Destination Reset:</strong> Destination field was cleared for outstation entry. Enter your outstation city above.
                     </div>
                 </div>
 
             </div>
 
-            <!-- 6. "Your Offer" Stepper Section -->
+            <!-- 7. "Your Offer" Stepper Section -->
             <div style="background: linear-gradient(135deg, rgba(250, 204, 21, 0.08) 0%, rgba(18, 22, 29, 0.95) 100%); border: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
@@ -1916,11 +1923,207 @@
 
         </div>
 
-        <!-- 7. Bottom Action Button Footer -->
+        <!-- 8. Bottom Action Button Footer (PLAIN TEXT "SEARCH", NO ICON) -->
         <div style="position: fixed; bottom: 0; left: 0; right: 0; background: rgba(11, 14, 20, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid rgba(255, 255, 255, 0.08); padding: 14px 20px; z-index: 30; display: flex; justify-content: center;">
-            <button type="button" id="preview-btn-search-driver" onclick="triggerPreviewSearch()" style="width: 100%; max-width: 600px; padding: 16px; border-radius: 14px; background: var(--primary); color: #000; font-size: 1.05rem; font-weight: 900; border: none; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 20px rgba(250, 204, 21, 0.35); display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <span>Search</span>
+            <button type="button" id="preview-btn-search-driver" onclick="triggerPreviewSearch()" style="width: 100%; max-width: 600px; padding: 16px; border-radius: 14px; background: var(--primary); color: #000; font-size: 1.05rem; font-weight: 900; border: none; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 20px rgba(250, 204, 21, 0.35); display: flex; align-items: center; justify-content: center; text-transform: uppercase; letter-spacing: 0.5px;">
+                SEARCH
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- 2. NEW SCREEN A: "Searching for Driver" Preview                            -->
+    <!-- ========================================================================= -->
+    <div id="hire-driver-searching-preview" style="display: none; position: fixed; inset: 0; background: #0B0E14; z-index: 12600; flex-direction: column; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif;">
+        <!-- Full-screen Realistic Map Container -->
+        <div id="searching-preview-map-bg" style="position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at 50% 45%, #182230 0%, #0c1017 70%, #07090d 100%); z-index: 1; overflow: hidden;">
+            <!-- Simulated Map Grid Lines & Radar Ripple Rings -->
+            <div style="position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 40px 40px;"></div>
+            
+            <!-- Radar Pulse Animation centered at pickup spot -->
+            <div style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
+                <div class="pulse-ring" style="position: absolute; width: 220px; height: 220px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.4); animation: radarRipple 2s infinite ease-out;"></div>
+                <div class="pulse-ring" style="position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.6); animation: radarRipple 2s infinite ease-out; animation-delay: 0.6s;"></div>
+                <div style="width: 50px; height: 50px; border-radius: 50%; background: rgba(250, 204, 21, 0.2); border: 2px solid var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(250, 204, 21, 0.6); z-index: 2;">
+                    <div style="width: 16px; height: 16px; border-radius: 50%; background: var(--primary);"></div>
+                </div>
+                <div style="position: absolute; top: 60px; background: rgba(0,0,0,0.85); border: 1px solid rgba(250,204,21,0.4); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 20px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+                    📍 Pickup: Mani Casadona
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes radarRipple {
+                0% { transform: scale(0.6); opacity: 1; }
+                100% { transform: scale(1.8); opacity: 0; }
+            }
+            @keyframes dotBlink {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.3; }
+            }
+        </style>
+
+        <!-- Top Floating Navigation -->
+        <div style="position: absolute; top: 16px; left: 16px; right: 16px; z-index: 20; display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" onclick="closeHireDriverSearchingPreview()" style="background: rgba(11, 14, 20, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div style="background: rgba(11, 14, 20, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(250, 204, 21, 0.3); padding: 6px 14px; border-radius: 20px; display: flex; align-items: center; gap: 8px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: dotBlink 1s infinite;"></span>
+                <span style="font-size: 0.75rem; color: #fff; font-weight: 700;">BROADCASTING OFFER</span>
+            </div>
+        </div>
+
+        <!-- Floating Minimal Bottom-Sheet Overlay (Dominant Map, Minimal Box) -->
+        <div style="position: absolute; bottom: 20px; left: 16px; right: 16px; max-width: 480px; margin: 0 auto; z-index: 30; background: rgba(18, 22, 29, 0.94); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1.5px solid rgba(250, 204, 21, 0.3); border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- Searching Status Header -->
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.35); display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 3s linear infinite;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.98rem; font-weight: 800; color: #fff; letter-spacing: -0.2px;">Searching for drivers...</div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 500;">Connecting with verified nearby partners</div>
+                    </div>
+                </div>
+                <!-- Live Elapsed Counter -->
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 12px; text-align: right;">
+                    <span id="searching-preview-timer" style="font-size: 0.85rem; font-weight: 800; color: var(--primary); font-family: monospace;">18s</span>
+                </div>
+            </div>
+
+            <!-- Broadcast Offer Summary Strip -->
+            <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Broadcast Offer</span>
+                    <span id="searching-preview-offer-display" style="font-size: 1.15rem; font-weight: 900; color: #fff;">₹450</span>
+                </div>
+                <div style="text-align: right;">
+                    <span id="searching-preview-mode-badge" style="font-size: 0.72rem; color: var(--primary); font-weight: 700; background: rgba(250,204,21,0.12); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(250,204,21,0.25);">One-Way • By Km</span>
+                </div>
+            </div>
+
+            <!-- Action Controls -->
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="closeHireDriverSearchingPreview()" style="flex: 1; padding: 13px; border-radius: 12px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                    Cancel
+                </button>
+                <button type="button" onclick="openHireDriverAcceptedPreview()" style="flex: 1.6; padding: 13px; border-radius: 12px; background: var(--primary); border: none; color: #000; font-size: 0.88rem; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(250,204,21,0.3); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <span>Simulate Accept</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- 3. NEW SCREEN B: "Driver Accepted" Preview                                -->
+    <!-- ========================================================================= -->
+    <div id="hire-driver-accepted-preview" style="display: none; position: fixed; inset: 0; background: #0B0E14; z-index: 12700; flex-direction: column; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif;">
+        <!-- Full-screen Map Background with Route & Driver Icon -->
+        <div id="accepted-preview-map-bg" style="position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at 50% 40%, #16202c 0%, #0d121a 70%, #06080b 100%); z-index: 1; overflow: hidden;">
+            <div style="position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 40px 40px;"></div>
+            
+            <!-- Simulated Route Path & Moving Driver Marker -->
+            <svg style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;">
+                <path d="M 280 220 Q 220 280 180 360" fill="none" stroke="#facc15" stroke-width="4" stroke-dasharray="8 6" opacity="0.8"/>
+            </svg>
+
+            <!-- Driver Marker -->
+            <div style="position: absolute; top: 210px; left: 270px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 44px; height: 44px; border-radius: 50%; background: #22c55e; border: 3px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.6);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+                </div>
+                <span style="background: rgba(0,0,0,0.85); color: #fff; font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">Rajesh (Driver)</span>
+            </div>
+
+            <!-- Customer Pickup Marker -->
+            <div style="position: absolute; top: 350px; left: 165px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); border: 2px solid #000; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 16px rgba(250, 204, 21, 0.8);">
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #000;"></div>
+                </div>
+                <span style="background: rgba(0,0,0,0.85); color: var(--primary); font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(250,204,21,0.3);">You (Pickup)</span>
+            </div>
+        </div>
+
+        <!-- Top Floating Status Header -->
+        <div style="position: absolute; top: 16px; left: 16px; right: 16px; z-index: 20; display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" onclick="closeHireDriverAcceptedPreview()" style="background: rgba(11, 14, 20, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div style="background: rgba(34, 197, 94, 0.15); backdrop-filter: blur(12px); border: 1px solid rgba(34, 197, 94, 0.4); padding: 6px 14px; border-radius: 20px; display: flex; align-items: center; gap: 6px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span>
+                <span style="font-size: 0.75rem; color: #22c55e; font-weight: 800;">OFFER ACCEPTED</span>
+            </div>
+        </div>
+
+        <!-- Floating Driver Details Bottom-Sheet -->
+        <div style="position: absolute; bottom: 20px; left: 16px; right: 16px; max-width: 480px; margin: 0 auto; z-index: 30; background: rgba(18, 22, 29, 0.96); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1.5px solid rgba(34, 197, 94, 0.35); border-radius: 24px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.8); display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- ETA Banner Strip -->
+            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
+                    <span style="font-size: 0.85rem; font-weight: 800; color: #fff;">Arriving in <span style="color: #22c55e;">6 mins</span></span>
+                </div>
+                <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 600;">1.8 km away</span>
+            </div>
+
+            <!-- Driver Identity & Vehicle Info Card -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #facc15, #d97706); display: flex; align-items: center; justify-content: center; color: #000; font-weight: 900; font-size: 1.2rem; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        RK
+                    </div>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 1rem; font-weight: 800; color: #fff;">Rajesh Kumar</span>
+                            <span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 6px;">VERIFIED</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                            <span style="font-size: 0.75rem; color: #facc15; font-weight: 700;">★ 4.9 (340+ trips)</span>
+                            <span style="font-size: 0.72rem; color: #a1a1aa;">•</span>
+                            <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 600;">Car & SUV</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Vehicle Assigned</span>
+                    <div id="accepted-preview-plate" style="font-size: 0.78rem; font-weight: 800; color: var(--primary); letter-spacing: 0.5px;">WB01AB1234</div>
+                </div>
+            </div>
+
+            <!-- Agreed Fare Summary -->
+            <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Agreed Fare</span>
+                    <div id="accepted-preview-fare-display" style="font-size: 1.2rem; font-weight: 900; color: var(--primary);">₹450</div>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Payment Mode</span>
+                    <div style="font-size: 0.78rem; font-weight: 700; color: #fff;">Direct Cash / UPI</div>
+                </div>
+            </div>
+
+            <!-- Communication Action Buttons -->
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="if(typeof showToast === 'function') showToast('Calling Rajesh (+91 9876543210)...', 'info')" style="flex: 1; padding: 13px; border-radius: 12px; background: #22c55e; border: none; color: #000; font-size: 0.88rem; font-weight: 800; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                    Call Driver
+                </button>
+                <button type="button" onclick="if(typeof showToast === 'function') showToast('Opening chat with Rajesh...', 'info')" style="flex: 1; padding: 13px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    Message
+                </button>
+            </div>
+            
+            <button type="button" onclick="closeHireDriverAcceptedPreview(); openHireDriverPreviewScreen();" style="width: 100%; padding: 8px; background: transparent; border: none; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; cursor: pointer; text-decoration: underline;">
+                Back to Booking Flow
             </button>
         </div>
     </div>
