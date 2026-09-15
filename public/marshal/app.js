@@ -9592,6 +9592,11 @@ window.driverBidPreviewState = {
 };
 
 window.openDriverBidRequestPreview = function(customData = null) {
+    const splash = document.getElementById('splash-screen');
+    if (splash) splash.style.display = 'none';
+    const login = document.getElementById('login-screen');
+    if (login) login.style.display = 'none';
+
     const modal = document.getElementById('driver-bid-request-preview');
     if (!modal) return;
 
