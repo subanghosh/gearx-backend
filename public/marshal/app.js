@@ -5675,6 +5675,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize address select dropdowns
     initAddressDropdowns();
     
+    // Check if directly navigating to preview screens
+    if (typeof window.checkMarshalPreviewHash === 'function') {
+        window.checkMarshalPreviewHash();
+    }
+    
     // Sync native declined IDs on app launch
     if (typeof syncNativeDeclinedIds === 'function') syncNativeDeclinedIds();
 
@@ -9731,15 +9736,22 @@ window.rejectDriverBidPreview = function() {
 };
 
 // Hash routing for direct access
-window.addEventListener('hashchange', () => {
+function checkMarshalPreviewHash() {
     if (window.location.hash === '#preview-driver-bid-request' || window.location.hash === '#preview-bid-request') {
         window.openDriverBidRequestPreview();
     }
-});
-
-if (window.location.hash === '#preview-driver-bid-request' || window.location.hash === '#preview-bid-request') {
-    window.addEventListener('DOMContentLoaded', () => window.openDriverBidRequestPreview());
 }
 
+window.addEventListener('hashchange', checkMarshalPreviewHash);
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkMarshalPreviewHash);
+} else {
+    checkMarshalPreviewHash();
+}
+setTimeout(checkMarshalPreviewHash, 300);
+setTimeout(checkMarshalPreviewHash, 800);
+
 // Auto-cache-busting verified: 2026-09-15
+
 
