@@ -12233,7 +12233,7 @@ app.get('/downloads/:filename', (req, res) => {
     if (safeFilename.endsWith('.apk')) {
         res.setHeader('Content-Type', 'application/vnd.android.package-archive');
         res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
-        res.setHeader('Cache-Control', 'public, max-age=14400, must-revalidate');
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     }
 
     res.sendFile(targetPath);
