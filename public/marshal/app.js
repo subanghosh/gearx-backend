@@ -2608,8 +2608,8 @@ async function submitOnboarding() {
 window.marshalTabHistory = ['trips'];
 window.isBackNavigating = false;
 
-// Initial state replace to track first tab
-if (!history.state) {
+// Initial state replace to track first tab (preserve deep links / preview hashes)
+if (!history.state && (!window.location.hash || window.location.hash === '#')) {
     try {
         history.replaceState({ tab: 'trips' }, '', '#trips');
     } catch(e) {
