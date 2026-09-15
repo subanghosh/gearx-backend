@@ -9598,6 +9598,20 @@ window.reportCustomerNoshow = async function(tripId) {
 // -------------------------------------------------------------------------
 // DRIVER BID REQUEST PREVIEW CONTROLLER (Native Driver-Side Bidding UI)
 // -------------------------------------------------------------------------
+// Vehicle Illustration Helper (SUV, Sedan, Hatchback, Bike)
+// -------------------------------------------------------------------------
+window.getVehicleIllustration = function(type) {
+    const lowerType = String(type || '').toLowerCase();
+    if (lowerType.includes('bike') || lowerType.includes('motorcycle') || lowerType.includes('scooter') || lowerType.includes('two wheeler') || lowerType.includes('2-wheeler')) {
+        return 'images/bike.png';
+    } else if (lowerType.includes('suv') || lowerType.includes('creta') || lowerType.includes('scorpio') || lowerType.includes('harrier') || lowerType.includes('fortuner')) {
+        return 'images/suv.png';
+    } else if (lowerType.includes('hatchback') || lowerType.includes('swift') || lowerType.includes('i20') || lowerType.includes('baleno')) {
+        return 'images/hatchback.png';
+    }
+    return 'images/sedan.png';
+};
+
 let driverBidPreviewInterval = null;
 window.driverBidPreviewState = {
     baseOffer: 550,
@@ -9618,6 +9632,10 @@ window.openDriverBidRequestPreview = function(customData = null) {
     if (customData) {
         if (customData.offer) window.driverBidPreviewState.baseOffer = customData.offer;
         if (customData.ceiling) window.driverBidPreviewState.maxCeiling = customData.ceiling;
+        if (customData.vehicleType) {
+            const vImg = document.getElementById('driver-preview-vehicle-img');
+            if (vImg) vImg.src = window.getVehicleIllustration(customData.vehicleType);
+        }
     }
     
     // Always start preview with the customer's base offer
