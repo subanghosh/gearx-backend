@@ -13275,6 +13275,281 @@ window.previewHireDriverState = {
     sheetExpanded: false
 };
 
+
+// =========================================================================
+// UNIFIED HIRE DRIVER PREVIEW - REAL GOOGLE MAP & ROUTE POLYLINE ENGINE
+// =========================================================================
+
+const redrivoLuxuryDarkMapStyle = [
+  { "elementType": "geometry", "stylers": [{ "color": "#111726" }] },
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#111726" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#94a3b8" }] },
+  { "featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{ "color": "#cbd5e1" }] },
+  { "featureType": "poi", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#0d1f1f" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
+  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#0f172a" }] },
+  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#64748b" }] },
+  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#2d3748" }] },
+  { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{ "color": "#1a202c" }] },
+  { "featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{ "color": "#e2e8f0" }] },
+  { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#090d16" }] },
+  { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#475569" }] }
+];
+
+let hirePreviewMap = null;
+let hirePreviewPickupMarker = null;
+let hirePreviewDropMarker = null;
+let hirePreviewRoutePolyline = null;
+let hirePreviewRoutePolylineBorder = null;
+let searchingPreviewMap = null;
+let searchingPreviewPickupMarker = null;
+let searchingNearbyMarkers = [];
+
+window.initHireDriverPreviewMap = function(retryCount = 0) {
+    const mapEl = document.getElementById('preview-map-canvas');
+    if (!mapEl) return;
+    
+    if (typeof google === 'undefined' || !google.maps) {
+        if (retryCount < 30) {
+            setTimeout(() => window.initHireDriverPreviewMap(retryCount + 1), 150);
+        }
+        return;
+    }
+    
+    if (!hirePreviewMap) {
+        hirePreviewMap = new google.maps.Map(mapEl, {
+            center: { lat: 22.5726, lng: 88.3639 }, // Kolkata center
+            zoom: 13,
+            disableDefaultUI: true,
+            zoomControl: false,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+            styles: redrivoLuxuryDarkMapStyle
+        });
+    } else {
+        google.maps.event.trigger(hirePreviewMap, 'resize');
+    }
+    
+    window.updateHireDriverPreviewRoute();
+};
+
+window.recenterPreviewMap = function() {
+    if (hirePreviewMap && window.lastPreviewRouteBounds) {
+        hirePreviewMap.fitBounds(window.lastPreviewRouteBounds, {
+            top: 140,
+            bottom: 230,
+            left: 50,
+            right: 50
+        });
+    } else if (hirePreviewMap) {
+        hirePreviewMap.setCenter({ lat: 22.5726, lng: 88.3639 });
+        hirePreviewMap.setZoom(13);
+    }
+};
+
+window.updateHireDriverPreviewRoute = function() {
+    if (!hirePreviewMap || typeof google === 'undefined' || !google.maps) return;
+    
+    const isOutstation = window.previewHireDriverState.tripType === 'outstation';
+    
+    let pLat = 22.5535, pLng = 88.3518; // Park Street, Kolkata
+    let dLat = isOutstation ? 21.6266 : 22.6547; // Digha or Kolkata Airport (CCU)
+    let dLng = isOutstation ? 87.5074 : 88.4467;
+    
+    const pickupIconSvg = `<svg width="40" height="52" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <filter id="shadow-p" x="0" y="0" width="40" height="52" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+        </filter>
+        <g filter="url(#shadow-p)">
+            <path d="M20 4C11.163 4 4 11.163 4 20C4 29.5 17 44 20 44C23 44 36 29.5 36 20C36 11.163 28.837 4 20 4Z" fill="#0B0F19" stroke="#FACC15" stroke-width="2.5"/>
+            <circle cx="20" cy="20" r="7" fill="#FACC15"/>
+            <circle cx="20" cy="20" r="3.5" fill="#000000"/>
+        </g>
+    </svg>`;
+    
+    const dropIconSvg = `<svg width="40" height="52" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <filter id="shadow-d" x="0" y="0" width="40" height="52" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+        </filter>
+        <g filter="url(#shadow-d)">
+            <path d="M20 4C11.163 4 4 11.163 4 20C4 29.5 17 44 20 44C23 44 36 29.5 36 20C36 11.163 28.837 4 20 4Z" fill="#0B0F19" stroke="#22C55E" stroke-width="2.5"/>
+            <circle cx="20" cy="20" r="7" fill="#22C55E"/>
+            <rect x="17" y="17" width="6" height="6" rx="1.5" fill="#FFFFFF"/>
+        </g>
+    </svg>`;
+
+    const pickupMarkerIcon = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pickupIconSvg),
+        scaledSize: new google.maps.Size(40, 52),
+        anchor: new google.maps.Point(20, 44)
+    };
+    
+    const dropMarkerIcon = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dropIconSvg),
+        scaledSize: new google.maps.Size(40, 52),
+        anchor: new google.maps.Point(20, 44)
+    };
+
+    if (!hirePreviewPickupMarker) {
+        hirePreviewPickupMarker = new google.maps.Marker({
+            position: { lat: pLat, lng: pLng },
+            map: hirePreviewMap,
+            icon: pickupMarkerIcon,
+            zIndex: 20
+        });
+    } else {
+        hirePreviewPickupMarker.setPosition({ lat: pLat, lng: pLng });
+        hirePreviewPickupMarker.setMap(hirePreviewMap);
+    }
+
+    if (!hirePreviewDropMarker) {
+        hirePreviewDropMarker = new google.maps.Marker({
+            position: { lat: dLat, lng: dLng },
+            map: hirePreviewMap,
+            icon: dropMarkerIcon,
+            zIndex: 20
+        });
+    } else {
+        hirePreviewDropMarker.setPosition({ lat: dLat, lng: dLng });
+        hirePreviewDropMarker.setMap(hirePreviewMap);
+    }
+
+    const directionsService = new google.maps.DirectionsService();
+    directionsService.route({
+        origin: new google.maps.LatLng(pLat, pLng),
+        destination: new google.maps.LatLng(dLat, dLng),
+        travelMode: google.maps.TravelMode.DRIVING
+    }, (response, status) => {
+        if (status === 'OK') {
+            const route = response.routes[0];
+            const path = route.overview_path;
+            window.lastPreviewRouteBounds = route.bounds;
+            
+            if (hirePreviewRoutePolylineBorder) hirePreviewRoutePolylineBorder.setMap(null);
+            if (hirePreviewRoutePolyline) hirePreviewRoutePolyline.setMap(null);
+            
+            hirePreviewRoutePolylineBorder = new google.maps.Polyline({
+                path: path,
+                strokeColor: '#000000',
+                strokeOpacity: 0.85,
+                strokeWeight: 8,
+                map: hirePreviewMap,
+                zIndex: 10
+            });
+            
+            hirePreviewRoutePolyline = new google.maps.Polyline({
+                path: path,
+                strokeColor: isOutstation ? '#f59e0b' : '#facc15',
+                strokeOpacity: 0.95,
+                strokeWeight: 5,
+                map: hirePreviewMap,
+                zIndex: 11
+            });
+            
+            let totalMeters = 0;
+            let totalSecs = 0;
+            route.legs.forEach(l => {
+                totalMeters += l.distance.value;
+                totalSecs += l.duration.value;
+            });
+            
+            const distKm = (totalMeters / 1000).toFixed(1);
+            const durationMins = Math.round(totalSecs / 60);
+            const durText = durationMins > 60 ? `${Math.floor(durationMins/60)}h ${durationMins%60}m` : `~${durationMins} mins`;
+            
+            const distBadge = document.getElementById('preview-km-dist-text');
+            if (distBadge) {
+                distBadge.innerHTML = `${distKm} km <span style="color: ${isOutstation ? '#f59e0b' : '#facc15'}; font-size: 0.72rem;">(${durText})</span>`;
+            }
+            
+            hirePreviewMap.fitBounds(route.bounds, {
+                top: 140,
+                bottom: 230,
+                left: 50,
+                right: 50
+            });
+        }
+    });
+};
+
+window.initSearchingPreviewMap = function(retryCount = 0) {
+    const mapEl = document.getElementById('preview-searching-map-canvas');
+    if (!mapEl) return;
+    
+    if (typeof google === 'undefined' || !google.maps) {
+        if (retryCount < 30) {
+            setTimeout(() => window.initSearchingPreviewMap(retryCount + 1), 150);
+        }
+        return;
+    }
+    
+    const pLat = 22.5535, pLng = 88.3518; // Park Street
+    
+    if (!searchingPreviewMap) {
+        searchingPreviewMap = new google.maps.Map(mapEl, {
+            center: { lat: pLat, lng: pLng },
+            zoom: 15,
+            disableDefaultUI: true,
+            zoomControl: false,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+            styles: redrivoLuxuryDarkMapStyle
+        });
+    } else {
+        google.maps.event.trigger(searchingPreviewMap, 'resize');
+        searchingPreviewMap.setCenter({ lat: pLat, lng: pLng });
+    }
+    
+    // Pickup Marker
+    const pickupIconSvg = `<svg width="40" height="52" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <filter id="shadow-sp" x="0" y="0" width="40" height="52" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+        </filter>
+        <g filter="url(#shadow-sp)">
+            <path d="M20 4C11.163 4 4 11.163 4 20C4 29.5 17 44 20 44C23 44 36 29.5 36 20C36 11.163 28.837 4 20 4Z" fill="#0B0F19" stroke="#FACC15" stroke-width="2.5"/>
+            <circle cx="20" cy="20" r="7" fill="#FACC15"/>
+            <circle cx="20" cy="20" r="3.5" fill="#000000"/>
+        </g>
+    </svg>`;
+    
+    if (!searchingPreviewPickupMarker) {
+        searchingPreviewPickupMarker = new google.maps.Marker({
+            position: { lat: pLat, lng: pLng },
+            map: searchingPreviewMap,
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pickupIconSvg),
+                scaledSize: new google.maps.Size(40, 52),
+                anchor: new google.maps.Point(20, 44)
+            },
+            zIndex: 20
+        });
+    }
+
+    // Add simulated nearby marshal vehicle icons on real map roads
+    if (searchingNearbyMarkers.length === 0) {
+        const offsets = [
+            { lat: 22.5560, lng: 88.3540 },
+            { lat: 22.5510, lng: 88.3490 },
+            { lat: 22.5575, lng: 88.3480 },
+            { lat: 22.5505, lng: 88.3560 }
+        ];
+        offsets.forEach(pos => {
+            const m = new google.maps.Marker({
+                position: pos,
+                map: searchingPreviewMap,
+                icon: typeof create3DVehicleIcon === 'function' ? create3DVehicleIcon(Math.floor(Math.random() * 360)) : undefined,
+                zIndex: 15
+            });
+            searchingNearbyMarkers.push(m);
+        });
+    }
+};
+
+
 window.openHireDriverPreviewScreen = function() {
     const screen = document.getElementById('hire-driver-preview-screen');
     if (!screen) return;

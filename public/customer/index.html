@@ -1736,34 +1736,12 @@
         </div>
 
         <!-- Full-screen Real Interactive Route Map Canvas (Background) -->
-        <div id="preview-hire-map" style="position: absolute; inset: 0; width: 100%; height: 100%; background: #0e141c; z-index: 1;">
-            <!-- Simulated Map Canvas Overlay with roads, route polyline, and pickup/drop pins -->
-            <div style="position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, #151e2a 0%, #090d13 100%); overflow: hidden;">
-                <!-- Roads Grid Lines -->
-                <div style="position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 48px 48px;"></div>
-                
-                <!-- SVG Route Line between Pickup and Drop -->
-                <svg style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;">
-                    <path d="M 160 260 Q 220 310 260 380 T 320 480" fill="none" stroke="#facc15" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4" opacity="0.9"/>
-                </svg>
-
-                <!-- Pickup Pin Marker -->
-                <div style="position: absolute; top: 245px; left: 145px; display: flex; flex-direction: column; align-items: center; gap: 3px;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #facc15; border: 2px solid #000; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(250,204,21,0.5);">
-                        <div style="width: 8px; height: 8px; border-radius: 50%; background: #000;"></div>
-                    </div>
-                    <span style="background: rgba(0,0,0,0.85); color: #facc15; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(250,204,21,0.3); white-space: nowrap;">Pickup</span>
-                </div>
-
-                <!-- Drop Pin Marker -->
-                <div style="position: absolute; top: 465px; left: 305px; display: flex; flex-direction: column; align-items: center; gap: 3px;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(34,197,94,0.5);">
-                        <div style="width: 8px; height: 8px; border-radius: 50%; background: #fff;"></div>
-                    </div>
-                    <span style="background: rgba(0,0,0,0.85); color: #22c55e; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(34,197,94,0.3); white-space: nowrap;">Drop</span>
-                </div>
-            </div>
-        </div>
+        <div id="preview-map-canvas" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; background: #0b0e14;"></div>
+        
+        <!-- Map Floating Recenter Button -->
+        <button type="button" onclick="recenterPreviewMap()" style="position: absolute; right: 16px; top: 165px; z-index: 15; width: 44px; height: 44px; border-radius: 50%; background: rgba(18, 24, 38, 0.9); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(250, 204, 21, 0.3); color: var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,0.6); cursor: pointer; outline: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+        </button>
 
         <!-- ================================================================= -->
         <!-- DRAGGABLE BOTTOM SHEET OVER MAP (Uber / InDrive Style)             -->
@@ -1956,27 +1934,16 @@
         </div>
 
         <!-- Real Visible Streets & Roads Map Canvas (Background) -->
-        <div id="preview-searching-map" style="position: absolute; inset: 0; width: 100%; height: 100%; background: radial-gradient(circle at 50% 40%, #172230 0%, #0c1017 70%, #06090d 100%); z-index: 1; overflow: hidden;">
-            <div style="position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 44px 44px;"></div>
-            
-            <!-- Radar Ripple Waves around Pickup -->
-            <div style="position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;">
-                <div style="position: absolute; width: 220px; height: 220px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.35); animation: radarRipple 2s infinite ease-out;"></div>
-                <div style="position: absolute; width: 130px; height: 130px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.5); animation: radarRipple 2s infinite ease-out; animation-delay: 0.6s;"></div>
-                <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(250, 204, 21, 0.2); border: 2px solid var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 25px rgba(250, 204, 21, 0.6); z-index: 2;">
-                    <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--primary);"></div>
-                </div>
-                <div style="position: absolute; top: 52px; background: rgba(0,0,0,0.85); border: 1px solid rgba(250,204,21,0.4); color: #fff; font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 12px; white-space: nowrap;">
-                    Mani Casadona
-                </div>
+        <div id="preview-searching-map-canvas" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; background: #0b0e14;"></div>
+        <!-- Animated Radar Ripple Overlay over Map -->
+        <div style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 260px; height: 260px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.4); animation: radarRipple 2.2s infinite ease-out;"></div>
+            <div style="position: absolute; width: 160px; height: 160px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.6); animation: radarRipple 2.2s infinite ease-out; animation-delay: 0.7s;"></div>
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(250, 204, 21, 0.25); border: 2.5px solid var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(250, 204, 21, 0.8);">
+                <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--primary);"></div>
             </div>
-
-            <!-- Simulated Nearby Drivers on map -->
-            <div style="position: absolute; top: 28%; left: 24%; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
-                <span style="font-size: 0.65rem; color: #22c55e; font-weight: 800;">🚗 Driver (400m)</span>
-            </div>
-            <div style="position: absolute; top: 48%; left: 70%; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
-                <span style="font-size: 0.65rem; color: #22c55e; font-weight: 800;">🚗 Driver (850m)</span>
+            <div style="position: absolute; top: 54px; background: rgba(11, 15, 25, 0.92); backdrop-filter: blur(10px); border: 1px solid rgba(250,204,21,0.4); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); white-space: nowrap;">
+                Park Street, Kolkata
             </div>
         </div>
 
@@ -3122,7 +3089,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./app.js?v=20260915_v5_redesign"></script>
+    <script src="./app.js?v=20260915_v6_real_map"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->
