@@ -29,7 +29,7 @@
     <script src="socket.io.js" defer></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="styles.css?v=20260915_v2">
+    <link rel="stylesheet" href="styles.css?v=20260915_v3">
 
     <!-- New UI Dependencies -->
     <script>
@@ -1286,7 +1286,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="kyc-validation.js"></script>
-    <script src="app.js?v=20260915_v2"></script>
+    <script src="app.js?v=20260915_v3"></script>
     <script src="otp-boxes.js"></script>
     <script>
         lucide.createIcons();
@@ -1766,6 +1766,160 @@
         </div>
     </div>
 </div>
+
+<!-- ========================================================================= -->
+<!-- DRIVER BID REQUEST PREVIEW MODAL (Native Driver-Side Bidding UI)          -->
+<!-- ========================================================================= -->
+<div id="driver-bid-request-preview" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 10500; flex-direction: column; justify-content: flex-end; align-items: center; font-family: 'Plus Jakarta Sans', sans-serif;">
+    <div style="width: 100%; max-width: 480px; background: #12161D; border: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 28px 28px 0 0; box-shadow: 0 -10px 50px rgba(0, 0, 0, 0.85); display: flex; flex-direction: column; overflow: hidden; max-height: 90vh;">
+        
+        <!-- Header Strip: Title + 60s Animated Countdown Ring -->
+        <div style="padding: 16px 20px 12px; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 12px #22c55e; animation: dotBlink 1.2s infinite;"></span>
+                <div>
+                    <div style="font-size: 0.75rem; font-weight: 800; color: #facc15; text-transform: uppercase; letter-spacing: 0.8px;">Incoming Request</div>
+                    <div style="font-size: 0.95rem; font-weight: 800; color: #fff;">Hire Driver (P2P)</div>
+                </div>
+            </div>
+
+            <!-- 60s Circular Countdown Timer -->
+            <div style="position: relative; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;">
+                <svg width="46" height="46" viewBox="0 0 46 46" style="transform: rotate(-90deg);">
+                    <circle cx="23" cy="23" r="20" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"></circle>
+                    <circle id="driver-preview-timer-ring" cx="23" cy="23" r="20" fill="none" stroke="#22c55e" stroke-width="3" stroke-dasharray="125.6" stroke-dashoffset="0" stroke-linecap="round" style="transition: stroke-dashoffset 1s linear, stroke 0.5s ease;"></circle>
+                </svg>
+                <span id="driver-preview-timer-text" style="position: absolute; font-size: 0.82rem; font-weight: 900; color: #fff; font-family: monospace;">60s</span>
+            </div>
+        </div>
+
+        <!-- Scrollable Body Content -->
+        <div style="padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- 1. Customer Offer Fare Card -->
+            <div style="background: linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0%, rgba(34, 197, 94, 0.08) 100%); border: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 18px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <div style="font-size: 0.68rem; font-weight: 800; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.6px;">Customer Offer</div>
+                    <div style="display: flex; align-items: baseline; gap: 3px; margin-top: 2px;">
+                        <span style="font-size: 1.2rem; font-weight: 900; color: #facc15;">₹</span>
+                        <span id="driver-preview-offer-amount" style="font-size: 1.9rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">550</span>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); padding: 4px 10px; border-radius: 20px;">
+                        <span style="font-size: 0.72rem; font-weight: 800; color: #22c55e;">Est. Net: ₹495</span>
+                    </div>
+                    <div style="font-size: 0.65rem; color: #71717a; font-weight: 600; margin-top: 4px;">Direct Bank / Wallet Payout</div>
+                </div>
+            </div>
+
+            <!-- 2. Trip Route & Proximity Card -->
+            <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+                
+                <!-- Driver Proximity Pill -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span style="font-size: 0.72rem; font-weight: 700; color: #d4d4d8;">Pickup Distance:</span>
+                        <span style="font-size: 0.72rem; font-weight: 800; color: #facc15;">1.2 km away</span>
+                    </div>
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #22c55e;">~4 mins ETA</span>
+                </div>
+
+                <!-- Pickup & Drop Locations -->
+                <div style="display: flex; gap: 12px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; padding-top: 3px;">
+                        <div style="width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></div>
+                        <div style="width: 2px; height: 32px; background: linear-gradient(180deg, #22c55e 0%, #facc15 100%); margin: 3px 0;"></div>
+                        <div style="width: 10px; height: 10px; border-radius: 2px; background: #facc15; box-shadow: 0 0 8px #facc15;"></div>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+                        <div>
+                            <div style="font-size: 0.68rem; font-weight: 700; color: #71717a; text-transform: uppercase;">Pickup</div>
+                            <div style="font-size: 0.82rem; font-weight: 800; color: #fff; line-height: 1.2;">Mani Casadona, Newtown</div>
+                            <div style="font-size: 0.7rem; color: #a1a1aa;">Action Area II, Kolkata</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.68rem; font-weight: 700; color: #71717a; text-transform: uppercase;">Drop</div>
+                            <div style="font-size: 0.82rem; font-weight: 800; color: #fff; line-height: 1.2;">Howrah Railway Station</div>
+                            <div style="font-size: 0.7rem; color: #a1a1aa;">Station Road, Howrah</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trip Metrics Strip -->
+                <div style="background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-around; margin-top: 2px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.65rem; color: #71717a; font-weight: 600;">Trip Distance</div>
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #fff;">25.5 km</div>
+                    </div>
+                    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1);"></div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.65rem; color: #71717a; font-weight: 600;">Estimated Duration</div>
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #fff;">~54 mins</div>
+                    </div>
+                    <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1);"></div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.65rem; color: #71717a; font-weight: 600;">Trip Type</div>
+                        <div style="font-size: 0.82rem; font-weight: 800; color: #facc15;">One-Way</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Vehicle & Customer Details Card -->
+            <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 42px; height: 42px; border-radius: 12px; background: rgba(250, 204, 21, 0.1); border: 1px solid rgba(250, 204, 21, 0.25); display: flex; align-items: center; justify-content: center;">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.85rem; font-weight: 800; color: #fff;">Hyundai Creta</div>
+                        <div style="font-size: 0.72rem; color: #a1a1aa; font-weight: 600;">Manual • Petrol • SUV</div>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #fff;">Suban G.</div>
+                    <div style="font-size: 0.7rem; color: #facc15; font-weight: 700;">★ 4.9 (24 trips)</div>
+                </div>
+            </div>
+
+            <!-- 4. Counter-Offer Stepper / Quick Selection -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #a1a1aa; text-transform: uppercase;">Counter-Offer Options</span>
+                    <span style="font-size: 0.65rem; color: #71717a; font-weight: 600;">Capped at slab ceiling (₹850)</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                    <button type="button" onclick="selectDriverCounterBid(550, this)" class="driver-counter-btn active" style="padding: 8px 4px; border-radius: 10px; border: 1.5px solid #22c55e; background: rgba(34, 197, 94, 0.15); color: #fff; font-size: 0.78rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-align: center;">
+                        <div style="font-size: 0.65rem; color: #22c55e;">Accept Base</div>
+                        <div>₹550</div>
+                    </button>
+                    <button type="button" onclick="selectDriverCounterBid(600, this)" class="driver-counter-btn" style="padding: 8px 4px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.3); color: #fff; font-size: 0.78rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-align: center;">
+                        <div style="font-size: 0.65rem; color: #facc15;">+₹50</div>
+                        <div>₹600</div>
+                    </button>
+                    <button type="button" onclick="selectDriverCounterBid(650, this)" class="driver-counter-btn" style="padding: 8px 4px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(0, 0, 0, 0.3); color: #fff; font-size: 0.78rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-align: center;">
+                        <div style="font-size: 0.65rem; color: #facc15;">+₹100</div>
+                        <div>₹650</div>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sticky Action Buttons Strip -->
+        <div style="padding: 14px 20px 20px; background: rgba(11, 14, 20, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; gap: 12px;">
+            <button type="button" onclick="rejectDriverBidPreview()" style="flex: 1; padding: 14px; border-radius: 14px; background: rgba(239, 68, 68, 0.12); border: 1.5px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.9rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
+                DECLINE
+            </button>
+            <button type="button" id="driver-preview-main-action-btn" onclick="submitDriverBidPreview()" style="flex: 2; padding: 14px; border-radius: 14px; background: #22c55e; border: none; color: #000; font-size: 0.95rem; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
+                ACCEPT ₹550
+            </button>
+        </div>
+
+    </div>
+</div>
+
 </body>
 </html>
 

@@ -9580,20 +9580,151 @@ window.reportCustomerNoshow = async function(tripId) {
                 localStorage.removeItem('trip_state_' + tripId);
                 if (typeof loadMyTrips === 'function') loadMyTrips();
                 else location.reload();
+// -------------------------------------------------------------------------
+// DRIVER BID REQUEST PREVIEW CONTROLLER (Native Driver-Side Bidding UI)
+// -------------------------------------------------------------------------
+let driverBidPreviewInterval = null;
+window.driverBidPreviewState = {
+    baseOffer: 550,
+    selectedBid: 550,
+    maxCeiling: 850,
+    timeRemaining: 60
+};
+
+window.openDriverBidRequestPreview = function(customData = null) {
+    const modal = document.getElementById('driver-bid-request-preview');
+    if (!modal) return;
+
+    if (customData) {
+        if (customData.offer) window.driverBidPreviewState.baseOffer = customData.offer;
+        if (customData.offer) window.driverBidPreviewState.selectedBid = customData.offer;
+    }
+
+    const offerEl = document.getElementById('driver-preview-offer-amount');
+    if (offerEl) offerEl.textContent = window.driverBidPreviewState.baseOffer;
+
+    const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    if (actionBtn) {
+        actionBtn.textContent = `ACCEPT ₹${window.driverBidPreviewState.baseOffer}`;
+        actionBtn.style.background = '#22c55e';
+        actionBtn.style.color = '#000';
+    }
+
+    // Reset countdown timer
+    window.driverBidPreviewState.timeRemaining = 60;
+    const timerText = document.getElementById('driver-preview-timer-text');
+    const timerRing = document.getElementById('driver-preview-timer-ring');
+    const totalCircumference = 125.66; // 2 * PI * 20
+
+    if (timerText) timerText.textContent = '60s';
+    if (timerRing) {
+        timerRing.style.strokeDashoffset = '0';
+        timerRing.style.stroke = '#22c55e';
+    }
+
+    if (driverBidPreviewInterval) clearInterval(driverBidPreviewInterval);
+    driverBidPreviewInterval = setInterval(() => {
+        window.driverBidPreviewState.timeRemaining--;
+        const rem = window.driverBidPreviewState.timeRemaining;
+
+        if (timerText) timerText.textContent = `${rem}s`;
+
+        if (timerRing) {
+            const fraction = (60 - rem) / 60;
+            const offset = totalCircumference * fraction;
+            timerRing.style.strokeDashoffset = `${offset}`;
+
+            if (rem <= 15) {
+                timerRing.style.stroke = '#ef4444';
+            } else if (rem <= 30) {
+                timerRing.style.stroke = '#facc15';
             } else {
-                showToast(cData.error || 'Failed to report customer no-show.', 'error');
+                timerRing.style.stroke = '#22c55e';
             }
         }
-    } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+
+        if (rem <= 0) {
+            clearInterval(driverBidPreviewInterval);
+            driverBidPreviewInterval = null;
+            if (typeof showToast === 'function') {
+                showToast('Request expired (no response)', 'warning');
+            }
+            window.closeDriverBidRequestPreview();
+        }
+    }, 1000);
+
+    modal.style.display = 'flex';
+};
+
+window.closeDriverBidRequestPreview = function() {
+    if (driverBidPreviewInterval) {
+        clearInterval(driverBidPreviewInterval);
+        driverBidPreviewInterval = null;
+    }
+    const modal = document.getElementById('driver-bid-request-preview');
+    if (modal) modal.style.display = 'none';
+};
+
+window.selectDriverCounterBid = function(amount, el) {
+    window.driverBidPreviewState.selectedBid = amount;
+    const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    
+    // Update button states
+    document.querySelectorAll('.driver-counter-btn').forEach(btn => {
+        btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        btn.style.background = 'rgba(0, 0, 0, 0.3)';
+    });
+    
+    if (el) {
+        el.style.borderColor = '#22c55e';
+        el.style.background = 'rgba(34, 197, 94, 0.15)';
+    }
+
+    if (actionBtn) {
+        if (amount === window.driverBidPreviewState.baseOffer) {
+            actionBtn.textContent = `ACCEPT ₹${amount}`;
+            actionBtn.style.background = '#22c55e';
+            actionBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.4)';
+        } else {
+            actionBtn.textContent = `COUNTER ₹${amount}`;
+            actionBtn.style.background = '#facc15';
+            actionBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.4)';
+        }
     }
 };
 
+window.submitDriverBidPreview = function() {
+    const chosenBid = window.driverBidPreviewState.selectedBid;
+    const isCounter = chosenBid !== window.driverBidPreviewState.baseOffer;
+    
+    if (typeof showToast === 'function') {
+        if (isCounter) {
+            showToast(`Counter-bid of ₹${chosenBid} sent to customer. Awaiting acceptance...`, 'success');
+        } else {
+            showToast(`Request accepted for ₹${chosenBid}! Assigning trip...`, 'success');
+        }
+    }
+    
+    window.closeDriverBidRequestPreview();
+};
 
+window.rejectDriverBidPreview = function() {
+    if (typeof showToast === 'function') {
+        showToast('Booking request declined.', 'info');
+    }
+    window.closeDriverBidRequestPreview();
+};
 
+// Hash routing for direct access
+window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#preview-driver-bid-request' || window.location.hash === '#preview-bid-request') {
+        window.openDriverBidRequestPreview();
+    }
+});
 
+if (window.location.hash === '#preview-driver-bid-request' || window.location.hash === '#preview-bid-request') {
+    window.addEventListener('DOMContentLoaded', () => window.openDriverBidRequestPreview());
+}
 
+// Auto-cache-busting verified: 2026-09-15
 
-
-
-// Auto-cache-busting verified: 2026-09-11

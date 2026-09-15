@@ -1927,30 +1927,15 @@
     <!-- ========================================================================= -->
     <div id="hire-driver-searching-preview" style="display: none; position: fixed; inset: 0; background: #0B0E14; z-index: 12600; flex-direction: column; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif;">
         
-        <!-- Top App Bar & Status Header -->
+        <!-- Top App Bar & Back Button -->
         <div style="position: absolute; top: 14px; left: 16px; right: 16px; z-index: 30; display: flex; justify-content: space-between; align-items: center;">
             <button type="button" onclick="closeHireDriverSearchingPreview()" style="background: rgba(11, 14, 20, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
-            <div style="background: rgba(11, 14, 20, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(250, 204, 21, 0.3); padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 8px;">
-                <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: dotBlink 1s infinite;"></span>
-                <span style="font-size: 0.72rem; color: #fff; font-weight: 800; letter-spacing: 0.5px;">BROADCASTING</span>
-            </div>
         </div>
 
         <!-- Real Visible Streets & Roads Map Canvas (Background) -->
-        <div id="preview-searching-map-canvas" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; background: #0b0e14;"></div>
-        <!-- Animated Radar Ripple Overlay over Map -->
-        <div style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; width: 260px; height: 260px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.4); animation: radarRipple 2.2s infinite ease-out;"></div>
-            <div style="position: absolute; width: 160px; height: 160px; border-radius: 50%; border: 2px solid rgba(250, 204, 21, 0.6); animation: radarRipple 2.2s infinite ease-out; animation-delay: 0.7s;"></div>
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(250, 204, 21, 0.25); border: 2.5px solid var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(250, 204, 21, 0.8);">
-                <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--primary);"></div>
-            </div>
-            <div style="position: absolute; top: 54px; background: rgba(11, 15, 25, 0.92); backdrop-filter: blur(10px); border: 1px solid rgba(250,204,21,0.4); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); white-space: nowrap;">
-                Park Street, Kolkata
-            </div>
-        </div>
+        <div id="preview-searching-map-canvas" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; background: #f1f3f4;"></div>
 
         <!-- ================================================================= -->
         <!-- DRAGGABLE SEARCHING BOTTOM SHEET WITH LIVE OFFER STEPPER          -->
@@ -1963,42 +1948,40 @@
             </div>
 
             <!-- SEARCHING STATUS & DRIVER COUNT STRIP -->
-            <div style="padding: 4px 20px 8px 20px; display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.35); display: flex; align-items: center; justify-content: center; color: var(--primary);">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 3s linear infinite;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    </div>
+            <div style="padding: 6px 20px 10px 20px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px #22c55e; animation: dotBlink 1.2s infinite;"></span>
                     <div>
-                        <div style="font-size: 0.9rem; font-weight: 800; color: #fff;">Searching for drivers...</div>
-                        <div style="font-size: 0.68rem; color: #22c55e; font-weight: 700;">🟢 4 drivers viewing your request</div>
+                        <div style="font-size: 0.95rem; font-weight: 800; color: #fff;">Searching for drivers...</div>
+                        <div style="font-size: 0.72rem; color: #22c55e; font-weight: 700; margin-top: 1px;">🟢 4 drivers viewing your request</div>
                     </div>
                 </div>
-                <span id="searching-preview-timer" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; color: var(--primary); font-family: monospace;">18s</span>
+                <span id="searching-preview-timer" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 800; color: var(--primary); font-family: monospace;">18s</span>
             </div>
 
             <!-- LIVE OFFER STEPPER (Adjust offer live while searching!) -->
-            <div style="padding: 0 20px 8px 20px;">
-                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <button type="button" onclick="stepLiveSearchingOffer(-50)" style="width: 36px; height: 36px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 1.2rem; font-weight: 800; display: flex; align-items: center; justify-content: center; cursor: pointer; outline: none;">
+            <div style="padding: 0 20px 10px 20px;">
+                <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+                    <button type="button" onclick="stepLiveSearchingOffer(-50)" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 1.3rem; font-weight: 800; display: flex; align-items: center; justify-content: center; cursor: pointer; outline: none;">
                         −
                     </button>
                     <div style="display: flex; flex-direction: column; align-items: center;">
                         <div style="display: flex; align-items: baseline; gap: 2px;">
-                            <span style="font-size: 0.95rem; font-weight: 800; color: var(--primary);">₹</span>
-                            <span id="searching-live-offer-display" style="font-size: 1.45rem; font-weight: 900; color: #fff;">450</span>
+                            <span style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">₹</span>
+                            <span id="searching-live-offer-display" style="font-size: 1.6rem; font-weight: 900; color: #fff;">450</span>
                         </div>
-                        <span style="font-size: 0.62rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Broadcast Offer (Adjust Live)</span>
+                        <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Broadcast Offer (Adjust Live)</span>
                     </div>
-                    <button type="button" onclick="stepLiveSearchingOffer(50)" style="width: 36px; height: 36px; border-radius: 8px; background: var(--primary); border: none; color: #000; font-size: 1.2rem; font-weight: 800; display: flex; align-items: center; justify-content: center; cursor: pointer; outline: none;">
+                    <button type="button" onclick="stepLiveSearchingOffer(50)" style="width: 40px; height: 40px; border-radius: 10px; background: var(--primary); border: none; color: #000; font-size: 1.3rem; font-weight: 800; display: flex; align-items: center; justify-content: center; cursor: pointer; outline: none; box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);">
                         +
                     </button>
                 </div>
             </div>
 
-            <!-- AUTO-ACCEPT TOGGLE SWITCH (Matching Reference InDrive Pattern) -->
-            <div style="padding: 0 20px 10px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <!-- AUTO-ACCEPT TOGGLE SWITCH (Matching Reference Pattern) -->
+            <div style="padding: 0 20px 12px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06);">
                 <div style="display: flex; flex-direction: column;">
-                    <span style="font-size: 0.75rem; font-weight: 700; color: #fff;">Auto-accept nearest driver</span>
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #fff;">Auto-accept nearest driver</span>
                     <span style="font-size: 0.65rem; color: var(--text-muted);">Automatically book first driver who accepts this rate</span>
                 </div>
                 <!-- Interactive Toggle Switch -->
@@ -2009,17 +1992,11 @@
                 </label>
             </div>
 
-            <!-- EXPANDABLE DETAILS & ACTION BUTTONS -->
-            <div style="padding: 10px 20px 20px 20px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; gap: 8px;">
-                    <button type="button" onclick="closeHireDriverSearchingPreview()" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-                        Cancel Request
-                    </button>
-                    <button type="button" onclick="openHireDriverAcceptedPreview()" style="flex: 1.5; padding: 12px; border-radius: 12px; background: var(--primary); border: none; color: #000; font-size: 0.85rem; font-weight: 800; cursor: pointer; box-shadow: 0 4px 14px rgba(250,204,21,0.3); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                        <span>Simulate Accept</span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                    </button>
-                </div>
+            <!-- ACTION BUTTON (Cancel Request ONLY) -->
+            <div style="padding: 12px 20px 20px 20px; display: flex; flex-direction: column;">
+                <button type="button" onclick="closeHireDriverSearchingPreview()" style="width: 100%; padding: 14px; border-radius: 14px; background: rgba(239, 68, 68, 0.12); border: 1.5px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.9rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Cancel Request
+                </button>
             </div>
 
         </div>
