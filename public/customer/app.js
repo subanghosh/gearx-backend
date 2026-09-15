@@ -8434,9 +8434,132 @@ function renderHistory(trips) {
 
 
     
+window.switchBookingSubTab = function(tab) {
+    window.currentBookingSubTab = tab;
+    const activeBtn = document.getElementById('btn-booking-active');
+    const completedBtn = document.getElementById('btn-booking-completed');
+    if (activeBtn && completedBtn) {
+        if (tab === 'active') {
+            activeBtn.style.background = 'var(--primary)';
+            activeBtn.style.color = '#000';
+            activeBtn.style.fontWeight = '700';
+            
+            completedBtn.style.background = 'transparent';
+            completedBtn.style.color = '#fff';
+            completedBtn.style.fontWeight = '600';
+        } else {
+            completedBtn.style.background = 'var(--primary)';
+            completedBtn.style.color = '#000';
+            completedBtn.style.fontWeight = '700';
+            
+            activeBtn.style.background = 'transparent';
+            activeBtn.style.color = '#fff';
+            activeBtn.style.fontWeight = '600';
+        }
+    }
+    
+    updateBookingTabVisibility();
+};
+
+function updateBookingTabVisibility() {
+    const tab = window.currentBookingSubTab || 'active';
+    
+    const activeSections = [
+        document.getElementById('requests-section'),
+        document.getElementById('trips-section'),
+        document.getElementById('inspection-approval-section'),
+        document.getElementById('approval-section')
+    ];
+    const completedSection = document.getElementById('history-list');
+    const historyHeader = document.getElementById('completed-history-header');
+    
+    if (tab === 'active') {
+        if (completedSection) completedSection.style.display = 'none';
+        if (historyHeader) historyHeader.style.display = 'none';
+        
+        const myRequests = window.userRequests || [];
+        const activeReqs = myRequests.filter(r => !['pending', 'scheduled', 'completed', 'cancelled', 'returned', 'drop_completed', 'marshal_assigned'].includes(r.status));
+        const activeTrips = (window._myTrips || []).filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.status !== 'drop_completed' && t.status !== 'pending_payment');
+        const pendingApprovals = activeTrips.filter(t => t.status === 'pending_approval');
+        const pendingInspections = myRequests.filter(r => r.status === 'pending_inspection_approval');
+        
+        const reqSection = document.getElementById('requests-section');
+        const tripSection = document.getElementById('trips-section');
+        const appSection = document.getElementById('approval-section');
+        const insSection = document.getElementById('inspection-approval-section');
+        
+        if (reqSection) reqSection.style.display = activeReqs.length > 0 ? 'block' : 'none';
+        if (tripSection) tripSection.style.display = activeTrips.length > 0 ? 'block' : 'none';
+        if (appSection) appSection.style.display = pendingApprovals.length > 0 ? 'block' : 'none';
+        if (insSection) insSection.style.display = pendingInspections.length > 0 ? 'block' : 'none';
+    } else {
+        activeSections.forEach(sec => {
+            if (sec) sec.style.display = 'none';
+        });
+        if (completedSection) completedSection.style.display = 'block';
+        if (historyHeader) historyHeader.style.display = 'block';
+    }
+}
+
+async function openReceiptModal(tripId) {
+    try {
+        const audit = await apiGet(`/trips/${tripId}/audit`);
+        const allTrips = await apiGet('/trips');
+        const trip = allTrips.find(t => t.id === tripId);
+        if (trip && audit) {
+            openAuditModal({ trip, audit });
+        } else {
+            showToast('Audit report data not found.', 'error');
+        }
+    } catch (e) {
+        showToast('Error loading service report: ' + e.message, 'error');
+    }
+}
+
+function focusGarage() {
+    switchTab('garage');
+    const btnGarage = document.getElementById('nav-btn-garage');
+    const btnFocusGarage = document.getElementById('nav-btn-focus-garage');
+    if (btnGarage) btnGarage.classList.remove('active');
+    if (btnFocusGarage) btnFocusGarage.classList.add('active');
+
+    const sheet = document.getElementById('garage-container');
+    if (sheet) {
+        sheet.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+}
+
+function getInitialsAvatar(name) {
+    const initials = (name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+            <defs>
+                <linearGradient id="yellow-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#FBBF24" />
+                    <stop offset="50%" stop-color="#F59E0B" />
+                    <stop offset="100%" stop-color="#D97706" />
+                </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="50" fill="url(#yellow-gold-grad)" />
+            <text x="50" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="36" font-weight="bold" fill="#000000" text-anchor="middle" dominant-baseline="middle">${initials}</text>
+        </svg>
+    `.trim().replace(/\s+/g, ' ');
+    
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function updateUserAvatar() {
     if (!currentUser) return;
-    const avatarUrl = currentUser.photo ? (currentUser.photo.startsWith('http') ? currentUser.photo : `${API_URL.substring(0, API_URL.lastIndexOf('/api'))}/${currentUser.photo}`) : getInitialsAvatar(currentUser.name);
+    let avatarUrl = currentUser.photo || currentUser.facePhotoUrl || getInitialsAvatar(currentUser.name);
+    
+    if (avatarUrl && !avatarUrl.startsWith('http') && !avatarUrl.startsWith('data:')) {
+        const baseUrl = API_URL.replace('/api', '');
+        avatarUrl = `${baseUrl}/${avatarUrl}`;
+    }
+    
+    const headerAvatar = document.getElementById('header-user-avatar');
+    if (headerAvatar) headerAvatar.src = avatarUrl;
+    
     const modalAvatar = document.getElementById('profile-modal-avatar');
     if (modalAvatar) {
         modalAvatar.src = avatarUrl;
