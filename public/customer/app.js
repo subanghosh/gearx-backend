@@ -13280,24 +13280,6 @@ window.previewHireDriverState = {
 // UNIFIED HIRE DRIVER PREVIEW - REAL GOOGLE MAP & ROUTE POLYLINE ENGINE
 // =========================================================================
 
-const redrivoLuxuryDarkMapStyle = [
-  { "elementType": "geometry", "stylers": [{ "color": "#111726" }] },
-  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#111726" }] },
-  { "elementType": "labels.text.fill", "stylers": [{ "color": "#94a3b8" }] },
-  { "featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{ "color": "#cbd5e1" }] },
-  { "featureType": "poi", "elementType": "labels", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#0d1f1f" }] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
-  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#0f172a" }] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#64748b" }] },
-  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#2d3748" }] },
-  { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{ "color": "#1a202c" }] },
-  { "featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{ "color": "#e2e8f0" }] },
-  { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
-  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#090d16" }] },
-  { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#475569" }] }
-];
-
 let hirePreviewMap = null;
 let hirePreviewPickupMarker = null;
 let hirePreviewDropMarker = null;
@@ -13327,7 +13309,7 @@ window.initHireDriverPreviewMap = function(retryCount = 0) {
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
-            styles: redrivoLuxuryDarkMapStyle
+            styles: lightMapStyle
         });
     } else {
         google.maps.event.trigger(hirePreviewMap, 'resize');
@@ -13534,7 +13516,7 @@ window.initSearchingPreviewMap = function(retryCount = 0) {
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
-            styles: redrivoLuxuryDarkMapStyle
+            styles: lightMapStyle
         });
     } else {
         google.maps.event.trigger(searchingPreviewMap, 'resize');
