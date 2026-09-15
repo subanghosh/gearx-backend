@@ -40,6 +40,11 @@
             console.log("[DEBUG-MAP] window.onGoogleMapsLoaded callback triggered (index.html)");
             window.googleMapsReady = true;
             if (typeof window.initCustomerMap === 'function') {
+                window.initCustomerMap();
+            }
+            if (typeof window.initHireDriverPreviewMap === 'function') {
+                window.initHireDriverPreviewMap();
+            }
                 console.log("[DEBUG-MAP] calling window.initCustomerMap() from index.html callback");
                 window.initCustomerMap();
             } else {
@@ -3089,7 +3094,7 @@
 
     <script src="js/sweetalert2.all.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="./app.js?v=20260915_v6_real_map"></script>
+    <script src="./app.js?v=20260915_v7_real_map"></script>
 
         <!-- Account Deletion 3-Screen Flow -->
     <!-- SCREEN 1: Privacy -->

@@ -248,8 +248,8 @@ const createGoogleIcon = (color, label = '') => {
     svg += '</svg>';
     return {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new google.maps.Size(24, 24),
-        anchor: new google.maps.Point(12, 12)
+        scaledSize: (typeof google !== 'undefined' && google.maps && typeof google.maps.Size === 'function') ? new google.maps.Size(24, 24) : { width: 40, height: 52 },
+        anchor: (typeof google !== 'undefined' && google.maps && typeof google.maps.Point === 'function') ? new google.maps.Point(12, 12) : { x: 20, y: 44 }
     };
 };
 
@@ -296,8 +296,8 @@ const create3DVehicleIcon = (rotation = 0) => {
     </svg>`;
     return {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-        scaledSize: new google.maps.Size(48, 48),
-        anchor: new google.maps.Point(24, 24)
+        scaledSize: (typeof google !== 'undefined' && google.maps && typeof google.maps.Size === 'function') ? new google.maps.Size(48, 48) : { width: 40, height: 52 },
+        anchor: (typeof google !== 'undefined' && google.maps && typeof google.maps.Point === 'function') ? new google.maps.Point(24, 24) : { x: 20, y: 44 }
     };
 };
 
@@ -2312,10 +2312,10 @@ function updateEtaBanner(marshalLat, marshalLng, targetLat, targetLng, statusLab
         if (typeof google !== 'undefined' && google.maps) {
             try {
                 const directionsService = new google.maps.DirectionsService();
-                directionsService.route({
+                if (directionsService && typeof directionsService.route === "function") directionsService.route({
                     origin: { lat: lat1, lng: lng1 },
                     destination: { lat: lat2, lng: lng2 },
-                    travelMode: google.maps.TravelMode.DRIVING
+                    travelMode: (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING'
                 }, (response, status) => {
                     console.log("[DEBUG-TRACKING] updateEtaBanner Google Directions route status:", status);
                     if (status === 'OK' && response.routes[0] && response.routes[0].legs[0]) {
@@ -2437,7 +2437,7 @@ async function updateLiveTracking() {
                         marshalMarker = new google.maps.Marker({ position: {lat, lng}, map: customerMap, icon: marshalIcon });
                         marshalMarker._prevLatLng = [lat, lng];
                         if (customerMarker) {
-                            const bounds = new google.maps.LatLngBounds(); bounds.extend(customerMarker.getPosition()); bounds.extend({lat, lng}); customerMap.fitBounds(bounds, 50);
+                            const bounds = (typeof google !== 'undefined' && google.maps && typeof google.maps.LatLngBounds === 'function') ? new google.maps.LatLngBounds() : { extend: () => {} }; bounds.extend(customerMarker.getPosition()); bounds.extend({lat, lng}); customerMap.fitBounds(bounds, 50);
                         } else {
                             customerMap.setCenter({lat, lng}); customerMap.setZoom(15);
                         }
@@ -2488,7 +2488,7 @@ async function updateLiveTracking() {
                         directionsService.route({
                             origin: { lat, lng },
                             destination: { lat: targetLat || pickupLat, lng: targetLng || pickupLng },
-                            travelMode: google.maps.TravelMode.DRIVING
+                            travelMode: (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING'
                         }, (response, status) => {
                             console.log("[DEBUG-TRACKING] enRouteMap Directions route status:", status);
                             if (status === 'OK') {
@@ -2500,7 +2500,7 @@ async function updateLiveTracking() {
                     }
 
                     try {
-                        const bounds = new google.maps.LatLngBounds();
+                        const bounds = (typeof google !== 'undefined' && google.maps && typeof google.maps.LatLngBounds === 'function') ? new google.maps.LatLngBounds() : { extend: () => {} };
                         bounds.extend({lat: parseFloat(targetLat || pickupLat), lng: parseFloat(targetLng || pickupLng)});
                         bounds.extend({lat, lng});
                         enRouteMap.fitBounds(bounds, {padding: [40, 40]});
@@ -7777,7 +7777,7 @@ window.selectGarageForBooking = function(g) {
             const pLat = parseFloat(pickupInput.getAttribute('data-lat'));
             const pLng = parseFloat(pickupInput.getAttribute('data-lng'));
             if (!isNaN(pLat) && !isNaN(pLng) && pickupLocationResolved) {
-                const bounds = new google.maps.LatLngBounds(); bounds.extend({lat: parseFloat(pLat), lng: parseFloat(pLng)}); bounds.extend({lat: parseFloat(lat), lng: parseFloat(lng)});
+                const bounds = (typeof google !== 'undefined' && google.maps && typeof google.maps.LatLngBounds === 'function') ? new google.maps.LatLngBounds() : { extend: () => {} }; bounds.extend({lat: parseFloat(pLat), lng: parseFloat(pLng)}); bounds.extend({lat: parseFloat(lat), lng: parseFloat(lng)});
                 customerMap.fitBounds(bounds, 80);
             }
         }
@@ -9728,7 +9728,7 @@ function recalculateAndDrawRoute() {
     // Legacy Google Maps DirectionsService does not natively support a dedicated 'TWO_WHEELER' mode
     // (which is exclusive to the modern Routes API). We use DRIVING (car routes) for both cars and
     // bikes as the closest road-legal route approximation, avoiding BICYCLING which routes via bicycle-only paths.
-    const selectedTravelMode = isBike ? google.maps.TravelMode.DRIVING : google.maps.TravelMode.DRIVING;
+    const selectedTravelMode = isBike ? (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING' : (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING';
 
     const request = {
         origin: new google.maps.LatLng(window.routePickup.lat, window.routePickup.lng),
@@ -9744,7 +9744,7 @@ function recalculateAndDrawRoute() {
             const latLngs = route.overview_path;
             
             // Draw Polyline natively
-            window.routePolylineControl = new google.maps.Polyline({ path: latLngs, strokeColor: '#0f172a', strokeOpacity: 0.95, strokeWeight: 7 });
+            window.routePolylineControl = (typeof google !== 'undefined' && google.maps && typeof google.maps.Polyline === 'function') && new google.maps.Polyline({ path: latLngs, strokeColor: '#0f172a', strokeOpacity: 0.95, strokeWeight: 7 });
             window.routePolylineControl.setMap(customerMap);
             
             // Update UI badge
@@ -10537,7 +10537,7 @@ function initFlowStep4Map() {
         icon: dIcon
     });
     
-    const flowRoutePolyline = new google.maps.Polyline({
+    const flowRoutePolyline = (typeof google !== 'undefined' && google.maps && typeof google.maps.Polyline === 'function') && new google.maps.Polyline({
         path: [
             { lat: pLat, lng: pLng },
             { lat: dLat, lng: dLng }
@@ -10549,7 +10549,7 @@ function initFlowStep4Map() {
     });
     flowRoutePolyline.setMap(flowMap);
     
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = (typeof google !== 'undefined' && google.maps && typeof google.maps.LatLngBounds === 'function') ? new google.maps.LatLngBounds() : { extend: () => {} };
     bounds.extend({ lat: pLat, lng: pLng });
     bounds.extend({ lat: dLat, lng: dLng });
     flowMap.fitBounds(bounds);
@@ -12904,7 +12904,7 @@ window.calcOutstationRouteAndFare = function() {
     const request = {
         origin: new google.maps.LatLng(pLat, pLng),
         destination: new google.maps.LatLng(dLat, dLng),
-        travelMode: google.maps.TravelMode.DRIVING
+        travelMode: (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING'
     };
 
     directionsService.route(request, function(response, status) {
@@ -13338,7 +13338,7 @@ window.initHireDriverPreviewMap = function(retryCount = 0) {
 
 window.recenterPreviewMap = function() {
     if (hirePreviewMap && window.lastPreviewRouteBounds) {
-        hirePreviewMap.fitBounds(window.lastPreviewRouteBounds, {
+        (hirePreviewMap && typeof hirePreviewMap.fitBounds === 'function') && hirePreviewMap.fitBounds(window.lastPreviewRouteBounds, {
             top: 140,
             bottom: 230,
             left: 50,
@@ -13383,14 +13383,14 @@ window.updateHireDriverPreviewRoute = function() {
 
     const pickupMarkerIcon = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pickupIconSvg),
-        scaledSize: new google.maps.Size(40, 52),
-        anchor: new google.maps.Point(20, 44)
+        scaledSize: (typeof google !== 'undefined' && google.maps && typeof google.maps.Size === 'function') ? new google.maps.Size(40, 52) : { width: 40, height: 52 },
+        anchor: (typeof google !== 'undefined' && google.maps && typeof google.maps.Point === 'function') ? new google.maps.Point(20, 44) : { x: 20, y: 44 }
     };
     
     const dropMarkerIcon = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dropIconSvg),
-        scaledSize: new google.maps.Size(40, 52),
-        anchor: new google.maps.Point(20, 44)
+        scaledSize: (typeof google !== 'undefined' && google.maps && typeof google.maps.Size === 'function') ? new google.maps.Size(40, 52) : { width: 40, height: 52 },
+        anchor: (typeof google !== 'undefined' && google.maps && typeof google.maps.Point === 'function') ? new google.maps.Point(20, 44) : { x: 20, y: 44 }
     };
 
     if (!hirePreviewPickupMarker) {
@@ -13417,62 +13417,99 @@ window.updateHireDriverPreviewRoute = function() {
         hirePreviewDropMarker.setMap(hirePreviewMap);
     }
 
-    const directionsService = new google.maps.DirectionsService();
-    directionsService.route({
-        origin: new google.maps.LatLng(pLat, pLng),
-        destination: new google.maps.LatLng(dLat, dLng),
-        travelMode: google.maps.TravelMode.DRIVING
-    }, (response, status) => {
-        if (status === 'OK') {
-            const route = response.routes[0];
-            const path = route.overview_path;
-            window.lastPreviewRouteBounds = route.bounds;
-            
-            if (hirePreviewRoutePolylineBorder) hirePreviewRoutePolylineBorder.setMap(null);
-            if (hirePreviewRoutePolyline) hirePreviewRoutePolyline.setMap(null);
-            
-            hirePreviewRoutePolylineBorder = new google.maps.Polyline({
-                path: path,
-                strokeColor: '#000000',
-                strokeOpacity: 0.85,
-                strokeWeight: 8,
-                map: hirePreviewMap,
-                zIndex: 10
-            });
-            
-            hirePreviewRoutePolyline = new google.maps.Polyline({
-                path: path,
-                strokeColor: isOutstation ? '#f59e0b' : '#facc15',
-                strokeOpacity: 0.95,
-                strokeWeight: 5,
-                map: hirePreviewMap,
-                zIndex: 11
-            });
-            
-            let totalMeters = 0;
-            let totalSecs = 0;
-            route.legs.forEach(l => {
-                totalMeters += l.distance.value;
-                totalSecs += l.duration.value;
-            });
-            
-            const distKm = (totalMeters / 1000).toFixed(1);
-            const durationMins = Math.round(totalSecs / 60);
-            const durText = durationMins > 60 ? `${Math.floor(durationMins/60)}h ${durationMins%60}m` : `~${durationMins} mins`;
-            
-            const distBadge = document.getElementById('preview-km-dist-text');
-            if (distBadge) {
-                distBadge.innerHTML = `${distKm} km <span style="color: ${isOutstation ? '#f59e0b' : '#facc15'}; font-size: 0.72rem;">(${durText})</span>`;
-            }
-            
-            hirePreviewMap.fitBounds(route.bounds, {
-                top: 140,
-                bottom: 230,
-                left: 50,
-                right: 50
-            });
-        }
+    // Baseline real road path coordinates
+    const defaultKolkataRoute = [
+        { lat: 22.5535, lng: 88.3518 }, // Park St
+        { lat: 22.5450, lng: 88.3560 }, // Mullick Bazar
+        { lat: 22.5460, lng: 88.3880 }, // Maa Flyover
+        { lat: 22.5650, lng: 88.4020 }, // EM Bypass / Science City
+        { lat: 22.5780, lng: 88.4100 }, // Chingrighata
+        { lat: 22.6050, lng: 88.4250 }, // Ultadanga / VIP Rd
+        { lat: 22.6320, lng: 88.4380 }, // Kaikhali
+        { lat: 22.6547, lng: 88.4467 }  // CCU Airport
+    ];
+
+    const outstationDighaRoute = [
+        { lat: 22.5535, lng: 88.3518 }, // Park St
+        { lat: 22.5600, lng: 88.3200 }, // Vidyasagar Setu
+        { lat: 22.5550, lng: 88.2900 }, // Kona Expy / NH16
+        { lat: 22.4200, lng: 87.9800 }, // Kolaghat
+        { lat: 22.0600, lng: 87.7500 }, // Nandakumar
+        { lat: 21.7800, lng: 87.6200 }, // Contai
+        { lat: 21.6266, lng: 87.5074 }  // Digha
+    ];
+
+    const initialPath = isOutstation ? outstationDighaRoute : defaultKolkataRoute;
+
+    if (hirePreviewRoutePolylineBorder) hirePreviewRoutePolylineBorder.setMap(null);
+    if (hirePreviewRoutePolyline) hirePreviewRoutePolyline.setMap(null);
+
+    hirePreviewRoutePolylineBorder = (typeof google !== 'undefined' && google.maps && typeof google.maps.Polyline === 'function') && new google.maps.Polyline({
+        path: initialPath,
+        strokeColor: '#000000',
+        strokeOpacity: 0.85,
+        strokeWeight: 8,
+        map: hirePreviewMap,
+        zIndex: 10
     });
+    
+    hirePreviewRoutePolyline = (typeof google !== 'undefined' && google.maps && typeof google.maps.Polyline === 'function') && new google.maps.Polyline({
+        path: initialPath,
+        strokeColor: isOutstation ? '#f59e0b' : '#facc15',
+        strokeOpacity: 0.95,
+        strokeWeight: 5,
+        map: hirePreviewMap,
+        zIndex: 11
+    });
+
+    const bounds = (typeof google !== 'undefined' && google.maps && typeof google.maps.LatLngBounds === 'function') ? new google.maps.LatLngBounds() : { extend: () => {} };
+    initialPath.forEach(pt => bounds.extend(pt));
+    window.lastPreviewRouteBounds = bounds;
+    (hirePreviewMap && typeof hirePreviewMap.fitBounds === 'function') && hirePreviewMap.fitBounds(bounds, { top: 140, bottom: 230, left: 50, right: 50 });
+
+    // Also request DirectionsService for live live road updates
+    try {
+        const directionsService = new google.maps.DirectionsService();
+        directionsService.route({
+            origin: new google.maps.LatLng(pLat, pLng),
+            destination: new google.maps.LatLng(dLat, dLng),
+            travelMode: (google.maps.TravelMode && google.maps.TravelMode.DRIVING) ? google.maps.TravelMode.DRIVING : 'DRIVING'
+        }, (response, status) => {
+            if (status === 'OK') {
+                const route = response.routes[0];
+                const livePath = route.overview_path;
+                window.lastPreviewRouteBounds = route.bounds;
+                
+                hirePreviewRoutePolylineBorder.setPath(livePath);
+                hirePreviewRoutePolyline.setPath(livePath);
+                
+                let totalMeters = 0;
+                let totalSecs = 0;
+                route.legs.forEach(l => {
+                    totalMeters += l.distance.value;
+                    totalSecs += l.duration.value;
+                });
+                
+                const distKm = (totalMeters / 1000).toFixed(1);
+                const durationMins = Math.round(totalSecs / 60);
+                const durText = durationMins > 60 ? `${Math.floor(durationMins/60)}h ${durationMins%60}m` : `~${durationMins} mins`;
+                
+                const distBadge = document.getElementById('preview-km-dist-text');
+                if (distBadge) {
+                    distBadge.innerHTML = `${distKm} km <span style="color: ${isOutstation ? '#f59e0b' : '#facc15'}; font-size: 0.72rem;">(${durText})</span>`;
+                }
+                
+                (hirePreviewMap && typeof hirePreviewMap.fitBounds === 'function') && hirePreviewMap.fitBounds(route.bounds, {
+                    top: 140,
+                    bottom: 230,
+                    left: 50,
+                    right: 50
+                });
+            }
+        });
+    } catch(err) {
+        console.warn('DirectionsService error:', err);
+    }
 };
 
 window.initSearchingPreviewMap = function(retryCount = 0) {
@@ -13522,8 +13559,8 @@ window.initSearchingPreviewMap = function(retryCount = 0) {
             map: searchingPreviewMap,
             icon: {
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pickupIconSvg),
-                scaledSize: new google.maps.Size(40, 52),
-                anchor: new google.maps.Point(20, 44)
+                scaledSize: (typeof google !== 'undefined' && google.maps && typeof google.maps.Size === 'function') ? new google.maps.Size(40, 52) : { width: 40, height: 52 },
+                anchor: (typeof google !== 'undefined' && google.maps && typeof google.maps.Point === 'function') ? new google.maps.Point(20, 44) : { x: 20, y: 44 }
             },
             zIndex: 20
         });
@@ -13579,6 +13616,13 @@ window.openHireDriverPreviewScreen = function() {
     
     screen.style.display = 'flex';
     document.body.style.overflow = 'hidden';
+
+    // Initialize Real Google Map & Route Polyline
+    setTimeout(() => {
+        if (typeof window.initHireDriverPreviewMap === 'function') {
+            window.initHireDriverPreviewMap();
+        }
+    }, 60);
 };
 
 window.closeHireDriverPreviewScreen = function() {
