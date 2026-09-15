@@ -9580,6 +9580,16 @@ window.reportCustomerNoshow = async function(tripId) {
                 localStorage.removeItem('trip_state_' + tripId);
                 if (typeof loadMyTrips === 'function') loadMyTrips();
                 else location.reload();
+            } else {
+                showToast(cData.error || 'Failed to report customer no-show.', 'error');
+            }
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+};
+
+
 // -------------------------------------------------------------------------
 // DRIVER BID REQUEST PREVIEW CONTROLLER (Native Driver-Side Bidding UI)
 // -------------------------------------------------------------------------
