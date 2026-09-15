@@ -12203,10 +12203,27 @@ app.get('/downloads/:filename', (req, res) => {
     const repoPath = path.join(__dirname, 'public/downloads', safeFilename);
 
     let targetPath = null;
-    if (fs.existsSync(volumePath)) {
-        targetPath = volumePath;
-    } else if (fs.existsSync(repoPath)) {
+    const hasVolume = fs.existsSync(volumePath);
+    const hasRepo = fs.existsSync(repoPath);
+
+    if (hasVolume && hasRepo) {
+        try {
+            const volStat = fs.statSync(volumePath);
+            const repoStat = fs.statSync(repoPath);
+            if (repoStat.mtimeMs > volStat.mtimeMs) {
+                targetPath = repoPath;
+                // Sync persistent volume to latest repo build in background
+                try { fs.copyFileSync(repoPath, volumePath); } catch (_) {}
+            } else {
+                targetPath = volumePath;
+            }
+        } catch (_) {
+            targetPath = repoPath;
+        }
+    } else if (hasRepo) {
         targetPath = repoPath;
+    } else if (hasVolume) {
+        targetPath = volumePath;
     }
 
     if (!targetPath) {
