@@ -9544,6 +9544,507 @@ apiRouter.get('/service-requests/:id/bids', authMiddleware, async (req, res) => 
     }
 });
 
+// =========================================================================
+// MULTI-ROUND P2P BIDDING & NEGOTIATION ENGINE (PostgreSQL-grounded)
+// =========================================================================
+
+// 1. Customer broadcasts offer to nearby drivers
+apiRouter.post('/service-requests/:id/bid-offers/broadcast', async (req, res) => {
+    const requestId = req.params.id;
+    const { initialAmount, floorAmount, ceilingAmount, radiusKm } = req.body || {};
+
+    try {
+        const srRes = await pool.query("SELECT * FROM service_requests WHERE id = $1", [requestId]);
+        if (srRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+        const sr = srRes.rows[0];
+        if (sr.status !== 'pending' && sr.status !== 'scheduled') {
+            return res.status(400).json({ error: `Cannot broadcast: request is ${sr.status}` });
+        }
+        if (sr.workerid) {
+            return res.status(400).json({ error: 'Request is already assigned to a driver' });
+        }
+
+        const baseAmount = Number(initialAmount || sr.totalcustomerprice || 550);
+        const floor = Number(floorAmount || Math.round(baseAmount * 0.8));
+        const ceiling = Number(ceilingAmount || Math.round(baseAmount * 1.5));
+        const maxDist = parseFloat(radiusKm) || 10.0;
+        const reqLat = parseFloat(sr.lat);
+        const reqLng = parseFloat(sr.lng);
+
+        // Auto-expire any stale past offers for this request
+        await pool.query("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = $1 AND status = 'pending' AND expires_at < NOW()", [requestId]);
+
+        // Discover nearby active marshals using Haversine formula
+        let marshals = [];
+        if (!isNaN(reqLat) && !isNaN(reqLng) && reqLat !== 0 && reqLng !== 0) {
+            const mRes = await pool.query(`
+                SELECT u.id, u.name, u.rating, u.lat, u.lng, u.profilepictureurl, u.facephotourl,
+                       (6371 * acos(
+                           LEAST(1.0, GREATEST(-1.0,
+                               cos(radians($1)) * cos(radians(u.lat)) * cos(radians(u.lng) - radians($2)) +
+                               sin(radians($1)) * sin(radians(u.lat))
+                           ))
+                       )) AS distance_km
+                FROM users u
+                WHERE u.role = 'marshal'
+                  AND u.status = 'active'
+                  AND u.lat IS NOT NULL AND u.lng IS NOT NULL
+                  AND (6371 * acos(
+                           LEAST(1.0, GREATEST(-1.0,
+                               cos(radians($1)) * cos(radians(u.lat)) * cos(radians(u.lng) - radians($2)) +
+                               sin(radians($1)) * sin(radians(u.lat))
+                           ))
+                       )) <= $3
+                ORDER BY distance_km ASC
+            `, [reqLat, reqLng, maxDist]);
+            marshals = mRes.rows || [];
+        }
+
+        // Fallback: If no marshals found in tight radius or lat/lng missing, find active marshals
+        if (marshals.length === 0) {
+            const fallbackRes = await pool.query(`
+                SELECT u.id, u.name, u.rating, u.lat, u.lng, u.profilepictureurl, u.facephotourl
+                FROM users u
+                WHERE u.role = 'marshal' AND u.status = 'active'
+                LIMIT 15
+            `);
+            marshals = fallbackRes.rows || [];
+        }
+
+        // Insert / refresh Round 1 pending offers for each driver
+        const insertedOffers = [];
+        for (const m of marshals) {
+            const existing = await pool.query(`
+                SELECT id FROM bid_offers 
+                WHERE service_request_id = $1 AND marshal_id = $2 AND status = 'pending' AND expires_at > NOW()
+            `, [requestId, m.id]);
+
+            if (existing.rows.length === 0) {
+                const offerId = `bo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+                const insRes = await pool.query(`
+                    INSERT INTO bid_offers (id, service_request_id, marshal_id, round_number, offered_by, amount, floor_amount, ceiling_amount, status, created_at, expires_at)
+                    VALUES ($1, $2, $3, 1, 'customer', $4, $5, $6, 'pending', NOW(), NOW() + INTERVAL '60 seconds')
+                    RETURNING *
+                `, [offerId, requestId, m.id, baseAmount, floor, ceiling]);
+                if (insRes.rows.length > 0) {
+                    insertedOffers.push(insRes.rows[0]);
+                }
+            }
+        }
+
+        // Update service_requests pricing
+        await pool.query(`
+            UPDATE service_requests 
+            SET totalcustomerprice = $1::real, final_agreed_amount = $1::numeric
+            WHERE id = $2
+        `, [baseAmount, requestId]);
+
+        res.json({
+            success: true,
+            marshalsNotified: marshals.length,
+            offersCreated: insertedOffers.length,
+            initialAmount: baseAmount,
+            floorAmount: floor,
+            ceilingAmount: ceiling,
+            expiresInSeconds: 60
+        });
+    } catch (err) {
+        console.error('Error broadcasting bid offers:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 2. Customer polls for incoming offers & status updates
+apiRouter.get('/service-requests/:id/bid-offers', async (req, res) => {
+    const requestId = req.params.id;
+    try {
+        // Auto-expire stale offers
+        await pool.query("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = $1 AND status = 'pending' AND expires_at < NOW()", [requestId]);
+
+        // Get service request details
+        const srRes = await pool.query(`
+            SELECT sr.id, sr.status, sr.workerid as "workerId", sr.totalcustomerprice as "totalCustomerPrice", 
+                   sr.final_agreed_amount, sr.lat, sr.lng,
+                   u.name as "assignedDriverName", u.phone as "assignedDriverPhone", u.rating as "assignedDriverRating"
+            FROM service_requests sr
+            LEFT JOIN users u ON sr.workerid = u.id
+            WHERE sr.id = $1
+        `, [requestId]);
+
+        if (srRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+        const serviceRequest = srRes.rows[0];
+
+        // Fetch all active or recently countered/accepted offers
+        const offersRes = await pool.query(`
+            SELECT bo.id, bo.service_request_id, bo.marshal_id, bo.round_number, bo.offered_by,
+                   bo.amount, bo.floor_amount, bo.ceiling_amount, bo.status, bo.created_at, bo.expires_at,
+                   EXTRACT(EPOCH FROM (bo.expires_at - NOW()))::int as "remaining_seconds",
+                   u.name as "marshal_name", u.rating as "marshal_rating", u.phone as "marshal_phone",
+                   u.lat as "marshal_lat", u.lng as "marshal_lng",
+                   u.profilepictureurl, u.facephotourl
+            FROM bid_offers bo
+            JOIN users u ON bo.marshal_id = u.id
+            WHERE bo.service_request_id = $1
+              AND (bo.status = 'pending' OR bo.status = 'accepted' OR (bo.status = 'countered' AND bo.created_at > NOW() - INTERVAL '2 minutes'))
+            ORDER BY bo.created_at DESC
+        `, [requestId]);
+
+        const reqLat = parseFloat(serviceRequest.lat) || 0;
+        const reqLng = parseFloat(serviceRequest.lng) || 0;
+
+        const offers = (offersRes.rows || []).map(row => {
+            const mLat = parseFloat(row.marshal_lat);
+            const mLng = parseFloat(row.marshal_lng);
+            let dist = 1.2;
+            if (!isNaN(mLat) && !isNaN(mLng) && !isNaN(reqLat) && !isNaN(reqLng) && reqLat !== 0 && mLat !== 0) {
+                const calculated = calcDistanceKm(mLat, mLng, reqLat, reqLng);
+                if (calculated !== null) dist = parseFloat(calculated.toFixed(1));
+            }
+            return {
+                id: row.id,
+                serviceRequestId: row.service_request_id,
+                marshalId: row.marshal_id,
+                marshalName: row.marshal_name || 'Verified Driver',
+                rating: parseFloat(row.marshal_rating || 5.0).toFixed(1),
+                photo: generateSignedUploadUrl(row.profilepictureurl || row.facephotourl || null),
+                roundNumber: row.round_number,
+                offeredBy: row.offered_by,
+                amount: parseFloat(row.amount),
+                floorAmount: parseFloat(row.floor_amount),
+                ceilingAmount: parseFloat(row.ceiling_amount),
+                status: row.status,
+                remainingSeconds: Math.max(0, parseInt(row.remaining_seconds) || 0),
+                distanceKm: dist,
+                etaMinutes: Math.max(3, Math.round(dist * 2.5)),
+                createdAt: row.created_at,
+                expiresAt: row.expires_at
+            };
+        });
+
+        // Check if there is an active trip if request is accepted/pending_payment
+        let trip = null;
+        if (serviceRequest.status === 'pending_payment' || serviceRequest.status === 'marshal_assigned' || serviceRequest.status === 'in_transit') {
+            const tripRes = await pool.query("SELECT * FROM trips WHERE servicerequestid = $1 ORDER BY createdat DESC LIMIT 1", [requestId]);
+            if (tripRes.rows.length > 0) {
+                trip = tripRes.rows[0];
+            }
+        }
+
+        res.json({
+            success: true,
+            serviceRequest,
+            trip,
+            offers
+        });
+    } catch (err) {
+        console.error('Error fetching bid offers:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Customer updates / bumps offer amount
+apiRouter.post('/service-requests/:id/bid-offers/update-amount', async (req, res) => {
+    const requestId = req.params.id;
+    const { newAmount } = req.body || {};
+    const amountNum = Number(newAmount);
+
+    if (!amountNum || isNaN(amountNum) || amountNum <= 0) {
+        return res.status(400).json({ error: 'Valid newAmount is required' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const srRes = await client.query("SELECT * FROM service_requests WHERE id = $1 FOR UPDATE", [requestId]);
+        if (srRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+        const sr = srRes.rows[0];
+        if (sr.status !== 'pending' && sr.status !== 'scheduled') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Cannot update amount: request is ${sr.status}` });
+        }
+        if (sr.workerid) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Request is already assigned to a driver' });
+        }
+
+        // Update service_requests price
+        await client.query("UPDATE service_requests SET totalcustomerprice = $1::real, final_agreed_amount = $1::numeric WHERE id = $2", [amountNum, requestId]);
+
+        // 1) Update pending Round 1 customer offers -> new amount + reset 60s
+        await client.query(`
+            UPDATE bid_offers 
+            SET amount = $1, expires_at = NOW() + INTERVAL '60 seconds'
+            WHERE service_request_id = $2 AND round_number = 1 AND offered_by = 'customer' AND status = 'pending'
+        `, [amountNum, requestId]);
+
+        // 2) Update pending driver counters where driver counter amount <= customer new amount (customer met or exceeded counter)
+        await client.query(`
+            UPDATE bid_offers 
+            SET amount = $1, offered_by = 'customer', expires_at = NOW() + INTERVAL '60 seconds'
+            WHERE service_request_id = $2 AND offered_by = 'driver' AND status = 'pending' AND amount <= $1
+        `, [amountNum, requestId]);
+
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            newAmount: amountNum,
+            message: `Offer updated to ₹${amountNum}`
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error updating bid offer amount:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 4. Driver or Customer responds to an offer (Accept, Reject, Counter)
+apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, res) => {
+    const requestId = req.params.id;
+    const offerId = req.params.offerId;
+    const { action, counterAmount, marshalId } = req.body || {};
+
+    if (!action || !['accept', 'reject', 'counter'].includes(action)) {
+        return res.status(400).json({ error: "action must be 'accept', 'reject', or 'counter'" });
+    }
+
+    const client = await pool.connect();
+    try {
+        if (action === 'accept') {
+            await client.query('BEGIN');
+
+            // 1. Lock the offer row
+            const boRes = await client.query("SELECT * FROM bid_offers WHERE id = $1 AND service_request_id = $2 FOR UPDATE", [offerId, requestId]);
+            if (boRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Bid offer not found' });
+            }
+            const offer = boRes.rows[0];
+            if (offer.status !== 'pending') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Offer is already ${offer.status}` });
+            }
+
+            // Check expiry
+            if (new Date(offer.expires_at).getTime() < Date.now()) {
+                await client.query("UPDATE bid_offers SET status = 'expired' WHERE id = $1", [offerId]);
+                await client.query('COMMIT');
+                return res.status(400).json({ error: 'This offer has expired' });
+            }
+
+            const chosenMarshalId = offer.marshal_id || marshalId;
+            const finalAgreedAmount = Number(offer.amount);
+
+            // 2. Lock & update service_requests (Atomic check: workerId is null AND status pending/scheduled)
+            const srUpdate = await client.query(`
+                UPDATE service_requests 
+                SET workerid = $1, status = 'pending_payment', final_agreed_amount = $2::numeric, totalcustomerprice = $2::real
+                WHERE id = $3 AND (workerid IS NULL OR workerid = '') AND status IN ('pending', 'scheduled')
+                RETURNING id, customerid, pickup_address, drop_address, vehicleid, totalcustomerprice, lat, lng
+            `, [chosenMarshalId, finalAgreedAmount, requestId]);
+
+            if (srUpdate.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: 'This ride has already been accepted by another driver or is no longer available.' });
+            }
+            const updatedSr = srUpdate.rows[0];
+
+            // 3. Mark accepted offer
+            await client.query("UPDATE bid_offers SET status = 'accepted' WHERE id = $1", [offerId]);
+
+            // 4. Expire all other pending offers for this request
+            await client.query("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = $1 AND id != $2 AND status = 'pending'", [requestId, offerId]);
+
+            // 5. Generate 4-digit OTPs
+            const tripId = `trip_${Date.now()}`;
+            const otp1 = String(Math.floor(1000 + Math.random() * 9000));
+            const garageDropoffOtp = String(Math.floor(1000 + Math.random() * 9000));
+            const garagePickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+            const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+            const pLat = parseFloat(updatedSr.lat) || 0;
+            const pLng = parseFloat(updatedSr.lng) || 0;
+
+            // 6. Insert trip in pending_payment state
+            const tripRes = await client.query(`
+                INSERT INTO trips (id, servicerequestid, marshalid, status, otp1, garagedropoffotp, garagepickupotp, deliveryotp, pickuplat, pickuplng, createdat)
+                VALUES ($1, $2, $3, 'pending_payment', $4, $5, $6, $7, $8, $9, NOW())
+                RETURNING *
+            `, [tripId, requestId, chosenMarshalId, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pLat, pLng]);
+
+            if (typeof db !== 'undefined' && db && db.run) {
+                try {
+                    db.run("UPDATE service_requests SET workerId = ?, status = 'pending_payment' WHERE id = ?", [chosenMarshalId, requestId], () => {});
+                    db.run("INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pickupLat, pickupLng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [tripId, requestId, chosenMarshalId, 'pending_payment', otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pLat, pLng], () => {});
+                } catch(e) {}
+            }
+
+            await client.query('COMMIT');
+
+            return res.json({
+                success: true,
+                message: 'Bid accepted successfully',
+                trip: tripRes.rows[0],
+                serviceRequest: updatedSr,
+                finalAgreedAmount
+            });
+        } else if (action === 'reject') {
+            await pool.query("UPDATE bid_offers SET status = 'rejected' WHERE id = $1 AND service_request_id = $2 AND status = 'pending'", [offerId, requestId]);
+            return res.json({ success: true, message: 'Bid offer rejected' });
+        } else if (action === 'counter') {
+            const counterNum = Number(counterAmount);
+            if (!counterNum || isNaN(counterNum) || counterNum <= 0) {
+                return res.status(400).json({ error: 'Valid counterAmount is required' });
+            }
+
+            await client.query('BEGIN');
+
+            const boRes = await client.query("SELECT * FROM bid_offers WHERE id = $1 AND service_request_id = $2 FOR UPDATE", [offerId, requestId]);
+            if (boRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Bid offer not found' });
+            }
+            const currentOffer = boRes.rows[0];
+            if (currentOffer.status !== 'pending') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Cannot counter an offer that is ${currentOffer.status}` });
+            }
+
+            // Check floor & ceiling
+            const floor = Number(currentOffer.floor_amount);
+            const ceiling = Number(currentOffer.ceiling_amount);
+            if (counterNum < floor || counterNum > ceiling) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Counter amount ₹${counterNum} is outside allowable range (₹${floor} - ₹${ceiling})` });
+            }
+
+            // Determine next round & offerer
+            let nextRound = 2;
+            let nextOfferedBy = currentOffer.offered_by === 'customer' ? 'driver' : 'customer';
+
+            // Mark old offer as countered
+            await client.query("UPDATE bid_offers SET status = 'countered' WHERE id = $1", [offerId]);
+
+            // Insert new counter offer row
+            const newOfferId = `bo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+            const insRes = await client.query(`
+                INSERT INTO bid_offers (id, service_request_id, marshal_id, round_number, offered_by, amount, floor_amount, ceiling_amount, status, created_at, expires_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW() + INTERVAL '60 seconds')
+                RETURNING *
+            `, [newOfferId, requestId, currentOffer.marshal_id, nextRound, nextOfferedBy, counterNum, floor, ceiling]);
+
+            await client.query('COMMIT');
+
+            return res.json({
+                success: true,
+                message: 'Counter-offer submitted successfully',
+                newOffer: insRes.rows[0]
+            });
+        }
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error responding to bid offer:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 5. Driver polls for active incoming bid offers
+apiRouter.get('/marshals/active-bid-offers', async (req, res) => {
+    const marshalId = req.query.marshalId || (req.user && req.user.id);
+    const marshalLat = parseFloat(req.query.lat);
+    const marshalLng = parseFloat(req.query.lng);
+
+    if (!marshalId) {
+        return res.status(400).json({ error: 'marshalId is required' });
+    }
+
+    try {
+        // Auto-expire stale offers
+        await pool.query("UPDATE bid_offers SET status = 'expired' WHERE status = 'pending' AND expires_at < NOW()");
+
+        const offersRes = await pool.query(`
+            SELECT bo.id as offer_id, bo.service_request_id, bo.marshal_id, bo.round_number, bo.offered_by,
+                   bo.amount, bo.floor_amount, bo.ceiling_amount, bo.status, bo.created_at, bo.expires_at,
+                   EXTRACT(EPOCH FROM (bo.expires_at - NOW()))::int as "remaining_seconds",
+                   sr.lat as "pickup_lat", sr.lng as "pickup_lng",
+                   sr.pickup_address, sr.drop_address, sr.service_category, sr.issue, sr.pickup_drop_type,
+                   sr.booking_flow, sr.status as "request_status",
+                   c.name as "customer_name", c.phone as "customer_phone",
+                   v.make as "vehicle_make", v.model as "vehicle_model", v.type as "vehicle_type",
+                   v.plate as "vehicle_plate", v.photo as "vehicle_photo", v.fuel as "vehicle_fuel"
+            FROM bid_offers bo
+            JOIN service_requests sr ON bo.service_request_id = sr.id
+            LEFT JOIN customers c ON sr.customerid = c.id
+            LEFT JOIN vehicles v ON sr.vehicleid = v.id
+            WHERE bo.marshal_id = $1
+              AND bo.status = 'pending'
+              AND bo.expires_at > NOW()
+              AND (sr.status = 'pending' OR sr.status = 'scheduled')
+              AND (sr.workerid IS NULL OR sr.workerid = '')
+            ORDER BY bo.created_at DESC
+        `, [marshalId]);
+
+        const offers = (offersRes.rows || []).map(row => {
+            const pLat = parseFloat(row.pickup_lat) || 0;
+            const pLng = parseFloat(row.pickup_lng) || 0;
+            let dist = 1.2;
+            if (!isNaN(marshalLat) && !isNaN(marshalLng) && !isNaN(pLat) && !isNaN(pLng) && pLat !== 0) {
+                const calculated = calcDistanceKm(marshalLat, marshalLng, pLat, pLng);
+                if (calculated !== null) dist = parseFloat(calculated.toFixed(1));
+            }
+            return {
+                id: row.offer_id,
+                serviceRequestId: row.service_request_id,
+                marshalId: row.marshal_id,
+                roundNumber: row.round_number,
+                offeredBy: row.offered_by,
+                amount: parseFloat(row.amount),
+                floorAmount: parseFloat(row.floor_amount),
+                ceilingAmount: parseFloat(row.ceiling_amount),
+                status: row.status,
+                remainingSeconds: Math.max(0, parseInt(row.remaining_seconds) || 0),
+                pickupAddress: row.pickup_address || 'Pickup Location',
+                dropAddress: row.drop_address || 'Dropoff Destination',
+                pickupLat: pLat,
+                pickupLng: pLng,
+                distanceKm: dist,
+                serviceCategory: row.service_category || row.issue || 'Hire Driver',
+                pickupDropType: row.pickup_drop_type || 'One Way',
+                bookingFlow: row.booking_flow || 'p2p',
+                customerName: row.customer_name || 'Customer',
+                customerRating: '5.0',
+                vehicleMake: row.vehicle_make || 'Hyundai',
+                vehicleModel: row.vehicle_model || 'Creta',
+                vehicleType: row.vehicle_type || 'SUV',
+                vehiclePlate: row.vehicle_plate || 'WB 02 AB 1234',
+                vehiclePhoto: row.vehicle_photo ? generateSignedUploadUrl(row.vehicle_photo) : null,
+                vehicleFuel: row.vehicle_fuel || 'Petrol',
+                createdAt: row.created_at,
+                expiresAt: row.expires_at
+            };
+        });
+
+        res.json({
+            success: true,
+            offers
+        });
+    } catch (err) {
+        console.error('Error fetching driver active bid offers:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 const acceptPickupHandler = async (req, res) => {
     const { marshalId } = req.body;
     const requestId = req.params.id;

@@ -1818,7 +1818,7 @@
                 </div>
                 <div style="text-align: right;">
                     <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 8px; border-radius: 20px;">
-                        <span style="font-size: 0.7rem; font-weight: 800; color: #22c55e;">Est. Net: ₹495</span>
+                        <span id="driver-preview-est-net" style="font-size: 0.7rem; font-weight: 800; color: #22c55e;">Est. Net: ₹495</span>
                     </div>
                     <div style="font-size: 0.62rem; color: #71717a; font-weight: 600; margin-top: 2px;">Direct Bank / Wallet Payout</div>
                 </div>
@@ -1832,9 +1832,9 @@
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                         <span style="font-size: 0.7rem; font-weight: 700; color: #d4d4d8;">Pickup Distance:</span>
-                        <span style="font-size: 0.7rem; font-weight: 800; color: #facc15;">1.2 km away</span>
+                        <span id="driver-preview-pickup-dist" style="font-size: 0.7rem; font-weight: 800; color: #facc15;">1.2 km away</span>
                     </div>
-                    <span style="font-size: 0.7rem; font-weight: 700; color: #22c55e;">~4 mins ETA</span>
+                    <span id="driver-preview-pickup-eta" style="font-size: 0.7rem; font-weight: 700; color: #22c55e;">~4 mins ETA</span>
                 </div>
 
                 <!-- Pickup & Drop Locations -->
@@ -1847,13 +1847,13 @@
                     <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
                         <div>
                             <div style="font-size: 0.62rem; font-weight: 700; color: #71717a; text-transform: uppercase;">Pickup</div>
-                            <div style="font-size: 0.78rem; font-weight: 800; color: #fff; line-height: 1.2;">Mani Casadona, Newtown</div>
-                            <div style="font-size: 0.66rem; color: #a1a1aa;">Action Area II, Kolkata</div>
+                            <div id="driver-preview-pickup-title" style="font-size: 0.78rem; font-weight: 800; color: #fff; line-height: 1.2;">Mani Casadona, Newtown</div>
+                            <div id="driver-preview-pickup-sub" style="font-size: 0.66rem; color: #a1a1aa;">Action Area II, Kolkata</div>
                         </div>
                         <div>
                             <div style="font-size: 0.62rem; font-weight: 700; color: #71717a; text-transform: uppercase;">Drop</div>
-                            <div style="font-size: 0.78rem; font-weight: 800; color: #fff; line-height: 1.2;">Howrah Railway Station</div>
-                            <div style="font-size: 0.66rem; color: #a1a1aa;">Station Road, Howrah</div>
+                            <div id="driver-preview-drop-title" style="font-size: 0.78rem; font-weight: 800; color: #fff; line-height: 1.2;">Howrah Railway Station</div>
+                            <div id="driver-preview-drop-sub" style="font-size: 0.66rem; color: #a1a1aa;">Station Road, Howrah</div>
                         </div>
                     </div>
                 </div>
@@ -1862,17 +1862,17 @@
                 <div style="background: rgba(255, 255, 255, 0.04); border-radius: 8px; padding: 5px 8px; display: flex; align-items: center; justify-content: space-around;">
                     <div style="text-align: center;">
                         <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Trip Distance</div>
-                        <div style="font-size: 0.78rem; font-weight: 800; color: #fff;">25.5 km</div>
+                        <div id="driver-preview-trip-dist" style="font-size: 0.78rem; font-weight: 800; color: #fff;">25.5 km</div>
                     </div>
                     <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1);"></div>
                     <div style="text-align: center;">
                         <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Estimated Duration</div>
-                        <div style="font-size: 0.78rem; font-weight: 800; color: #fff;">~54 mins</div>
+                        <div id="driver-preview-trip-duration" style="font-size: 0.78rem; font-weight: 800; color: #fff;">~54 mins</div>
                     </div>
                     <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1);"></div>
                     <div style="text-align: center;">
                         <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Trip Type</div>
-                        <div style="font-size: 0.78rem; font-weight: 800; color: #facc15;">One-Way</div>
+                        <div id="driver-preview-trip-type" style="font-size: 0.78rem; font-weight: 800; color: #facc15;">One-Way</div>
                     </div>
                 </div>
             </div>
@@ -1884,13 +1884,13 @@
                         <img id="driver-preview-vehicle-img" src="images/suv.png" alt="Hyundai Creta" style="max-width: 100%; max-height: 100%; object-fit: contain;">
                     </div>
                     <div>
-                        <div style="font-size: 0.8rem; font-weight: 800; color: #fff;">Hyundai Creta</div>
-                        <div style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600;">Manual • Petrol • SUV</div>
+                        <div id="driver-preview-vehicle-name" style="font-size: 0.8rem; font-weight: 800; color: #fff;">Hyundai Creta</div>
+                        <div id="driver-preview-vehicle-meta" style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600;">Manual • Petrol • SUV</div>
                     </div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: #fff;">Suban G.</div>
-                    <div style="font-size: 0.66rem; color: #facc15; font-weight: 700;">★ 4.9 (24 trips)</div>
+                    <div id="driver-preview-customer-name" style="font-size: 0.72rem; font-weight: 800; color: #fff;">Suban G.</div>
+                    <div id="driver-preview-customer-rating" style="font-size: 0.66rem; color: #facc15; font-weight: 700;">★ 4.9 (24 trips)</div>
                 </div>
             </div>
 

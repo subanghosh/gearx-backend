@@ -2947,6 +2947,31 @@ async function loadAvailablePickups() {
             }
         }
 
+        // Check for active P2P Multi-Round bid offers
+        if (currentUser && currentUser.id) {
+            try {
+                const bParams = [`marshalId=${currentUser.id}`];
+                if (hasGps) {
+                    bParams.push(`lat=${marshalLat}`);
+                    bParams.push(`lng=${marshalLng}`);
+                }
+                const bRes = await fetch(`${API_URL}/marshals/active-bid-offers?${bParams.join('&')}`, { cache: 'no-store' });
+                if (bRes.ok) {
+                    const bData = await bRes.json();
+                    if (bData && bData.offers && bData.offers.length > 0) {
+                        const topOffer = bData.offers[0];
+                        const bidModal = document.getElementById('driver-bid-request-preview');
+                        const isModalOpen = bidModal && bidModal.style.display === 'flex';
+                        if (!isModalOpen || window.driverBidPreviewState.offerId !== topOffer.id) {
+                            window.openDriverBidRequestPreview(topOffer);
+                        }
+                    }
+                }
+            } catch (errB) {
+                console.warn('[BID_OFFERS_POLL_WARN]', errB.message);
+            }
+        }
+
         // ── ORDER CYCLE ENFORCEMENT ──────────────────────────────────────────
         // Check if this marshal already has an active trip. If so, block the feed.
         let activeTripData = { isBusy: false };
@@ -9614,13 +9639,22 @@ window.getVehicleIllustration = function(type) {
 
 let driverBidPreviewInterval = null;
 window.driverBidPreviewState = {
+    offerId: null,
+    serviceRequestId: null,
     baseOffer: 550,
-    selectedBid: 550,
+    floorAmount: 440,
     maxCeiling: 850,
-    timeRemaining: 60
+    selectedBid: 550,
+    roundNumber: 1,
+    offeredBy: 'customer',
+    timeRemaining: 60,
+    pickupPos: { lat: 22.5697, lng: 88.4337 },
+    dropPos: { lat: 22.5830, lng: 88.3426 },
+    pickupAddress: 'Mani Casadona, Newtown',
+    dropAddress: 'Howrah Railway Station'
 };
 
-window.openDriverBidRequestPreview = function(customData = null) {
+window.openDriverBidRequestPreview = function(offerData = null) {
     const splash = document.getElementById('splash-screen');
     if (splash) splash.style.display = 'none';
     const login = document.getElementById('login-screen');
@@ -9629,30 +9663,103 @@ window.openDriverBidRequestPreview = function(customData = null) {
     const modal = document.getElementById('driver-bid-request-preview');
     if (!modal) return;
 
-    if (customData) {
-        if (customData.offer) window.driverBidPreviewState.baseOffer = customData.offer;
-        if (customData.ceiling) window.driverBidPreviewState.maxCeiling = customData.ceiling;
-        if (customData.vehicleType) {
-            const vImg = document.getElementById('driver-preview-vehicle-img');
-            if (vImg) vImg.src = window.getVehicleIllustration(customData.vehicleType);
+    if (offerData) {
+        window.driverBidPreviewState.offerId = offerData.id || offerData.offerId || null;
+        window.driverBidPreviewState.serviceRequestId = offerData.serviceRequestId || offerData.service_request_id || null;
+        window.driverBidPreviewState.baseOffer = Number(offerData.amount || offerData.offer || 550);
+        window.driverBidPreviewState.floorAmount = Number(offerData.floorAmount || offerData.floor_amount || Math.round(window.driverBidPreviewState.baseOffer * 0.8));
+        window.driverBidPreviewState.maxCeiling = Number(offerData.ceilingAmount || offerData.ceiling || offerData.ceiling_amount || Math.round(window.driverBidPreviewState.baseOffer * 1.5));
+        window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
+        window.driverBidPreviewState.roundNumber = offerData.roundNumber || 1;
+        window.driverBidPreviewState.offeredBy = offerData.offeredBy || 'customer';
+        window.driverBidPreviewState.timeRemaining = offerData.remainingSeconds != null ? offerData.remainingSeconds : 60;
+
+        if (offerData.pickupLat && offerData.pickupLng) {
+            window.driverBidPreviewState.pickupPos = { lat: parseFloat(offerData.pickupLat), lng: parseFloat(offerData.pickupLng) };
         }
+        if (offerData.pickupAddress) {
+            window.driverBidPreviewState.pickupAddress = offerData.pickupAddress;
+        }
+        if (offerData.dropAddress) {
+            window.driverBidPreviewState.dropAddress = offerData.dropAddress;
+        }
+
+        // Update DOM elements with real offer details
+        const estNetEl = document.getElementById('driver-preview-est-net');
+        if (estNetEl) estNetEl.textContent = `Est. Net: ₹${Math.round(window.driverBidPreviewState.baseOffer * 0.9)}`;
+
+        const pDistEl = document.getElementById('driver-preview-pickup-dist');
+        if (pDistEl && offerData.distanceKm != null) pDistEl.textContent = `${offerData.distanceKm} km away`;
+
+        const pEtaEl = document.getElementById('driver-preview-pickup-eta');
+        if (pEtaEl && offerData.etaMinutes != null) pEtaEl.textContent = `~${offerData.etaMinutes} mins ETA`;
+
+        const pTitleEl = document.getElementById('driver-preview-pickup-title');
+        const pSubEl = document.getElementById('driver-preview-pickup-sub');
+        if (pTitleEl && offerData.pickupAddress) {
+            const parts = offerData.pickupAddress.split(',');
+            pTitleEl.textContent = parts[0] || offerData.pickupAddress;
+            if (pSubEl) pSubEl.textContent = parts.slice(1).join(',').trim() || '';
+        }
+
+        const dTitleEl = document.getElementById('driver-preview-drop-title');
+        const dSubEl = document.getElementById('driver-preview-drop-sub');
+        if (dTitleEl && offerData.dropAddress) {
+            const parts = offerData.dropAddress.split(',');
+            dTitleEl.textContent = parts[0] || offerData.dropAddress;
+            if (dSubEl) dSubEl.textContent = parts.slice(1).join(',').trim() || '';
+        }
+
+        const tTypeEl = document.getElementById('driver-preview-trip-type');
+        if (tTypeEl && (offerData.pickupDropType || offerData.serviceCategory)) {
+            tTypeEl.textContent = offerData.pickupDropType || offerData.serviceCategory;
+        }
+
+        const vImg = document.getElementById('driver-preview-vehicle-img');
+        if (vImg && offerData.vehicleType) {
+            vImg.src = window.getVehicleIllustration(offerData.vehicleType);
+        }
+
+        const vNameEl = document.getElementById('driver-preview-vehicle-name');
+        if (vNameEl && offerData.vehicleMake) {
+            vNameEl.textContent = `${offerData.vehicleMake} ${offerData.vehicleModel || ''}`.trim();
+        }
+
+        const vMetaEl = document.getElementById('driver-preview-vehicle-meta');
+        if (vMetaEl) {
+            vMetaEl.textContent = `${offerData.vehicleTransmission || 'Manual'} • ${offerData.vehicleFuel || 'Petrol'} • ${offerData.vehicleType || 'SUV'}`;
+        }
+
+        const cNameEl = document.getElementById('driver-preview-customer-name');
+        if (cNameEl && offerData.customerName) {
+            cNameEl.textContent = offerData.customerName;
+        }
+
+        const cRatingEl = document.getElementById('driver-preview-customer-rating');
+        if (cRatingEl && offerData.customerRating) {
+            cRatingEl.textContent = `★ ${offerData.customerRating}`;
+        }
+    } else {
+        window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
     }
-    
-    // Always start preview with the customer's base offer
-    window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
 
     const offerEl = document.getElementById('driver-preview-offer-amount');
     if (offerEl) offerEl.textContent = window.driverBidPreviewState.baseOffer;
 
     window.updateDriverCounterUI();
 
+    // Ringtone for incoming bid
+    if (typeof startRideRequestRingtone === 'function') {
+        startRideRequestRingtone();
+    }
+
     // Reset countdown timer
-    window.driverBidPreviewState.timeRemaining = 60;
+    const totalSecs = Math.max(1, window.driverBidPreviewState.timeRemaining || 60);
     const timerText = document.getElementById('driver-preview-timer-text');
     const timerRing = document.getElementById('driver-preview-timer-ring');
     const totalCircumference = 125.66; // 2 * PI * 20
 
-    if (timerText) timerText.textContent = '60s';
+    if (timerText) timerText.textContent = `${totalSecs}s`;
     if (timerRing) {
         timerRing.style.strokeDashoffset = '0';
         timerRing.style.stroke = '#22c55e';
@@ -9666,7 +9773,7 @@ window.openDriverBidRequestPreview = function(customData = null) {
         if (timerText) timerText.textContent = `${rem}s`;
 
         if (timerRing) {
-            const fraction = (60 - rem) / 60;
+            const fraction = Math.max(0, (60 - rem) / 60);
             const offset = totalCircumference * fraction;
             timerRing.style.strokeDashoffset = `${offset}`;
 
@@ -9682,6 +9789,7 @@ window.openDriverBidRequestPreview = function(customData = null) {
         if (rem <= 0) {
             clearInterval(driverBidPreviewInterval);
             driverBidPreviewInterval = null;
+            if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
             if (typeof showToast === 'function') {
                 showToast('Request expired (no response)', 'warning');
             }
@@ -9710,13 +9818,17 @@ window.initDriverBidPreviewMap = function() {
         return;
     }
 
-    const driverPos = { lat: 22.5650, lng: 88.4280 };
-    const pickupPos = { lat: 22.5697, lng: 88.4337 }; // Mani Casadona, Newtown
-    const dropPos = { lat: 22.5830, lng: 88.3426 };   // Howrah Station
+    const state = window.driverBidPreviewState;
+    const driverPos = { 
+        lat: (typeof marshalLat !== 'undefined' && marshalLat !== null) ? marshalLat : 22.5650, 
+        lng: (typeof marshalLng !== 'undefined' && marshalLng !== null) ? marshalLng : 88.4280 
+    };
+    const pickupPos = state.pickupPos || { lat: 22.5697, lng: 88.4337 };
+    const dropPos = state.dropPos || { lat: 22.5830, lng: 88.3426 };
 
     if (!driverBidPreviewMap) {
         driverBidPreviewMap = new google.maps.Map(canvas, {
-            center: { lat: 22.5726, lng: 88.3880 },
+            center: pickupPos,
             zoom: 12,
             disableDefaultUI: true,
             gestureHandling: 'greedy',
@@ -9752,7 +9864,7 @@ window.initDriverBidPreviewMap = function() {
     const pickupMarker = new google.maps.Marker({
         position: pickupPos,
         map: driverBidPreviewMap,
-        title: 'Pickup: Mani Casadona',
+        title: 'Pickup Location',
         icon: {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
                 <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -9770,7 +9882,7 @@ window.initDriverBidPreviewMap = function() {
     const dropMarker = new google.maps.Marker({
         position: dropPos,
         map: driverBidPreviewMap,
-        title: 'Drop: Howrah Railway Station',
+        title: 'Drop Destination',
         icon: {
             url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
                 <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -9827,6 +9939,7 @@ window.initDriverBidPreviewMap = function() {
 };
 
 window.closeDriverBidRequestPreview = function() {
+    if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
     if (driverBidPreviewInterval) {
         clearInterval(driverBidPreviewInterval);
         driverBidPreviewInterval = null;
@@ -9942,26 +10055,110 @@ window.updateDriverCounterUI = function() {
     }
 };
 
-window.submitDriverBidPreview = function() {
-    const chosenBid = window.driverBidPreviewState.selectedBid;
-    const isCounter = chosenBid !== window.driverBidPreviewState.baseOffer;
-    
-    if (typeof showToast === 'function') {
-        if (isCounter) {
-            showToast(`Counter-bid of ₹${chosenBid} sent to customer. Awaiting customer response...`, 'success');
-        } else {
-            showToast(`Request accepted for ₹${chosenBid}! Assigning trip...`, 'success');
+window.submitDriverBidPreview = async function() {
+    const state = window.driverBidPreviewState;
+    const chosenBid = state.selectedBid;
+    const isCounter = chosenBid !== state.baseOffer;
+    const offerId = state.offerId;
+    const reqId = state.serviceRequestId;
+
+    if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+
+    if (!offerId || !reqId) {
+        // Preview mode fallback
+        if (typeof showToast === 'function') {
+            if (isCounter) {
+                showToast(`Counter-bid of ₹${chosenBid} sent to customer. Awaiting customer response...`, 'success');
+            } else {
+                showToast(`Request accepted for ₹${chosenBid}! Assigning trip...`, 'success');
+            }
         }
+        window.closeDriverBidRequestPreview();
+        return;
     }
-    
-    window.closeDriverBidRequestPreview();
+
+    const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.textContent = isCounter ? 'SENDING...' : 'ACCEPTING...';
+    }
+
+    try {
+        const payload = isCounter
+            ? { action: 'counter', counterAmount: chosenBid, marshalId: currentUser?.id }
+            : { action: 'accept', marshalId: currentUser?.id };
+
+        const res = await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/${offerId}/respond`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            if (res.status === 409) {
+                showToast(data.error || 'This ride was accepted by another driver or is no longer available.', 'error');
+            } else {
+                showToast(data.error || 'Failed to submit bid response.', 'error');
+            }
+            window.closeDriverBidRequestPreview();
+            if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
+            return;
+        }
+
+        if (isCounter) {
+            showToast(`Counter-offer of ₹${chosenBid} submitted to customer! Waiting for response...`, 'success');
+            window.closeDriverBidRequestPreview();
+            if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
+        } else {
+            showToast(`Ride accepted for ₹${chosenBid}! Loading trip details...`, 'success');
+            window.closeDriverBidRequestPreview();
+            if (data.trip && typeof loadMyTrips === 'function') {
+                loadMyTrips();
+            }
+            if (typeof loadAvailablePickups === 'function') {
+                loadAvailablePickups();
+            }
+        }
+    } catch (err) {
+        console.error('Error submitting driver bid response:', err);
+        showToast('Network error while responding to bid.', 'error');
+        window.closeDriverBidRequestPreview();
+    } finally {
+        if (actionBtn) actionBtn.disabled = false;
+    }
 };
 
-window.rejectDriverBidPreview = function() {
+window.rejectDriverBidPreview = async function() {
+    const state = window.driverBidPreviewState;
+    const offerId = state.offerId;
+    const reqId = state.serviceRequestId;
+
+    if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+
+    if (offerId && reqId && currentUser && currentUser.id) {
+        try {
+            await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/${offerId}/respond`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+                },
+                body: JSON.stringify({ action: 'reject', marshalId: currentUser.id })
+            });
+        } catch (e) {
+            console.warn('Failed to notify backend of rejection:', e);
+        }
+    }
+
     if (typeof showToast === 'function') {
         showToast('Booking request declined.', 'info');
     }
     window.closeDriverBidRequestPreview();
+    if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
 };
 
 // Hash routing for direct access
