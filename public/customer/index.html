@@ -40,15 +40,13 @@
             console.log("[DEBUG-MAP] window.onGoogleMapsLoaded callback triggered (index.html)");
             window.googleMapsReady = true;
             if (typeof window.initCustomerMap === 'function') {
-                window.initCustomerMap();
-            }
-            if (typeof window.initHireDriverPreviewMap === 'function') {
-                window.initHireDriverPreviewMap();
-            }
                 console.log("[DEBUG-MAP] calling window.initCustomerMap() from index.html callback");
                 window.initCustomerMap();
             } else {
                 console.warn("[DEBUG-MAP] window.initCustomerMap is not yet defined in index.html callback");
+            }
+            if (typeof window.initHireDriverPreviewMap === 'function') {
+                window.initHireDriverPreviewMap();
             }
         };
     </script>
