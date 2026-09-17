@@ -12801,6 +12801,9 @@ app.use('/downloads', express.static(path.join(__dirname, 'public/downloads'), {
             res.setHeader('Content-Type', 'application/vnd.android.package-archive');
             const filename = path.basename(filePath);
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
         }
     }
 }));
