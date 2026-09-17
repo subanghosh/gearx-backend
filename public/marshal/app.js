@@ -2958,13 +2958,62 @@ async function loadAvailablePickups() {
                 const bRes = await fetch(`${API_URL}/marshals/active-bid-offers?${bParams.join('&')}`, { cache: 'no-store' });
                 if (bRes.ok) {
                     const bData = await bRes.json();
-                    if (bData && bData.offers && bData.offers.length > 0) {
-                        const topOffer = bData.offers[0];
-                        const bidModal = document.getElementById('driver-bid-request-preview');
-                        const isModalOpen = bidModal && bidModal.style.display === 'flex';
-                        if (!isModalOpen || window.driverBidPreviewState.offerId !== topOffer.id) {
-                            window.openDriverBidRequestPreview(topOffer);
+                    const bidModal = document.getElementById('driver-bid-request-preview');
+                    const isModalOpen = bidModal && bidModal.style.display === 'flex';
+                    const activeOffers = (bData && bData.offers) || [];
+
+                    if (isModalOpen) {
+                        const currentOfferId = window.driverBidPreviewState.offerId;
+                        const matchingOffer = activeOffers.find(o => o.id === currentOfferId);
+
+                        if (!matchingOffer) {
+                            // Offer cancelled by customer or expired
+                            console.log('[BID_OFFERS] Active offer no longer found in pending list - auto-closing modal');
+                            window.closeDriverBidRequestPreview();
+                            if (typeof showToast === 'function') {
+                                showToast('Request was cancelled by customer', 'info');
+                            }
+                        } else if (matchingOffer.amount !== window.driverBidPreviewState.baseOffer) {
+                            // LIVE STALE DATA SYNC: Customer raised the offer amount while modal is open!
+                            const oldAmt = window.driverBidPreviewState.baseOffer;
+                            const newAmt = matchingOffer.amount;
+                            console.log(`[BID_OFFERS] Live offer bump detected: ₹${oldAmt} -> ₹${newAmt}`);
+
+                            window.driverBidPreviewState.baseOffer = newAmt;
+                            window.driverBidPreviewState.floorAmount = matchingOffer.floorAmount || Math.round(newAmt * 0.8);
+                            window.driverBidPreviewState.maxCeiling = matchingOffer.ceilingAmount || Math.round(newAmt * 1.5);
+
+                            if (window.driverBidPreviewState.selectedBid < newAmt || window.driverBidPreviewState.selectedBid === oldAmt) {
+                                window.driverBidPreviewState.selectedBid = newAmt;
+                            }
+
+                            // Update DOM displays
+                            const offerEl = document.getElementById('driver-preview-offer-amount');
+                            if (offerEl) {
+                                offerEl.textContent = newAmt;
+                                offerEl.style.transition = 'all 0.3s ease';
+                                offerEl.style.transform = 'scale(1.25)';
+                                offerEl.style.color = '#22c55e';
+                                setTimeout(() => {
+                                    offerEl.style.transform = 'scale(1)';
+                                    offerEl.style.color = '#facc15';
+                                }, 800);
+                            }
+
+                            const estNetEl = document.getElementById('driver-preview-est-net');
+                            if (estNetEl) {
+                                estNetEl.textContent = `Est. Net: ₹${Math.round(newAmt * 0.9)}`;
+                            }
+
+                            window.updateDriverCounterUI();
+
+                            if (typeof showToast === 'function') {
+                                showToast(`Customer raised offer to ₹${newAmt}!`, 'success');
+                            }
                         }
+                    } else if (activeOffers.length > 0) {
+                        const topOffer = activeOffers[0];
+                        window.openDriverBidRequestPreview(topOffer);
                     }
                 }
             } catch (errB) {
@@ -8053,7 +8102,7 @@ window.handleAppBack = function() {
 
     // 3. Check if standard modals are open and visible
     const modals = [
-        'kyc-permission-modal', 'marshal-feedback-modal', 'confirm-modal', 
+        'driver-bid-request-preview', 'kyc-permission-modal', 'marshal-feedback-modal', 'confirm-modal', 
         'delivery-otp-modal', 'privacy-modal', 'terms-modal', 
         'gps-disclosure-modal', 'handover-modal', 'onboarding-overlay'
     ];
@@ -8069,7 +8118,10 @@ window.handleAppBack = function() {
             
             if (isVisible) {
                 console.log('Back pressed: Closing modal', id);
-                if (id === 'kyc-permission-modal') {
+                if (id === 'driver-bid-request-preview') {
+                    if (typeof window.rejectDriverBidPreview === 'function') window.rejectDriverBidPreview();
+                    else window.closeDriverBidRequestPreview();
+                } else if (id === 'kyc-permission-modal') {
                     if (typeof denyKycPermission === 'function') denyKycPermission();
                     else { el.style.display = 'none'; el.classList.add('hidden'); }
                 } else if (id === 'confirm-modal') {
@@ -9737,7 +9789,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
 
         const cRatingEl = document.getElementById('driver-preview-customer-rating');
         if (cRatingEl && offerData.customerRating) {
-            cRatingEl.textContent = `★ ${offerData.customerRating}`;
+            cRatingEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#facc15" style="vertical-align: -1px; margin-right: 2px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>${offerData.customerRating}`;
         }
     } else {
         window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
@@ -10056,6 +10108,9 @@ window.updateDriverCounterUI = function() {
 };
 
 window.submitDriverBidPreview = async function() {
+    if (window.driverBidPreviewState.isSubmitting) return;
+    window.driverBidPreviewState.isSubmitting = true;
+
     const state = window.driverBidPreviewState;
     const chosenBid = state.selectedBid;
     const isCounter = chosenBid !== state.baseOffer;
@@ -10063,6 +10118,17 @@ window.submitDriverBidPreview = async function() {
     const reqId = state.serviceRequestId;
 
     if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+
+    const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    const declineBtn = document.getElementById('driver-preview-decline-btn');
+    if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.textContent = isCounter ? 'SENDING...' : 'ACCEPTING...';
+    }
+    if (declineBtn) {
+        declineBtn.disabled = true;
+        declineBtn.style.opacity = '0.5';
+    }
 
     if (!offerId || !reqId) {
         // Preview mode fallback
@@ -10074,13 +10140,8 @@ window.submitDriverBidPreview = async function() {
             }
         }
         window.closeDriverBidRequestPreview();
+        window.driverBidPreviewState.isSubmitting = false;
         return;
-    }
-
-    const actionBtn = document.getElementById('driver-preview-main-action-btn');
-    if (actionBtn) {
-        actionBtn.disabled = true;
-        actionBtn.textContent = isCounter ? 'SENDING...' : 'ACCEPTING...';
     }
 
     try {
@@ -10099,14 +10160,17 @@ window.submitDriverBidPreview = async function() {
 
         const data = await res.json();
         if (!res.ok) {
-            if (res.status === 409) {
-                showToast(data.error || 'This ride was accepted by another driver or is no longer available.', 'error');
+            if (res.status === 409 || data.error === 'TRIP_ALREADY_ASSIGNED') {
+                showToast('Another driver just accepted this ride.', 'error');
+                window.closeDriverBidRequestPreview();
+                if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
+                return;
             } else {
                 showToast(data.error || 'Failed to submit bid response.', 'error');
+                window.closeDriverBidRequestPreview();
+                if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
+                return;
             }
-            window.closeDriverBidRequestPreview();
-            if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
-            return;
         }
 
         if (isCounter) {
@@ -10125,22 +10189,45 @@ window.submitDriverBidPreview = async function() {
         }
     } catch (err) {
         console.error('Error submitting driver bid response:', err);
-        showToast('Network error while responding to bid.', 'error');
-        window.closeDriverBidRequestPreview();
+        // Do NOT close modal on network drop — allow driver to retry!
+        showToast('Network connection issue. Tap to retry.', 'error');
+        if (actionBtn) {
+            actionBtn.disabled = false;
+            actionBtn.textContent = isCounter ? 'RETRY SEND' : 'RETRY ACCEPT';
+        }
+        if (declineBtn) {
+            declineBtn.disabled = false;
+            declineBtn.style.opacity = '1';
+        }
     } finally {
-        if (actionBtn) actionBtn.disabled = false;
+        window.driverBidPreviewState.isSubmitting = false;
     }
 };
 
 window.rejectDriverBidPreview = async function() {
+    if (window.driverBidPreviewState.isSubmitting) return;
+    window.driverBidPreviewState.isSubmitting = true;
+
+    const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    const declineBtn = document.getElementById('driver-preview-decline-btn');
+    if (declineBtn) {
+        declineBtn.disabled = true;
+        declineBtn.textContent = 'DECLINING...';
+        declineBtn.style.opacity = '0.5';
+    }
+    if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.style.opacity = '0.5';
+    }
+
+    if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+
     const state = window.driverBidPreviewState;
     const offerId = state.offerId;
     const reqId = state.serviceRequestId;
 
-    if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
-
-    if (offerId && reqId && currentUser && currentUser.id) {
-        try {
+    try {
+        if (offerId && reqId && currentUser && currentUser.id) {
             await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/${offerId}/respond`, {
                 method: 'POST',
                 headers: {
@@ -10148,17 +10235,26 @@ window.rejectDriverBidPreview = async function() {
                     ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
                 },
                 body: JSON.stringify({ action: 'reject', marshalId: currentUser.id })
-            });
-        } catch (e) {
-            console.warn('Failed to notify backend of rejection:', e);
+            }).catch(e => console.warn('Failed to notify backend of rejection:', e));
+        }
+
+        if (typeof showToast === 'function') {
+            showToast('Booking request declined.', 'info');
+        }
+        window.closeDriverBidRequestPreview();
+        if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
+    } finally {
+        window.driverBidPreviewState.isSubmitting = false;
+        if (declineBtn) {
+            declineBtn.disabled = false;
+            declineBtn.textContent = 'DECLINE';
+            declineBtn.style.opacity = '1';
+        }
+        if (actionBtn) {
+            actionBtn.disabled = false;
+            actionBtn.style.opacity = '1';
         }
     }
-
-    if (typeof showToast === 'function') {
-        showToast('Booking request declined.', 'info');
-    }
-    window.closeDriverBidRequestPreview();
-    if (typeof loadAvailablePickups === 'function') loadAvailablePickups();
 };
 
 // Hash routing for direct access

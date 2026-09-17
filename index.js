@@ -9808,6 +9808,63 @@ apiRouter.post('/service-requests/:id/bid-offers/update-amount', async (req, res
     }
 });
 
+// 3b. Customer cancels bidding search
+apiRouter.post('/service-requests/:id/cancel-bidding', async (req, res) => {
+    const requestId = req.params.id;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const srRes = await client.query("SELECT * FROM service_requests WHERE id = $1 FOR UPDATE", [requestId]);
+        if (srRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+        const sr = srRes.rows[0];
+
+        // If a driver already accepted and locked the ride
+        if (sr.status === 'pending_payment' || sr.status === 'marshal_assigned' || sr.status === 'in_transit') {
+            const tripRes = await client.query("SELECT * FROM trips WHERE servicerequestid = $1 ORDER BY createdat DESC LIMIT 1", [requestId]);
+            const driverRes = await client.query("SELECT name, phone, rating FROM users WHERE id = $1", [sr.workerid]);
+            await client.query('COMMIT');
+            return res.json({
+                success: true,
+                cancelled: false,
+                alreadyAccepted: true,
+                message: 'A driver just accepted your ride!',
+                serviceRequest: sr,
+                trip: tripRes.rows[0] || null,
+                driver: driverRes.rows[0] || null
+            });
+        }
+
+        // Clean cancellation: cancel request & expire all pending driver offers
+        await client.query("UPDATE service_requests SET status = 'cancelled' WHERE id = $1", [requestId]);
+        await client.query("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = $1 AND status = 'pending'", [requestId]);
+
+        if (typeof db !== 'undefined' && db && db.run) {
+            try {
+                db.run("UPDATE service_requests SET status = 'cancelled' WHERE id = ?", [requestId], () => {});
+                db.run("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = ? AND status = 'pending'", [requestId], () => {});
+            } catch(e) {}
+        }
+
+        await client.query('COMMIT');
+        return res.json({
+            success: true,
+            cancelled: true,
+            alreadyAccepted: false,
+            message: 'Bidding search cancelled successfully'
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error cancelling bidding search:', err.message);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // 4. Driver or Customer responds to an offer (Accept, Reject, Counter)
 apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, res) => {
     const requestId = req.params.id;

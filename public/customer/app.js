@@ -9510,6 +9510,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
 
         // Priority 2 & 3: Standard Modals and Overlays
         const modals = [
+            'hire-driver-searching-preview', 'hire-driver-accepted-preview',
             'photo-action-sheet', 'camera-permission-modal', 'logout-modal', 'vehicle-form-elements', 'user-details-modal', 
             'finding-marshal-screen', 'marshal-en-route-screen', 'payment-modal', 'video-modal', 
             'audit-modal', 'address-details-modal', 'gps-disclosure-modal', 
@@ -9526,7 +9527,14 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
                                   (!el.classList.contains('hidden') && el.style.display !== 'none');
                 
                 if (isVisible) {
-                    if (id === 'finding-marshal-screen') {
+                    if (id === 'hire-driver-searching-preview') {
+                        if (typeof window.cancelHireDriverSearch === 'function') window.cancelHireDriverSearch();
+                        else if (typeof window.closeHireDriverSearchingPreview === 'function') window.closeHireDriverSearchingPreview();
+                        else el.style.display = 'none';
+                    } else if (id === 'hire-driver-accepted-preview') {
+                        if (typeof window.closeHireDriverAcceptedPreview === 'function') window.closeHireDriverAcceptedPreview();
+                        else el.style.display = 'none';
+                    } else if (id === 'finding-marshal-screen') {
                         const backBtn = document.getElementById('btn-back-marshal-search');
                         if (backBtn && backBtn.style.display !== 'none') {
                             if (typeof cancelMarshalSearch === 'function') cancelMarshalSearch();
@@ -13713,7 +13721,11 @@ window.customerBiddingState = {
     pollTimer: null,
     autoAccept: true,
     elapsedSeconds: 0,
-    currentOffers: []
+    currentOffers: [],
+    isAccepting: false,
+    isCancelling: false,
+    stepDebounceTimer: null,
+    marshalsNotified: 0
 };
 
 window.startHireDriverLiveSearch = async function(customRequestId = null) {
@@ -13721,6 +13733,8 @@ window.startHireDriverLiveSearch = async function(customRequestId = null) {
     let reqId = customRequestId || window.currentPendingRequestId || `sr_${Date.now()}`;
     window.customerBiddingState.activeRequestId = reqId;
     window.customerBiddingState.elapsedSeconds = 0;
+    window.customerBiddingState.isAccepting = false;
+    window.customerBiddingState.isCancelling = false;
 
     const baseAmount = state.offerAmount || 550;
     const floorAmount = state.floorAmount || Math.round(baseAmount * 0.8);
@@ -13771,10 +13785,20 @@ window.startHireDriverLiveSearch = async function(customRequestId = null) {
                 radiusKm: 10.0
             })
         });
+
+        if (!bRes.ok) {
+            const errData = await bRes.json().catch(() => ({}));
+            showToast(errData.error || 'Failed to broadcast offer to drivers. Please try again.', 'error');
+            return;
+        }
+
         const bData = await bRes.json();
+        window.customerBiddingState.marshalsNotified = bData.marshalsNotified || 0;
         console.log('[BIDDING] Broadcast result:', bData);
     } catch (e) {
         console.warn('[BIDDING] Broadcast error:', e);
+        showToast('Network error while broadcasting offer. Please retry.', 'error');
+        return;
     }
 
     // Open searching UI
@@ -13834,9 +13858,10 @@ window.pollCustomerBidOffers = async function() {
             return;
         }
 
-        // 2. Render active counter-offers in searching sheet
+        // 2. Render active counter-offers or helpful empty state in searching sheet
         const offersContainer = document.getElementById('searching-offers-list');
         const driverCounters = offers.filter(o => o.status === 'pending' && o.offeredBy === 'driver');
+        const currentAmount = window.previewHireDriverState ? window.previewHireDriverState.offerAmount : 550;
 
         if (offersContainer) {
             if (driverCounters.length > 0) {
@@ -13849,7 +13874,10 @@ window.pollCustomerBidOffers = async function() {
                             </div>
                             <div>
                                 <div style="font-size: 0.82rem; font-weight: 800; color: #fff;">${o.marshalName}</div>
-                                <div style="font-size: 0.68rem; color: #facc15; font-weight: 700;">★ ${o.rating} • ${o.distanceKm} km • ~${o.etaMinutes}m</div>
+                                <div style="font-size: 0.68rem; color: #facc15; font-weight: 700; display: flex; align-items: center; gap: 2px;">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                    ${o.rating} • ${o.distanceKm} km • ~${o.etaMinutes}m
+                                </div>
                             </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -13857,12 +13885,28 @@ window.pollCustomerBidOffers = async function() {
                                 <div style="font-size: 1rem; font-weight: 900; color: #facc15;">₹${o.amount}</div>
                                 <div style="font-size: 0.6rem; color: #a1a1aa; font-weight: 700; font-family: monospace;">${o.remainingSeconds}s left</div>
                             </div>
-                            <button type="button" onclick="customerAcceptDriverCounter('${o.id}')" style="background: #22c55e; border: none; color: #000; font-size: 0.75rem; font-weight: 900; padding: 8px 14px; border-radius: 8px; cursor: pointer; text-transform: uppercase; box-shadow: 0 2px 10px rgba(34, 197, 94, 0.3);">
+                            <button type="button" id="btn-accept-counter-${o.id}" onclick="customerAcceptDriverCounter('${o.id}')" style="background: #22c55e; border: none; color: #000; font-size: 0.75rem; font-weight: 900; padding: 8px 14px; border-radius: 8px; cursor: pointer; text-transform: uppercase; box-shadow: 0 2px 10px rgba(34, 197, 94, 0.3);">
                                 ACCEPT
                             </button>
                         </div>
                     </div>
                 `).join('');
+            } else if (window.customerBiddingState.marshalsNotified === 0) {
+                offersContainer.style.display = 'flex';
+                offersContainer.innerHTML = `
+                    <div style="background: rgba(250, 204, 21, 0.08); border: 1.5px dashed rgba(250, 204, 21, 0.35); border-radius: 12px; padding: 10px 14px; text-align: center; color: #facc15; font-size: 0.76rem; font-weight: 700;">
+                        No drivers nearby right now.
+                        <div style="font-size: 0.66rem; color: #a1a1aa; font-weight: 600; margin-top: 2px;">Tap + to raise offer or wait while radius expands.</div>
+                    </div>
+                `;
+            } else if (offers.length > 0 && offers.every(o => o.status === 'expired' || o.status === 'rejected')) {
+                offersContainer.style.display = 'flex';
+                offersContainer.innerHTML = `
+                    <div style="background: rgba(255, 255, 255, 0.05); border: 1.5px dashed rgba(255, 255, 255, 0.2); border-radius: 12px; padding: 10px 14px; text-align: center; color: #fff; font-size: 0.76rem; font-weight: 700;">
+                        No drivers accepted ₹${currentAmount} yet.
+                        <div style="font-size: 0.66rem; color: #facc15; font-weight: 600; margin-top: 2px;">Tap + to raise your offer and re-broadcast.</div>
+                    </div>
+                `;
             } else {
                 offersContainer.style.display = 'none';
                 offersContainer.innerHTML = '';
@@ -13870,7 +13914,7 @@ window.pollCustomerBidOffers = async function() {
         }
 
         // 3. Auto-Accept Logic: if autoAccept is true and any driver accepted base offer or met rate
-        if (window.customerBiddingState.autoAccept && driverCounters.length > 0) {
+        if (window.customerBiddingState.autoAccept && driverCounters.length > 0 && !window.customerBiddingState.isAccepting) {
             const base = window.previewHireDriverState ? window.previewHireDriverState.offerAmount : 550;
             const acceptable = driverCounters.find(o => o.amount <= base);
             if (acceptable) {
@@ -13884,8 +13928,21 @@ window.pollCustomerBidOffers = async function() {
 };
 
 window.customerAcceptDriverCounter = async function(offerId) {
+    if (window.customerBiddingState.isAccepting) return;
+    window.customerBiddingState.isAccepting = true;
+
     const reqId = window.customerBiddingState.activeRequestId;
-    if (!reqId || !offerId) return;
+    if (!reqId || !offerId) {
+        window.customerBiddingState.isAccepting = false;
+        return;
+    }
+
+    const btn = document.getElementById(`btn-accept-counter-${offerId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'ACCEPTING...';
+        btn.style.opacity = '0.6';
+    }
 
     try {
         const res = await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/${offerId}/respond`, {
@@ -13899,7 +13956,11 @@ window.customerAcceptDriverCounter = async function(offerId) {
 
         const data = await res.json();
         if (!res.ok) {
-            showToast(data.error || 'Failed to accept driver counter.', 'error');
+            if (res.status === 409 || data.error === 'TRIP_ALREADY_ASSIGNED') {
+                showToast('This driver offer is no longer available.', 'error');
+            } else {
+                showToast(data.message || data.error || 'Failed to accept driver counter.', 'error');
+            }
             return;
         }
 
@@ -13922,6 +13983,63 @@ window.customerAcceptDriverCounter = async function(offerId) {
     } catch (e) {
         console.error('Error accepting driver counter:', e);
         showToast('Network error while accepting offer.', 'error');
+    } finally {
+        window.customerBiddingState.isAccepting = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'ACCEPT';
+            btn.style.opacity = '1';
+        }
+    }
+};
+
+window.cancelHireDriverSearch = async function() {
+    const reqId = window.customerBiddingState.activeRequestId;
+    if (window.customerBiddingState.isCancelling) return;
+    window.customerBiddingState.isCancelling = true;
+
+    try {
+        if (reqId) {
+            const res = await fetch(`${API_URL}/service-requests/${reqId}/cancel-bidding`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+                }
+            });
+            const data = await res.json().catch(() => ({}));
+
+            // Handle race condition: Driver accepted at the exact moment customer clicked cancel
+            if (data && data.alreadyAccepted) {
+                if (window.customerBiddingState.pollTimer) {
+                    clearInterval(window.customerBiddingState.pollTimer);
+                    window.customerBiddingState.pollTimer = null;
+                }
+                window.closeHireDriverSearchingPreview();
+
+                const driverName = data.driver?.name || 'A driver';
+                showToast(`${driverName} just accepted your ride! Loading booking details...`, 'success');
+
+                if (data.trip && typeof window.showMarshalEnRoute === 'function') {
+                    window.showMarshalEnRoute(data.trip);
+                    if (typeof window.startPaymentCountdown === 'function') {
+                        window.startPaymentCountdown(data.trip.id);
+                    }
+                } else if (typeof loadDashboard === 'function') {
+                    loadDashboard();
+                }
+                return;
+            }
+        }
+
+        window.closeHireDriverSearchingPreview();
+        showToast('Ride search cancelled.', 'info');
+    } catch (e) {
+        console.error('Error cancelling search:', e);
+        window.closeHireDriverSearchingPreview();
+        showToast('Ride search stopped.', 'info');
+    } finally {
+        window.customerBiddingState.isCancelling = false;
     }
 };
 
@@ -13963,7 +14081,7 @@ window.closeHireDriverSearchingPreview = function() {
     if (searchingScreen) searchingScreen.style.display = 'none';
 };
 
-window.stepLiveSearchingOffer = async function(delta) {
+window.stepLiveSearchingOffer = function(delta) {
     const floor = window.previewHireDriverState.floorAmount || 350;
     let current = window.previewHireDriverState.offerAmount || 550;
     current += delta;
@@ -13974,26 +14092,31 @@ window.stepLiveSearchingOffer = async function(delta) {
     if (disp) disp.textContent = current.toLocaleString('en-IN');
     if (typeof updatePreviewOfferDisplay === 'function') updatePreviewOfferDisplay();
     
-    // Update live broadcast on backend
-    const reqId = window.customerBiddingState.activeRequestId;
-    if (reqId) {
-        try {
-            await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/update-amount`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
-                },
-                body: JSON.stringify({ newAmount: current })
-            });
-        } catch (e) {
-            console.warn('Failed to update live offer amount on backend:', e);
+    // Debounce backend live broadcast price update by 400ms to batch rapid taps
+    if (window.customerBiddingState.stepDebounceTimer) {
+        clearTimeout(window.customerBiddingState.stepDebounceTimer);
+    }
+    
+    window.customerBiddingState.stepDebounceTimer = setTimeout(async () => {
+        const reqId = window.customerBiddingState.activeRequestId;
+        if (reqId) {
+            try {
+                await fetch(`${API_URL}/service-requests/${reqId}/bid-offers/update-amount`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+                    },
+                    body: JSON.stringify({ newAmount: current })
+                });
+                if (typeof showToast === 'function') {
+                    showToast(`Broadcast offer updated to ₹${current}`, 'success');
+                }
+            } catch (e) {
+                console.warn('Failed to update live offer amount on backend:', e);
+            }
         }
-    }
-
-    if (typeof showToast === 'function') {
-        showToast(`Broadcast offer updated to ₹${current}`, 'success');
-    }
+    }, 400);
 };
 
 window.toggleAutoAccept = function(checked) {
