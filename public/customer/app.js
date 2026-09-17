@@ -14207,6 +14207,8 @@ window.setPreviewTripType = function(type) {
         if (peekTripBadge) peekTripBadge.textContent = 'Outstation';
         if (distText) distText.innerHTML = '145.0 km <span style="color: #f59e0b; font-size: 0.72rem;">(~3h 30m)</span>';
         if (outstationSection) outstationSection.style.display = 'flex';
+        const modeContainer = document.getElementById('preview-mode-detail-container');
+        if (modeContainer) modeContainer.style.display = 'flex';
         
         // RULE 5: Clear previously selected drop value when Outstation is selected
         if (dropInput) {
@@ -14216,6 +14218,12 @@ window.setPreviewTripType = function(type) {
         
         window.previewHireDriverState.floorAmount = 2200;
         window.previewHireDriverState.offerAmount = 2500;
+    } else {
+        if (outstationSection) outstationSection.style.display = 'none';
+        if (window.previewHireDriverState.bookingMode === 'km') {
+            const modeContainer = document.getElementById('preview-mode-detail-container');
+            if (modeContainer) modeContainer.style.display = 'none';
+        }
     }
     
     updatePreviewOfferDisplay();
@@ -14233,24 +14241,27 @@ window.setPreviewBookingMode = function(mode) {
     const btnHr = document.getElementById('preview-btn-mode-hourly');
     const btnDay = document.getElementById('preview-btn-mode-daywise');
     
-    const secKm = document.getElementById('preview-section-km');
+    const modeContainer = document.getElementById('preview-mode-detail-container');
     const secHr = document.getElementById('preview-section-hourly');
     const secDay = document.getElementById('preview-section-daywise');
+    const secOut = document.getElementById('preview-section-outstation');
     const peekModeBadge = document.getElementById('preview-peek-mode-badge');
     
     [btnKm, btnHr, btnDay].forEach(b => {
         if (b) { b.style.background = 'transparent'; b.style.color = '#fff'; }
     });
     
-    if (secKm) secKm.style.display = 'none';
     if (secHr) secHr.style.display = 'none';
     if (secDay) secDay.style.display = 'none';
+    if (secOut) secOut.style.display = 'none';
+    if (modeContainer) modeContainer.style.display = 'none';
     
     if (mode === 'km') {
         if (btnKm) { btnKm.style.background = 'var(--primary)'; btnKm.style.color = '#000'; }
-        if (secKm) secKm.style.display = 'flex';
         if (peekModeBadge) peekModeBadge.textContent = 'Km';
         if (window.previewHireDriverState.tripType === 'outstation') {
+            if (modeContainer) modeContainer.style.display = 'flex';
+            if (secOut) secOut.style.display = 'flex';
             window.previewHireDriverState.floorAmount = 2200;
             window.previewHireDriverState.offerAmount = 2500;
         } else {
@@ -14259,6 +14270,7 @@ window.setPreviewBookingMode = function(mode) {
         }
     } else if (mode === 'hourly') {
         if (btnHr) { btnHr.style.background = 'var(--primary)'; btnHr.style.color = '#000'; }
+        if (modeContainer) modeContainer.style.display = 'flex';
         if (secHr) secHr.style.display = 'flex';
         const hrs = window.previewHireDriverState.selectedHours || 4;
         if (peekModeBadge) peekModeBadge.textContent = `${hrs} Hrs`;
@@ -14266,6 +14278,7 @@ window.setPreviewBookingMode = function(mode) {
         window.previewHireDriverState.offerAmount = hrs * 150 + 50;
     } else if (mode === 'daywise') {
         if (btnDay) { btnDay.style.background = 'var(--primary)'; btnDay.style.color = '#000'; }
+        if (modeContainer) modeContainer.style.display = 'flex';
         if (secDay) secDay.style.display = 'flex';
         const days = window.previewHireDriverState.selectedDays || 1;
         if (peekModeBadge) peekModeBadge.textContent = `${days} Days`;
