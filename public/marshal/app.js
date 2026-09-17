@@ -9694,7 +9694,7 @@ window.driverBidPreviewState = {
     offerId: null,
     serviceRequestId: null,
     baseOffer: 550,
-    floorAmount: 440,
+    floorAmount: 500,
     maxCeiling: 850,
     selectedBid: 550,
     roundNumber: 1,
@@ -9719,7 +9719,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
         window.driverBidPreviewState.offerId = offerData.id || offerData.offerId || null;
         window.driverBidPreviewState.serviceRequestId = offerData.serviceRequestId || offerData.service_request_id || null;
         window.driverBidPreviewState.baseOffer = Number(offerData.amount || offerData.offer || 550);
-        window.driverBidPreviewState.floorAmount = Number(offerData.floorAmount || offerData.floor_amount || Math.round(window.driverBidPreviewState.baseOffer * 0.8));
+        window.driverBidPreviewState.floorAmount = Number(offerData.floorAmount || offerData.floor_amount || offerData.baseFare || 500);
         window.driverBidPreviewState.maxCeiling = Number(offerData.ceilingAmount || offerData.ceiling || offerData.ceiling_amount || Math.round(window.driverBidPreviewState.baseOffer * 1.5));
         window.driverBidPreviewState.selectedBid = window.driverBidPreviewState.baseOffer;
         window.driverBidPreviewState.roundNumber = offerData.roundNumber || 1;
@@ -9797,6 +9797,34 @@ window.openDriverBidRequestPreview = function(offerData = null) {
 
     const offerEl = document.getElementById('driver-preview-offer-amount');
     if (offerEl) offerEl.textContent = window.driverBidPreviewState.baseOffer;
+
+    // Update above-base fare context
+    const aboveBaseBadge = document.getElementById('driver-preview-above-base-badge');
+    const baseRef = document.getElementById('driver-preview-base-ref');
+    const offerAmt = window.driverBidPreviewState.baseOffer || 550;
+    const floorAmt = window.driverBidPreviewState.floorAmount || 500;
+    const diff = offerAmt - floorAmt;
+
+    if (aboveBaseBadge) {
+        if (diff > 0) {
+            aboveBaseBadge.textContent = `+₹${diff.toLocaleString('en-IN')} above base fare`;
+            aboveBaseBadge.style.color = '#22c55e';
+            aboveBaseBadge.style.background = 'rgba(34, 197, 94, 0.16)';
+            aboveBaseBadge.style.border = '1px solid rgba(34, 197, 94, 0.35)';
+            aboveBaseBadge.style.display = 'inline-flex';
+        } else if (diff === 0) {
+            aboveBaseBadge.textContent = `Base fare offer`;
+            aboveBaseBadge.style.color = '#facc15';
+            aboveBaseBadge.style.background = 'rgba(250, 204, 21, 0.16)';
+            aboveBaseBadge.style.border = '1px solid rgba(250, 204, 21, 0.35)';
+            aboveBaseBadge.style.display = 'inline-flex';
+        } else {
+            aboveBaseBadge.style.display = 'none';
+        }
+    }
+    if (baseRef) {
+        baseRef.textContent = `(Base: ₹${floorAmt.toLocaleString('en-IN')})`;
+    }
 
     window.updateDriverCounterUI();
 

@@ -13494,6 +13494,11 @@ window.updateHireDriverPreviewRoute = function() {
                 if (distBadge) {
                     distBadge.innerHTML = `${distKm} km <span style="color: ${isOutstation ? '#f59e0b' : '#facc15'}; font-size: 0.72rem;">(${durText})</span>`;
                 }
+
+                if (window.previewHireDriverState.bookingMode === 'km') {
+                    window.calculateHireDriverFloorAndOffer(parseFloat(distKm));
+                    window.updatePreviewOfferDisplay();
+                }
                 
                 (hirePreviewMap && typeof hirePreviewMap.fitBounds === 'function') && hirePreviewMap.fitBounds(route.bounds, {
                     top: 140,
@@ -14165,6 +14170,58 @@ window.closeHireDriverAcceptedPreview = function() {
 // -------------------------------------------------------------------------
 // Trip Type (3-Way: One-Way / Round Trip / Outstation)
 // -------------------------------------------------------------------------
+// Dynamic calculation of Floor & Suggested Offer using real CRM settings & slabs
+window.calculateHireDriverFloorAndOffer = function(customDistKm = null) {
+    const s = window.previewHireDriverState;
+    const settings = window.redrivoSystemSettings || {};
+    const vehicleType = (window.selectedVehicle?.type || 'car').toLowerCase();
+    
+    const ratePerKm = parseFloat(settings[`${vehicleType}_customer_rate_per_km`]) || (vehicleType === 'car' ? 30 : 8);
+    const baseFareFloor = parseFloat(settings[`${vehicleType}_base_fare`]) || (vehicleType === 'car' ? 150 : 50);
+    const platformBaseCharge = parseFloat(settings[`${vehicleType}_platform_base_charge`]) || (vehicleType === 'bike' ? 49 : 99);
+    const hourlyRate = parseFloat(settings[`${vehicleType}_hourly_rate`]) || (vehicleType === 'car' ? 150 : 80);
+
+    let floor = 350;
+    let suggested = 450;
+
+    if (s.tripType === 'outstation') {
+        // Outstation rates from CRM slabs (outstation_hourly_slabs & day_incentive_slabs)
+        const opt = s.selectedOutstation || '1 Day';
+        if (opt === '12 Hrs') { floor = 2160; suggested = 2400; }
+        else if (opt === '16 Hrs') { floor = 2560; suggested = 2850; }
+        else if (opt === '20 Hrs') { floor = 3000; suggested = 3350; }
+        else if (opt === '1 Day') { floor = 2100; suggested = 2350; }
+        else if (opt === '2 Days') { floor = 4200; suggested = 4600; }
+        else if (opt === '3 Days') { floor = 6300; suggested = 6900; }
+        else { floor = 2100; suggested = 2350; }
+    } else if (s.bookingMode === 'hourly') {
+        const hrs = s.selectedHours || 4;
+        floor = Math.round(hrs * hourlyRate);
+        suggested = floor + 50;
+    } else if (s.bookingMode === 'daywise') {
+        const days = s.selectedDays || 1;
+        const dailyRate = s.tripType === 'round' ? 2100 : 1500;
+        floor = Math.round(days * dailyRate);
+        suggested = floor + 150;
+    } else {
+        // Km / Distance Mode: Real distance based calculation from CRM formulas (Platform Base + max(BaseFare, Dist * Rate))
+        const dist = customDistKm !== null ? customDistKm : (s.tripType === 'round' ? 37.0 : 18.5);
+        const distanceCharge = Math.max(baseFareFloor, Math.round(dist * ratePerKm));
+        floor = Math.round(platformBaseCharge + distanceCharge);
+        suggested = Math.round(floor * 1.15 / 10) * 10;
+        if (suggested <= floor) suggested = floor + 50;
+    }
+
+    s.floorAmount = floor;
+    if (!s.userModifiedOffer || s.offerAmount < floor) {
+        s.offerAmount = suggested;
+    }
+    return { floor, suggested };
+};
+
+// -------------------------------------------------------------------------
+// Trip Type (3-Way: One-Way / Round Trip / Outstation)
+// -------------------------------------------------------------------------
 window.setPreviewTripType = function(type) {
     window.previewHireDriverState.tripType = type;
     const btnOne = document.getElementById('preview-btn-triptype-oneway');
@@ -14187,20 +14244,14 @@ window.setPreviewTripType = function(type) {
         if (peekTripBadge) peekTripBadge.textContent = 'One-Way';
         if (distText) distText.innerHTML = '18.5 km <span style="color: #facc15; font-size: 0.72rem;">(~42 mins)</span>';
         if (outstationSection) outstationSection.style.display = 'none';
-        if (window.previewHireDriverState.bookingMode === 'km') {
-            window.previewHireDriverState.floorAmount = 350;
-            window.previewHireDriverState.offerAmount = 450;
-        }
+        window.calculateHireDriverFloorAndOffer(18.5);
     } else if (type === 'round') {
         if (btnRound) { btnRound.style.background = 'var(--primary)'; btnRound.style.color = '#000'; }
         if (badge) { badge.textContent = 'Round Trip'; badge.style.color = '#38bdf8'; }
         if (peekTripBadge) peekTripBadge.textContent = 'Round Trip';
         if (distText) distText.innerHTML = '37.0 km <span style="color: #38bdf8; font-size: 0.72rem;">(~1h 24m)</span>';
         if (outstationSection) outstationSection.style.display = 'none';
-        if (window.previewHireDriverState.bookingMode === 'km') {
-            window.previewHireDriverState.floorAmount = 600;
-            window.previewHireDriverState.offerAmount = 750;
-        }
+        window.calculateHireDriverFloorAndOffer(37.0);
     } else if (type === 'outstation') {
         if (btnOut) { btnOut.style.background = 'var(--primary)'; btnOut.style.color = '#000'; }
         if (badge) { badge.textContent = 'Outstation'; badge.style.color = '#f59e0b'; }
@@ -14210,14 +14261,13 @@ window.setPreviewTripType = function(type) {
         const modeContainer = document.getElementById('preview-mode-detail-container');
         if (modeContainer) modeContainer.style.display = 'flex';
         
-        // RULE 5: Clear previously selected drop value when Outstation is selected
+        // Clear previously selected drop value when Outstation is selected
         if (dropInput) {
             dropInput.value = '';
             dropInput.placeholder = 'Enter outstation destination (e.g. Digha, Puri)';
         }
         
-        window.previewHireDriverState.floorAmount = 2200;
-        window.previewHireDriverState.offerAmount = 2500;
+        window.calculateHireDriverFloorAndOffer(145.0);
     } else {
         if (outstationSection) outstationSection.style.display = 'none';
         if (window.previewHireDriverState.bookingMode === 'km') {
@@ -14226,6 +14276,7 @@ window.setPreviewTripType = function(type) {
         }
     }
     
+    renderPreviewDaywisePills();
     updatePreviewOfferDisplay();
     if (typeof window.updateHireDriverPreviewRoute === 'function') {
         window.updateHireDriverPreviewRoute();
@@ -14262,28 +14313,22 @@ window.setPreviewBookingMode = function(mode) {
         if (window.previewHireDriverState.tripType === 'outstation') {
             if (modeContainer) modeContainer.style.display = 'flex';
             if (secOut) secOut.style.display = 'flex';
-            window.previewHireDriverState.floorAmount = 2200;
-            window.previewHireDriverState.offerAmount = 2500;
-        } else {
-            window.previewHireDriverState.floorAmount = window.previewHireDriverState.tripType === 'round' ? 600 : 350;
-            window.previewHireDriverState.offerAmount = window.previewHireDriverState.tripType === 'round' ? 750 : 450;
         }
+        window.calculateHireDriverFloorAndOffer();
     } else if (mode === 'hourly') {
         if (btnHr) { btnHr.style.background = 'var(--primary)'; btnHr.style.color = '#000'; }
         if (modeContainer) modeContainer.style.display = 'flex';
         if (secHr) secHr.style.display = 'flex';
         const hrs = window.previewHireDriverState.selectedHours || 4;
         if (peekModeBadge) peekModeBadge.textContent = `${hrs} Hrs`;
-        window.previewHireDriverState.floorAmount = hrs * 150;
-        window.previewHireDriverState.offerAmount = hrs * 150 + 50;
+        window.calculateHireDriverFloorAndOffer();
     } else if (mode === 'daywise') {
         if (btnDay) { btnDay.style.background = 'var(--primary)'; btnDay.style.color = '#000'; }
         if (modeContainer) modeContainer.style.display = 'flex';
         if (secDay) secDay.style.display = 'flex';
         const days = window.previewHireDriverState.selectedDays || 1;
         if (peekModeBadge) peekModeBadge.textContent = `${days} Days`;
-        window.previewHireDriverState.floorAmount = days * 1800;
-        window.previewHireDriverState.offerAmount = days * 1800 + 200;
+        window.calculateHireDriverFloorAndOffer();
     }
     
     updatePreviewOfferDisplay();
@@ -14420,10 +14465,12 @@ window.renderPreviewHourlyPills = function() {
     if (!container) return;
     const options = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20];
     const selected = window.previewHireDriverState.selectedHours || 4;
+    const vehicleType = (window.selectedVehicle?.type || 'car').toLowerCase();
+    const hourlyRate = parseFloat(window.redrivoSystemSettings?.[`${vehicleType}_hourly_rate`]) || 150;
     
     container.innerHTML = options.map(hrs => {
         const isSel = hrs === selected;
-        const estRate = hrs * 150;
+        const estRate = hrs * hourlyRate;
         return `
             <div onclick="selectPreviewHour(${hrs})" style="flex-shrink: 0; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
                 <div style="font-size: 0.8rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${hrs} ${hrs === 1 ? 'Hr' : 'Hrs'}</div>
@@ -14435,8 +14482,7 @@ window.renderPreviewHourlyPills = function() {
 
 window.selectPreviewHour = function(hrs) {
     window.previewHireDriverState.selectedHours = hrs;
-    window.previewHireDriverState.floorAmount = hrs * 150;
-    window.previewHireDriverState.offerAmount = hrs * 150 + 50;
+    window.calculateHireDriverFloorAndOffer();
     const peekModeBadge = document.getElementById('preview-peek-mode-badge');
     if (peekModeBadge) peekModeBadge.textContent = `${hrs} Hrs`;
     renderPreviewHourlyPills();
@@ -14448,10 +14494,11 @@ window.renderPreviewDaywisePills = function() {
     if (!container) return;
     const options = [1, 2, 3, 4, 5, 7];
     const selected = window.previewHireDriverState.selectedDays || 1;
+    const dailyRate = window.previewHireDriverState.tripType === 'round' ? 2100 : 1500;
     
     container.innerHTML = options.map(days => {
         const isSel = days === selected;
-        const estRate = days * 1800;
+        const estRate = days * dailyRate;
         return `
             <div onclick="selectPreviewDay(${days})" style="flex-shrink: 0; padding: 6px 14px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
                 <div style="font-size: 0.8rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${days} ${days === 1 ? 'Day' : 'Days'}</div>
@@ -14463,8 +14510,7 @@ window.renderPreviewDaywisePills = function() {
 
 window.selectPreviewDay = function(days) {
     window.previewHireDriverState.selectedDays = days;
-    window.previewHireDriverState.floorAmount = days * 1800;
-    window.previewHireDriverState.offerAmount = days * 1800 + 200;
+    window.calculateHireDriverFloorAndOffer();
     const peekModeBadge = document.getElementById('preview-peek-mode-badge');
     if (peekModeBadge) peekModeBadge.textContent = `${days} Days`;
     renderPreviewDaywisePills();
@@ -14475,12 +14521,12 @@ window.renderPreviewOutstationPills = function() {
     const container = document.getElementById('preview-outstation-pills');
     if (!container) return;
     const options = [
-        { label: '12 Hrs', floor: 2200, offer: 2500 },
-        { label: '16 Hrs', floor: 2800, offer: 3100 },
-        { label: '20 Hrs', floor: 3400, offer: 3800 },
-        { label: '1 Day', floor: 3500, offer: 4000 },
-        { label: '2 Days', floor: 7000, offer: 7800 },
-        { label: '3 Days', floor: 10500, offer: 11500 }
+        { label: '12 Hrs', floor: 2160, offer: 2400 },
+        { label: '16 Hrs', floor: 2560, offer: 2850 },
+        { label: '20 Hrs', floor: 3000, offer: 3350 },
+        { label: '1 Day', floor: 2100, offer: 2350 },
+        { label: '2 Days', floor: 4200, offer: 4600 },
+        { label: '3 Days', floor: 6300, offer: 6900 }
     ];
     const selected = window.previewHireDriverState.selectedOutstation || '1 Day';
     
@@ -14511,12 +14557,12 @@ window.renderPreviewSchedulePickers = function() {
     
     if (dateContainer) {
         const dates = [
-            { label: 'Today', sub: '15 Sep' },
-            { label: 'Tomorrow', sub: '16 Sep' },
-            { label: 'Wed', sub: '17 Sep' },
-            { label: 'Thu', sub: '18 Sep' },
-            { label: 'Fri', sub: '19 Sep' },
-            { label: 'Sat', sub: '20 Sep' }
+            { label: 'Today', sub: '18 Sep' },
+            { label: 'Tomorrow', sub: '19 Sep' },
+            { label: 'Sat', sub: '20 Sep' },
+            { label: 'Sun', sub: '21 Sep' },
+            { label: 'Mon', sub: '22 Sep' },
+            { label: 'Tue', sub: '23 Sep' }
         ];
         dateContainer.innerHTML = dates.map((d, i) => `
             <div onclick="selectPreviewDate(${i}, this)" style="flex-shrink: 0; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${i === 0 ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${i === 0 ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
@@ -14567,12 +14613,12 @@ window.selectPreviewTime = function(idx, el) {
 // -------------------------------------------------------------------------
 window.stepPreviewOffer = function(delta) {
     const floor = window.previewHireDriverState.floorAmount || 350;
-    let current = window.previewHireDriverState.offerAmount || 450;
-    current += delta;
+    let current = (window.previewHireDriverState.offerAmount || 450) + delta;
+    window.previewHireDriverState.userModifiedOffer = true;
     if (current < floor) {
         current = floor;
         if (typeof showToast === 'function') {
-            showToast(`Minimum offer floor is ₹${floor} (placeholder)`, 'info');
+            showToast(`Minimum offer floor is ₹${floor.toLocaleString('en-IN')}`, 'info');
         }
     }
     window.previewHireDriverState.offerAmount = current;
@@ -14588,7 +14634,7 @@ window.updatePreviewOfferDisplay = function() {
     const floor = window.previewHireDriverState.floorAmount || 350;
     
     if (disp) disp.textContent = offer.toLocaleString('en-IN');
-    if (floorLabel) floorLabel.textContent = `Floor ₹${floor.toLocaleString('en-IN')} (placeholder)`;
+    if (floorLabel) floorLabel.textContent = `Floor ₹${floor.toLocaleString('en-IN')}`;
     
     if (minusBtn) {
         if (offer <= floor) {

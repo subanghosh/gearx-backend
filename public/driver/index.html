@@ -1810,10 +1810,14 @@
             <!-- 1. Customer Offer Fare Card -->
             <div style="background: linear-gradient(135deg, rgba(250, 204, 21, 0.12) 0%, rgba(34, 197, 94, 0.08) 100%); border: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 14px; padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
                 <div>
-                    <div style="font-size: 0.62rem; font-weight: 800; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.6px;">Customer Offer</div>
-                    <div style="display: flex; align-items: baseline; gap: 3px; margin-top: 1px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-size: 0.62rem; font-weight: 800; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.6px;">Customer Offer</span>
+                        <span id="driver-preview-above-base-badge" style="display: inline-flex; align-items: center; font-size: 0.62rem; font-weight: 800; color: #22c55e; background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.35); padding: 1px 7px; border-radius: 6px; letter-spacing: 0.2px;">+₹50 above base fare</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 3px; margin-top: 2px;">
                         <span style="font-size: 1.1rem; font-weight: 900; color: #facc15;">₹</span>
                         <span id="driver-preview-offer-amount" style="font-size: 1.6rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">550</span>
+                        <span id="driver-preview-base-ref" style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600; margin-left: 6px;">(Base: ₹500)</span>
                     </div>
                 </div>
                 <div style="text-align: right;">
