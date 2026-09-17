@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReDrivo - Car Service App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <script>
+        window.googleMapsReady = false;
+        window.onGoogleMapsLoaded = function() {
+            window.googleMapsReady = true;
+            if (typeof window.initCustomerMap === 'function') {
+                window.initCustomerMap();
+            }
+        };
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBdPccZc8vH4N0YdIePz2yjrcXoKlC9LRU&libraries=places&v=weekly&callback=onGoogleMapsLoaded" async defer></script>
+    <script src="https://thirsty-strung-overstep.ngrok-free.dev/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+    <link rel="stylesheet" href="styles.css?v=202605251321">
+    <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+        alert("Global Error: " + message + "\nLine: " + lineno + "\nSource: " + source);
+        return false;
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+        alert("Unhandled Promise Rejection: " + event.reason);
+    });
+    </script>
+</head>
+
+<body>
+        <!-- Splash / Loading Screen -->
+    <div id="splash-screen" style="position: fixed; inset: 0; background: #F8A002; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">
+        <div style="text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <img src="assets/redrivo_logo_full.png" alt="ReDrivo Logo" style="width: 80%; max-width: 320px; height: auto; animation: splashLogoAnim 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: scale(0.8);" />
+            <div style="margin-top: 12px; font-family: 'Inter', sans-serif; font-size: 20px; font-weight: 700; color: #1E1E1E; opacity: 0; animation: splashSloganAnim 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; animation-delay: 0.3s; letter-spacing: -0.5px;">Drive on, fikar gone</div>
+        </div>
+        <style>
+            @keyframes splashLogoAnim {
+                0% { opacity: 0; transform: scale(0.8); }
+                100% { opacity: 1; transform: scale(1); }
+            }
+            @keyframes splashSloganAnim {
+                0% { opacity: 0; transform: translateY(10px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+        </style>
+    </div>
+
+    <div id="login-container" class="auth-container" style="position: relative; overflow-y: auto; overflow-x: hidden; background: #0B0E14; display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%;">
+        <!-- Premium Background Elements -->
+        <div style="position: absolute; top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(255, 215, 0, 0.05) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+        <div style="position: absolute; bottom: -10%; right: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(255, 215, 0, 0.03) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; pointer-events: none;"></div>
+
+        <div class="auth-card fade-in" style="z-index: 1; width: 90%; max-width: 480px; background: rgba(18, 22, 29, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <div style="display: flex; justify-content: center; align-items: center; width: 64px; height: 64px; background: linear-gradient(135deg, rgba(250, 204, 21, 0.15) 0%, rgba(250, 204, 21, 0.05) 100%); border: 1.5px solid rgba(250, 204, 21, 0.3); border-radius: 20px; margin: 0 auto 20px; box-shadow: 0 8px 24px rgba(250, 204, 21, 0.15);">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        <circle cx="12" cy="11" r="3"></circle>
+                        <path d="M12 2v2"></path>
+                    </svg>
+                </div>
+                <h1 class="logo-text" style="font-size: 2.5rem; font-weight: 800; color: #FFFFFF; letter-spacing: -1px; margin-bottom: 8px;">Re<span style="color: #FACC15;">D</span>rivo</h1>
+                <p class="subtitle" style="font-size: 0.95rem; color: #8B949E; font-weight: 500;">Premium Auto Service</p>
+            </div>
+
+            <!-- OTP Login/Signup Flow -->
+            <div id="signup-tab">
+                <!-- STEP 1: PHONE -->
+                <div id="su-step-phone">
+                    <div class="form-group" style="margin-bottom: 24px;">
+                        <label style="display:block; font-size:0.8rem; color:#8B949E; margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; font-weight: 700;">Mobile Number</label>
+                        <div class="phone-input-group" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; height: 56px; transition: all 0.3s ease;">
+                            <span class="prefix" style="background: transparent; border-right: 1px solid rgba(255, 255, 255, 0.1); color: #8B949E; font-weight: 600; padding: 0 20px;">+91</span>
+                            <input type="tel" id="su-phone" placeholder="Enter your 10-digit number" maxlength="10" style="background: transparent; border: none; outline: none; padding-left: 20px; font-size: 1.1rem; letter-spacing: 1px; color: #FFFFFF; font-weight: 500; width: 100%;">
+                        </div>
+                    </div>
+
+                    <div id="su-otp-area" style="display:none; margin: 24px 0; padding: 16px 8px; background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.15); border-radius: 16px;">
+                        <label style="display:block; font-size:0.8rem; color:#FFD700; margin-bottom:16px; text-transform:uppercase; letter-spacing: 1px; font-weight: 700; text-align: center;">Enter Verification Code</label>
+                        <div class="otp-boxes" data-target="su-otp">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                            <input class="otp-box" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+                        </div>
+                        <input type="hidden" id="su-otp" value="">
+                        <p style="text-align:center; margin-top:24px; font-size:0.9rem; color:#8B949E;">
+                            Didn't receive the code? <br><a id="resend-otp-link" href="javascript:void(0)" onclick="resendOTP()" style="color:#FFD700; font-weight:600; text-decoration:none; display: inline-block; margin-top: 8px; transition: opacity 0.2s;">Resend OTP</a>
+                        </p>
+                    </div>
+                </div>
+
+                <button id="btn-signup-step1" class="btn btn-primary" style="width:100%; margin-top:20px; padding: 16px; font-size: 1.1rem; font-weight: 700; border-radius: 16px; background: #FFD700; color: #000000; border: none; cursor: pointer; transition: transform 0.2s, background 0.2s;" onclick="handleSignupStep1()">Continue</button>
+                <button id="btn-signup-step2" class="btn btn-primary" style="width:100%; margin-top:20px; padding: 16px; font-size: 1.1rem; font-weight: 700; border-radius: 16px; background: #FFD700; color: #000000; border: none; cursor: pointer; display:none; transition: transform 0.2s, background 0.2s;" onclick="handleSignupStep2()">Verify & Secure Login</button>
+                
+                <p style="text-align: center; font-size: 0.75rem; color: #8B949E; margin-top: 24px; line-height: 1.4;">
+                    By logging in, you agree to our <a href="javascript:void(0)" onclick="openTermsModal(); return false;" style="color: #FFD700; text-decoration: underline;">Terms & Conditions</a> and <a href="javascript:void(0)" onclick="openPrivacyModal(); return false;" style="color: #FFD700; text-decoration: underline;">Privacy Policy</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container" class="hidden" style="position: relative; min-height: 100vh; overflow-x: hidden;">
+        <nav class="navbar" style="display: flex; justify-content: space-between; align-items: center; padding: 24px; background: transparent; position: absolute; top: 0; left: 0; width: 100%; z-index: 100; border-bottom: none; backdrop-filter: none; -webkit-backdrop-filter: none;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 2px 8px rgba(250, 204, 21, 0.4));">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <circle cx="12" cy="11" r="3"></circle>
+                </svg>
+                <h2 class="logo-text" style="font-weight: 800; font-size: 1.6rem; color: #ffffff; letter-spacing: -1px; text-shadow: 0 2px 10px rgba(0,0,0,0.5); margin: 0;">Re<span style="color: #FACC15;">D</span>rivo</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="profile-section-top" style="display: flex; align-items: center; gap: 12px; cursor: pointer;" onclick="switchTab('profile')" title="Profile">
+                    <span id="header-user-name" style="font-size: 0.95rem; font-weight: 600; color: var(--text-main); display: none;">User</span>
+                    <div style="width: 42px; height: 42px; border-radius: 50%; overflow: hidden; border: 2.5px solid var(--primary); box-shadow: 0 0 12px rgba(250, 204, 21, 0.4); background: var(--bg-card); display: flex; align-items: center; justify-content: center;">
+                        <img id="header-user-avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABsEd33qhqnOLpk4D-DvhoQSiDTBFX884YwiFnEmv8FI7WNP0YINcLLkw6Dyu_ACVjZw4NqX97j1x080R3P0YEKEiau4OnGVHPu8cXTMAsWagtF8VpSUQR2DcCDUwUJmONpDbD6L4FyqHqsXgbAG54l3AAYf5eJiVy4iTC6eTKhlCRenXtqnFoWQpakSUms4capxEdm3gLHbuMzb0NlOqF9IxJlojFeLh5opMYXEZctKCZ5FaHtXk_JLl0FCzCjC3ZXe9TEAgxK1g" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Full-screen Leaflet Map Background -->
+        <div id="leaflet-map" style="position: absolute; top: 0; left: 0; width: 100%; height: 100vh; z-index: 0; background-color: #0f172a;"></div>
+
+        <!-- Floating Center Pin for Pickup Selection (Rapido Style) -->
+        <div id="center-pickup-pin" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 5; pointer-events: none; display: none; flex-direction: column; align-items: center;">
+            <div id="center-pin-tooltip" style="background: rgba(18, 22, 29, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; white-space: nowrap; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 6px;">
+                <span style="display: inline-block; width: 6px; height: 6px; background: #38bdf8; border-radius: 50%;"></span>
+                Pin Pickup Location
+            </div>
+            <div style="width: 18px; height: 18px; background: #0284c7; border-radius: 50%; border: 3.5px solid #fff; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.6); position: relative;">
+                <div style="position: absolute; top: -6px; left: -6px; width: 24px; height: 24px; border: 2.5px solid #0284c7; border-radius: 50%; animation: pulse 2s infinite ease-in-out;"></div>
+            </div>
+        </div>
+
+
+
+        <main class="container fade-in" style="position: relative; z-index: 10;">
+            
+            <!-- Dashboard Tab (Map + Bottom sheet Garage) -->
+            <div id="garage-container-wrapper" style="width: 100%; display: flex; flex-direction: column; gap: 20px; min-height: calc(100vh - 120px);">
+                
+                <!-- Floating Location Selector at Top of Screen -->
+                <div class="location-select-container" style="position: relative; margin-top: 80px; width: 100%; z-index: 1000; display: flex; flex-direction: column; gap: 4px; background: rgba(18, 22, 29, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 10px 14px; border-radius: 18px; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);">
+                    <label style="font-size: 0.72rem; color: #fff; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 5px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Pickup Location
+                    </label>
+                    <div style="position: relative; width: 100%;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #facc15;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <input type="text" 
+                            id="pickup-location-global"
+                            placeholder="Enter your current location" 
+                            style="width: 100%; padding: 10px 12px 10px 36px; border-radius: 10px; border: 1px solid rgba(250, 204, 21, 0.4); background: rgba(0,0,0,0.5); color: #fff; font-size: 0.95rem; font-weight: 600; outline: none; transition: all 0.3s ease;"
+                            autocomplete="off"
+                            data-lat=""
+                            data-lng=""
+                            data-address=""
+                            data-flat=""
+                            data-landmark=""
+                            onfocus="this.placeholder = ''; handleLocationFocus('global')"
+                            onblur="this.placeholder = 'Enter your current location'"
+                            oninput="handleLocationInput('global')"
+                        >
+                        <div id="pickup-suggestions-global" class="suggestions-dropdown" style="top: 100%; z-index: 100;"></div>
+                    </div>
+                </div>
+                
+                <!-- Flex Spacer to push garage container to the bottom and expose the map -->
+                <div style="flex-grow: 1; pointer-events: none; min-height: 25vh;"></div>
+
+                <section class="card mt-20" id="inspection-approval-section"
+                    style="display: none; background: rgba(245, 158, 11, 0.08); border: 1px solid var(--warning); backdrop-filter: blur(20px);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="color: var(--warning); font-weight: 700; display: flex; align-items: center; gap: 8px; margin: 0;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block; color: var(--warning);"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Action Required
+                        </h3>
+                        <span style="font-size: 0.8rem; color: var(--text-main); font-weight: 600; padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 6px;">Section 2 of 8</span>
+                    </div>
+                    <h4 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 5px; color: var(--text-main);">Inspection Report: Brakes (60 Points)</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Review the marshal's findings and approve repairs to proceed with this section.</p>
+                    <div id="inspection-approval-list" class="list-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </section>
+ 
+                <section class="card mt-20" id="trips-section" style="display: none; background: rgba(250, 204, 21, 0.08); border: 1px solid var(--primary); backdrop-filter: blur(20px);">
+                    <h3 style="color: var(--primary); font-weight: 700; margin-bottom: 15px;">Live 5-Step Protocol Tracking</h3>
+                    <div id="trips-list" class="list-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </section>
+ 
+                <section class="card mt-20" id="approval-section" style="display: none; background: rgba(20, 83, 45, 0.08); border: 1px solid #22c55e; backdrop-filter: blur(20px);">
+                    <h3 style="color: #22c55e; font-weight: 700; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg> Dual Sign-off Complete
+                    </h3>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Your vehicle is ready. Please review the transparent 5-line invoice to checkout.</p>
+                    <div id="approval-list" class="list-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </section>
+ 
+                <section class="card" id="location-placeholder-card" style="background: rgba(18, 22, 29, 0.85); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-radius: 24px; padding: 24px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 10px 0;">
+                        <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); border: 1.5px solid rgba(250, 204, 21, 0.3); display: flex; align-items: center; justify-content: center; color: #facc15; font-size: 1.4rem; box-shadow: 0 0 15px rgba(250, 204, 21, 0.15);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #facc15;"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        </div>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; color: #ffffff; margin: 0; font-family: 'Manrope', sans-serif;">Set Your Route</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; max-width: 300px; line-height: 1.4;">Enter pickup location at the top and drop location below to view available vehicles and book your service.</p>
+                    </div>
+                </section>
+
+                <!-- Drop Location Selector just above welcome back user -->
+                <div class="drop-location-select-container" style="position: relative; width: 100%; z-index: 999; display: flex; flex-direction: column; gap: 6px; background: rgba(18, 22, 29, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 14px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <label style="font-size: 0.78rem; color: #fff; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; margin: 0;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                            Where to drop?
+                        </label>
+                        <button onclick="openRouteSearchModal('stop')" style="background: none; border: none; color: #facc15; font-size: 0.78rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none;">
+                            <span class="material-symbols-outlined" style="font-size: 1rem; font-weight: 800;">add</span>
+                            Add route
+                        </button>
+                    </div>
+                    <div id="route-stops-list" style="display: none; flex-direction: column; gap: 8px; margin-top: 4px; margin-bottom: 4px;"></div>
+                                        <div style="position: relative; width: 100%;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #22c55e;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <input type="text" 
+                            id="drop-location-global"
+                            placeholder="Enter drop location" 
+                            style="width: 100%; padding: 12px 14px 12px 42px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.4); background: rgba(0,0,0,0.5); color: #fff; font-size: 1.02rem; font-weight: 600; outline: none; transition: all 0.3s ease;"
+                            autocomplete="off"
+                            data-lat=""
+                            data-lng=""
+                            data-address=""
+                            data-flat=""
+                            data-landmark=""
+                            onfocus="this.placeholder = ''; handleLocationFocus('global-drop')"
+                            onblur="this.placeholder = 'Enter drop location'"
+                            oninput="handleLocationInput('global-drop')"
+                        >
+                        <div id="drop-suggestions-global" class="suggestions-dropdown" style="top: 100%; z-index: 100;"></div>
+                    </div>
+                    <div id="route-stats-badge" style="display: none; align-items: center; gap: 8px; margin-top: 8px; font-family: 'Inter', sans-serif; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); width: fit-content;">
+                        <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Est. Route:</span>
+                        <span style="font-size: 0.82rem; color: #fff; font-weight: 800;"><span id="route-est-distance">-- km</span> • <span id="route-est-duration" style="color: #facc15;">-- mins</span></span>
+                    </div>
+                    <div id="clear-garage-selection-container" style="display: none; text-align: right; margin-top: 4px;">
+                        <a href="javascript:void(0)" onclick="clearGarageSelection(); return false;" style="color: #facc15; font-size: 0.78rem; font-weight: bold; text-decoration: underline;">Switch to Point-to-Point Logistics</a>
+                    </div>
+                </div>
+
+                <section class="card" id="garage-container" style="background: rgba(18, 22, 29, 0.85); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-radius: 32px 32px 24px 24px; padding: 24px; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-bottom: none; margin-bottom: -20px;">
+                    <!-- Drag Handle -->
+                    <div style="width: 40px; height: 5px; background: rgba(255, 255, 255, 0.15); border-radius: 3px; margin: 0 auto 20px auto;"></div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 0.88rem; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; letter-spacing: 0.2px;">Welcome back, <span id="display-name" class="accent" style="font-weight: 700;">User</span>!</h4>
+                        <h2 style="font-weight: 800; font-size: 1.45rem; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 2px;">Request a Marshal</h2>
+                        <p style="font-size: 0.82rem; color: var(--text-muted);">Select the vehicle you'd like us to pick up today.</p>
+                    </div>
+                    <div id="vehicles-list" class="list-container" style="display: flex; flex-direction: column; gap: 14px;">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div id="vehicle-management-area">
+                    </div>
+                </section>
+            </div>
+
+            <!-- Garage Menu Tab (Nearby Partner Garages list) -->
+            <div id="focus-garage-container" class="hidden" style="width: 100%; padding-top: 80px; padding-bottom: 80px; font-family: 'Plus Jakarta Sans', sans-serif;">
+                <div class="dashboard-header" style="margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <h3 style="font-weight: 800; letter-spacing: -0.5px; font-size: 1.4rem; color: var(--primary); display: none;">Nearby Partner Garages</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Choose a garage to request a pickup & drop service.</p>
+                </div>
+                
+                <!-- Manual Location Change Section -->
+                <div style="background: rgba(18, 22, 29, 0.6); border: 1px solid rgba(255, 255, 255, 0.06); padding: 16px; border-radius: 16px; margin-bottom: 20px; position: relative;">
+                    <label style="font-size: 0.75rem; color: #fff; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Pickup Location
+                    </label>
+                    <div style="position: relative; width: 100%;">
+                        <input type="text" 
+                            id="garage-manual-location"
+                            placeholder="Search location to find garages..." 
+                            style="width: 100%; padding: 12px 12px 12px 38px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; font-weight: 600; outline: none; transition: all 0.3s ease;"
+                            autocomplete="off"
+                            oninput="handleGarageLocationInput()"
+                        >
+                        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 18px; height: 18px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        </span>
+                    </div>
+                    <div id="garage-manual-suggestions" class="suggestions-dropdown" style="display:none; position:absolute; left:16px; right:16px; background:#181A20; border:1px solid #2C2C2E; border-radius:12px; max-height:200px; overflow-y:auto; z-index:999;"></div>
+                </div>
+
+                <div id="nearby-garages-list" class="list-container">
+                    <div style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.85rem;">
+                        Searching for garages...
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history-container" class="hidden" style="width: 100%; padding-top: 80px;">
+                <div class="dashboard-header" style="margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <h3 style="font-weight: 800; letter-spacing: -0.5px; font-size: 1.4rem; color: var(--primary); display: none;">Previous Service History</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Reports and invoices of your past bookings.</p>
+                </div>
+                <div id="history-list" class="list-container">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Profile Tab -->
+            <div id="profile-container" class="hidden" style="width: 100%; padding-top: 80px; padding-bottom: 80px;">
+                <div class="dashboard-header" style="margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="position: relative; margin: 0 auto 16px auto; width: 80px; height: 80px; cursor: pointer;" onclick="document.getElementById('profile-avatar-input').click()">
+                        <div style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; border: 3px solid var(--primary); box-shadow: 0 0 16px rgba(250, 204, 21, 0.4); background: #1D1D1D; display: flex; align-items: center; justify-content: center;">
+                            <img id="profile-modal-avatar" src="" alt="Profile" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                        <div style="position: absolute; bottom: 0; right: 0; background: var(--primary); border: 2px solid #1D1D1D; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                        </div>
+                        <input type="file" id="profile-avatar-input" accept="image/*" style="display: none;" onchange="uploadProfilePicture(this)">
+                    </div>
+                    
+                </div>
+                
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 16px; text-align: left; margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Name Field -->
+                    <div>
+                        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Full Name</span>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <span id="profile-modal-name" style="color: #fff; font-weight: 600; font-size: 0.95rem;">N/A</span>
+                            <button onclick="startEditProfileField('name')" style="background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 700; cursor: pointer; padding: 0;">Edit</button>
+                        </div>
+                        <!-- Inline Name Edit Form -->
+                        <div id="name-edit-form" style="display: none; margin-top: 10px; flex-direction: column; gap: 8px;">
+                            <input type="text" id="edit-name-input" placeholder="Enter full name" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.85rem;">
+                            <button onclick="saveProfileName()" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--primary); color: #000; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Save Name</button>
+                        </div>
+                    </div>
+
+                    <!-- Phone Field -->
+                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 12px;">
+                        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Phone Number</span>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="profile-modal-phone" style="color: #fff; font-weight: 600; font-size: 0.95rem;">N/A</span>
+                                <span id="profile-phone-badge" style="background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 2px 8px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Verified
+                                </span>
+                            </div>
+                            <button onclick="startEditProfileField('phone')" style="background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 700; cursor: pointer; padding: 0;">Edit</button>
+                        </div>
+                        <!-- Inline Phone Edit Form -->
+                        <div id="phone-edit-form" style="display: none; margin-top: 10px; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; align-items: center; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; width: 100%;">
+                                <span style="color: rgba(255,255,255,0.6); padding: 10px 12px; border-right: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem; font-weight: 600;">+91</span>
+                                <input type="text" id="edit-phone-input" placeholder="Enter 10 digit number" maxlength="10" style="width: 100%; padding: 10px 12px; border: none; background: transparent; color: #fff; font-size: 0.85rem; outline: none;">
+                            </div>
+                            <button id="btn-send-phone-otp" onclick="sendEditFieldOtp('phone')" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--primary); color: #000; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Send OTP</button>
+                            <div id="phone-otp-area" style="display: none; flex-direction: column; gap: 8px; margin-top: 4px;">
+                                <input type="text" id="edit-phone-otp-input" placeholder="Enter OTP" maxLength="6" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.85rem; text-align: center; letter-spacing: 4px;">
+                                <button id="btn-verify-phone-otp" onclick="verifyEditFieldOtp('phone')" style="width: 100%; padding: 10px; border-radius: 8px; background: #22c55e; color: #fff; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Verify & Save</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Email Field -->
+                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 12px;">
+                        <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Email Address</span>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="profile-modal-email" style="color: #fff; font-weight: 600; font-size: 0.95rem;">N/A</span>
+                                <span id="profile-email-badge" style="background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 2px 8px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: none; align-items: center; gap: 4px;">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Verified
+                                </span>
+                            </div>
+                            <button onclick="startEditProfileField('email')" style="background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 700; cursor: pointer; padding: 0;">Edit</button>
+                        </div>
+                        <!-- Inline Email Edit Form -->
+                        <div id="email-edit-form" style="display: none; margin-top: 10px; flex-direction: column; gap: 8px;">
+                            <input type="email" id="edit-email-input" placeholder="Enter new email address" pattern="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.85rem;">
+                            <button id="btn-send-email-otp" onclick="sendEditFieldOtp('email')" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--primary); color: #000; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Send OTP</button>
+                            <div id="email-otp-area" style="display: none; flex-direction: column; gap: 8px; margin-top: 4px;">
+                                <input type="text" id="edit-email-otp-input" placeholder="Enter OTP" maxLength="6" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.85rem; text-align: center; letter-spacing: 4px;">
+                                <button id="btn-verify-email-otp" onclick="verifyEditFieldOtp('email')" style="width: 100%; padding: 10px; border-radius: 8px; background: #22c55e; color: #fff; border: none; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Verify & Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Added Vehicles Section under Profile -->
+                <div style="margin-bottom: 24px;">
+                    <span style="font-size: 0.8rem; color: #fff; font-weight: 800; text-transform: uppercase; display: block; margin-bottom: 12px; letter-spacing: 1px;">My Vehicles</span>
+                    <div id="profile-vehicles-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <button onclick="showVehicleForm();" class="btn" style="width: 100%; padding: 10px 16px; border-radius: 10px; background: var(--primary); border: none; color: #000; font-weight: 700; font-size: 0.9rem; cursor: pointer; margin-bottom: 12px; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Add Another Vehicle
+                </button>
+                
+                <div style="display: flex; gap: 12px; margin-top: 4px; width: 100%;">
+                    <button onclick="logout();" class="btn" style="flex: 1; padding: 10px 16px; border-radius: 10px; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.22)'" onmouseout="this.style.background='rgba(239,68,68,0.12)'">
+                        Log Out
+                    </button>
+
+                    <button onclick="openDeleteAccountModal();" class="btn" style="flex: 1; padding: 10px 16px; border-radius: 10px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.15); color: #a1a1aa; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                        Delete Account
+                    </button>
+                </div>
+
+                <!-- Legal Documents and DPDP Consent Withdrawal Links -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05); text-align: center; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: center; gap: 20px; font-size: 0.8rem;">
+                        <a href="javascript:void(0)" onclick="openTermsModal(); return false;" style="color: var(--primary); text-decoration: none; font-weight: 600;">Terms & Conditions</a>
+                        <span style="color: rgba(255,255,255,0.1);">|</span>
+                        <a href="javascript:void(0)" onclick="openPrivacyModal(); return false;" style="color: var(--primary); text-decoration: none; font-weight: 600;">Privacy Policy</a>
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                        Pursuant to Indian DPDP Act 2023, you can request data erasure or withdraw consent.
+                        To do so, please contact our DPO at <a href="mailto:grievance@redrivo.com" style="color: var(--primary); text-decoration: none;">grievance@redrivo.com</a>.
+                    </div>
+                </div>
+            </div>
+
+ <!-- /vehicle-form-elements -->
+
+        <!-- Bottom Navigation Bar -->
+        <div class="bottom-nav-bar" style="height: 72px;">
+            <button id="nav-btn-garage" onclick="switchTab('garage')" class="nav-item active">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 3px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </button>
+            <button id="nav-btn-focus-garage" onclick="switchTab('focus-garage')" class="nav-item">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 3px;"><path d="M3 10V22H21V10L12 3L3 10Z"/><path d="M6 22V13H18V22"/></svg>
+                Garage
+            </button>
+            <button id="nav-btn-history" onclick="switchTab('history')" class="nav-item">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 3px;"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                History
+            </button>
+            <button id="nav-btn-profile" onclick="switchTab('profile')" class="nav-item">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 3px;"><path d="M19 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </button>
+        </div>
+</main>
+    </div>
+<!-- User Details Modal -->
+<div id="user-details-modal" class="modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #051424; z-index: 1000; align-items: center; justify-content: center; overflow-y: auto;">
+    <div style="width: 100%; max-width: 400px; padding: 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+            <div style="background: rgba(255,255,255,0.05); width: 72px; height: 72px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.1);">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <h2 style="margin: 0 0 8px 0; color: #fff; font-size: 1.8rem; font-weight: 700; font-family: 'Montserrat', sans-serif;">Enter your details.</h2>
+            <p style="margin: 0; color: #a1a1aa; font-size: 0.95rem; line-height: 1.5;">We need these details to assign your marshal and send you live service updates.</p>
+        </div>
+        
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; backdrop-filter: blur(10px);">
+            <div class="form-group mb-20">
+                <label style="color: #a1a1aa; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: block;">FULL NAME</label>
+                <div style="position: relative;">
+                    <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #a1a1aa;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                    <input type="text" id="ud-name" placeholder="e.g. Jonathan Wick" style="width: 100%; padding: 14px 16px 14px 48px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 1rem;">
+                </div>
+            </div>
+            
+            <div class="form-group mb-20">
+                <label style="color: #a1a1aa; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: block;">EMAIL ADDRESS</label>
+                <div style="position: relative;">
+                    <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #a1a1aa;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    </div>
+                    <input type="email" id="ud-email" placeholder="jonathan@redrivo.com" style="width: 100%; padding: 14px 16px 14px 48px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 1rem;">
+                </div>
+            </div>
+            
+            <button onclick="submitUserDetails()" id="btn-submit-user-details" style="width: 100%; margin-top: 12px; padding: 16px; border-radius: 12px; background: #FFD700; color: #000; border: none; font-weight: 700; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: space-between;">
+                Continue
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+            </button>
+            
+            <div style="text-align: center; margin-top: 24px; font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <div style="width: 8px; height: 8px; background: #22c55e; border-radius: 50%;"></div>
+                ENCRYPTED CONNECTION
+            </div>
+        </div>
+    </div>
+    <input type="hidden" id="ud-pending-vehicle-id">
+</div>
+
+    <!-- Finding Marshal / Processing Screen -->
+    <div id="finding-marshal-screen" class="modal" style="display: none; flex-direction: column; align-items: center; justify-content: center; background: #0A0A0A; z-index: 2000; padding: 0; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;">
+        <div class="radar-map-bg"></div>
+
+        <div style="position: absolute; top: 0; left: 0; width: 100%; padding: 20px; display: flex; align-items: center; justify-content: center; z-index: 5;">
+            <button id="btn-back-marshal-search" onclick="cancelMarshalSearch()" style="position: absolute; left: 20px; background: none; border: none; color: #FACC15; font-size: 24px; cursor: pointer;">&#8592;</button>
+            <div style="color: #ffffff; font-weight: 800; font-size: 1.2rem; font-family: 'Montserrat', sans-serif; letter-spacing: 1px;">ReDrivo</div>
+        </div>
+
+        <div style="z-index: 3; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 400px; padding: 20px;">
+            <!-- Character & Radar Container -->
+            <div style="position: relative; width: 180px; height: 180px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center;">
+                <div class="radar-dot" style="position: absolute; width: 4px; height: 4px; z-index: 1;">
+                    <div class="radar-pulse" style="animation-delay: 0s; width: 240px; height: 240px;"></div>
+                    <div class="radar-pulse" style="animation-delay: 0.6s; width: 240px; height: 240px;"></div>
+                    <div class="radar-pulse" style="animation-delay: 1.2s; width: 240px; height: 240px;"></div>
+                </div>
+                <img src="./marshal_avatar_clean.png" alt="Marshal Character" style="width: 140px; height: 140px; border-radius: 50%; object-fit: cover; z-index: 4; border: 3px solid rgba(250, 204, 21, 0.4); box-shadow: 0 12px 30px rgba(0,0,0,0.8);">
+            </div>
+            
+            <h2 style="color: #fff; font-family: 'Montserrat', sans-serif; font-size: 1.8rem; font-weight: 800; margin-bottom: 6px; text-shadow: 0 4px 12px rgba(0,0,0,0.5);">Finding your Marshal</h2>
+            <div id="fm-status-text" style="color: #a1a1aa; font-size: 1rem; margin-bottom: 30px;">Searching for nearby marshals within 5 KM...</div>
+            
+            <!-- Glassmorphic Vehicle Card -->
+            <div style="width: 100%; background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; padding: 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <div style="color: #888; font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px;">For Vehicle</div>
+                    <div id="fm-vehicle-name" style="color: #FACC15; font-weight: 800; font-size: 1.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;">Maruti Suzuki Fronx</div>
+                </div>
+                <div style="width: 100px; height: 60px; display: flex; align-items: center; justify-content: center; margin-left: 16px;">
+                    <img id="fm-vehicle-image" src="" alt="Vehicle" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));">
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div id="fm-progress-container" style="margin-top: 30px; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-right: 16px;">
+                    <div id="fm-progress-bar" style="height: 100%; width: 0%; background: #FACC15; transition: width 0.3s ease; box-shadow: 0 0 10px rgba(250, 204, 21, 0.5);"></div>
+                </div>
+                <div id="fm-progress-text" style="color: #FACC15; font-weight: 800; font-size: 0.95rem; width: 45px; text-align: right;">60s</div>
+            </div>
+
+            <!-- Stop Searching Button -->
+            <div id="fm-stop-container" style="margin-top: 20px; width: 100%; display: flex; justify-content: center; z-index: 5;">
+                <button id="btn-stop-marshal-search" onclick="stopMarshalSearch()" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); font-weight: 700; padding: 12px 24px; border-radius: 12px; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; width: 100%; font-family: 'Montserrat', sans-serif;" onmouseover="this.style.background='rgba(239, 68, 68, 0.25)'" onmouseout="this.style.background='rgba(239, 68, 68, 0.15)'">Stop Searching</button>
+            </div>
+
+            <!-- Retry Button -->
+            <div id="fm-retry-container" style="display: none; margin-top: 20px;">
+                <button onclick="cancelOldRequestAndRetry()" style="background: #FACC15; color: #000; font-weight: 800; border: none; padding: 14px 28px; border-radius: 12px; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 20px rgba(250, 204, 21, 0.4); transition: all 0.2s; font-family: 'Montserrat', sans-serif;">Search Again</button>
+            </div>
+        </div>
+    </div>
+    <!-- Marshal En Route Overlay -->
+    <div id="marshal-en-route-screen" class="modal" style="display: none; align-items: flex-start; justify-content: center; background: #0b0e14; z-index: 10000; padding: 0; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow-y: auto;">
+        <div style="width: 100%; display: flex; flex-direction: column; min-height: 100%;">
+            
+            <!-- Sticky Header -->
+            <div style="width: 100%; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(11, 14, 20, 0.95); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 1000;">
+                <button onclick="sessionStorage.setItem('minimizeEnRoute', 'true'); document.getElementById('marshal-en-route-screen').style.display='none'; loadDashboard();" style="background: none; border: none; color: var(--primary); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;">&#8592;</button>
+                <div style="color: #fff; font-weight: 800; font-family: 'Montserrat', sans-serif; letter-spacing: 0.5px; font-size: 1rem; text-transform: uppercase;">Track Service</div>
+                <div style="width: 24px;"></div> <!-- spacer -->
+            </div>
+
+            <!-- Sleek Address Top Card -->
+            <div style="background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(18, 18, 22, 0.6) 100%); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 16px; margin: 16px 16px 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--primary); display: inline-block; margin-top: 5px; flex-shrink: 0;"></span>
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 0.62rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Pickup Location</span>
+                        <span id="enroute-pickup-addr" style="font-size: 0.78rem; color: #eee; font-weight: 500; line-height: 1.2;">-</span>
+                    </div>
+                </div>
+                <div style="height: 8px; border-left: 1px dashed rgba(255,255,255,0.15); margin-left: 2.5px;"></div>
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #22c55e; display: inline-block; margin-top: 5px; flex-shrink: 0;"></span>
+                    <div style="display: flex; flex-direction: column;">
+                        <span style="font-size: 0.62rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Drop Location</span>
+                        <span id="enroute-drop-addr" style="font-size: 0.78rem; color: #eee; font-weight: 500; line-height: 1.2;">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Leaflet Map Tracking -->
+            <div id="enroute-map" style="width: calc(100% - 32px); height: 220px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.06); margin: 0 16px 12px 16px; position: relative; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,0.3);"></div>
+
+            <!-- ETA / Distance Banner -->
+            <div id="enroute-eta-banner" style="display: flex; gap: 10px; margin: 0 16px 12px 16px;">
+                <div style="flex: 1; background: rgba(250,204,21,0.07); border: 1px solid rgba(250,204,21,0.2); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                    <span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">ETA to Destination</span>
+                    <span id="enroute-eta-time" style="font-size: 1.3rem; font-weight: 800; color: var(--primary); font-family: 'Montserrat', sans-serif;">-- min</span>
+                </div>
+                <div style="flex: 1; background: rgba(56,189,248,0.07); border: 1px solid rgba(56,189,248,0.2); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                    <span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Distance</span>
+                    <span id="enroute-eta-dist" style="font-size: 1.3rem; font-weight: 800; color: #38bdf8; font-family: 'Montserrat', sans-serif;">-- km</span>
+                </div>
+                <div style="flex: 1; background: rgba(34,197,94,0.07); border: 1px solid rgba(34,197,94,0.2); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                    <span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Status</span>
+                    <span id="enroute-status-label" style="font-size: 0.75rem; font-weight: 800; color: #22c55e; font-family: 'Montserrat', sans-serif; text-align: center;">En Route</span>
+                </div>
+            </div>
+
+            <!-- Handover OTP Card -->
+
+            <div id="enroute-otp-card" style="background: rgba(250, 204, 21, 0.05); border: 1px dashed rgba(250, 204, 21, 0.3); border-radius: 20px; padding: 14px 20px; margin: 0 16px 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <span id="enroute-otp-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Handover OTP</span>
+                    <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 2px;">Provide this to the Marshal for verification</div>
+                </div>
+                <span id="enroute-otp" style="font-size: 1.6rem; color: var(--primary); font-weight: 800; font-family: monospace; letter-spacing: 2px; text-shadow: 0 0 10px rgba(250, 204, 21, 0.2);">----</span>
+            </div>
+
+            <!-- Intermediate stops with OTPs -->
+            <div id="enroute-stops-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; padding: 14px 20px; margin: 0 16px 12px 16px; display: none; flex-direction: column; gap: 8px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Intermediate Route Stops</span>
+                <div id="enroute-stops-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+
+            <!-- Vertical Timeline Section -->
+            <div style="background: linear-gradient(145deg, rgba(39, 39, 42, 0.2) 0%, rgba(18, 18, 22, 0.4) 100%); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 20px; padding: 20px; margin: 0 16px 12px 16px;">
+                <h3 style="font-size: 0.8rem; color: #fff; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 16px; font-family: 'Montserrat', sans-serif;">Service Timeline</h3>
+                <div id="enroute-timeline-container"></div>
+            </div>
+
+            <!-- Marshal Details Card -->
+            <div id="enroute-marshal-container" style="background: linear-gradient(145deg, rgba(39, 39, 42, 0.9) 0%, rgba(18, 18, 22, 0.95) 100%); border: 1px solid rgba(250, 204, 21, 0.15); border-radius: 20px; padding: 16px; margin: 0 16px 24px 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.4);">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <div style="width: 52px; height: 52px; background: rgba(255,255,255,0.05); border-radius: 50%; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.1); flex-shrink: 0;">
+                        <img id="enroute-marshal-photo" src="" alt="Marshal Photo" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="color: #fff; font-weight: 800; font-family: 'Montserrat', sans-serif; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
+                            <span id="enroute-marshal-name">-</span>
+                            <span style="background: rgba(250, 204, 21, 0.1); color: var(--primary); font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">
+                                ⭐ 4.9
+                            </span>
+                        </div>
+                        <div id="enroute-marshal-vehicle" style="color: var(--text-muted); font-size: 0.75rem; font-weight: 600; margin-top: 2px;">-</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="enroute-contact-btn" style="flex: 1; padding: 12px 20px; background: var(--primary); border: none; color: #0b0e14; border-radius: 12px; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        CALL MARSHAL
+                    </button>
+                    <button onclick="showToast('Opening Chat with Marshal...', 'success')" style="width: 50px; height: 42px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); color: var(--primary); border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Upfront Payment Modal (Bottom Sheet Style) -->
+<div id="payment-modal" class="modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: flex-end; justify-content: center; backdrop-filter: blur(5px);">
+    <div class="v-modal-content slide-up" style="width: 100%; max-width: 500px; padding: 24px; background: #27272A; border-top-left-radius: 24px; border-top-right-radius: 24px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-top: 1px solid rgba(255,255,255,0.1); position: relative; padding-bottom: 40px; box-shadow: 0 -10px 40px rgba(0,0,0,0.5);">
+        
+        <!-- Drag handle -->
+        <div style="width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 4px; margin: 0 auto 20px auto;"></div>
+        
+        <!-- Title & Close -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div style="width: 32px;"></div> <!-- Spacer -->
+            <h3 style="margin: 0; color: var(--primary); font-weight: 800; font-size: 1.3rem; letter-spacing: 0.5px; text-transform: uppercase;">Marshal Found!</h3>
+            <button onclick="closePaymentModal()" style="background: rgba(255,255,255,0.1); border: none; width: 32px; height: 32px; border-radius: 50%; color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+        
+        <!-- Marshal Info Card -->
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+            <div style="position: relative;">
+                <img id="found-marshal-photo" src="https://i.pravatar.cc/150?img=11" alt="Marshal" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #27272A; box-shadow: 0 0 0 2px var(--text-muted);">
+                <div style="position: absolute; bottom: 0; right: 0; background: #15803D; border: 2px solid #27272A; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+            </div>
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Name</div>
+                <div id="found-marshal-name" style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 6px;">Rahul S.</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Vehicle</div>
+                <div id="found-marshal-vehicle" style="font-size: 0.95rem; font-weight: 500; color: var(--text-main);">Hero Passion XTEC | KA 05 HP 7890</div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 16px 0; margin-bottom: 24px;">
+            <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Rating</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">4.9 Stars <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">(120 reviews)</span></div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">ETA</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">7 mins away</div>
+            </div>
+        </div>
+
+        <button class="btn btn-success" style="width: 100%; padding: 18px 24px; font-size: 1.05rem; font-weight: 800; border-radius: 50px; background: #10B981; color: #000; border: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);" onclick="simulatePayment();">
+            <div id="payment-btn-text" style="display: flex; align-items: center; gap: 8px;">
+                PAY 249 & CONFIRM
+            </div>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        </button>
+    </div>
+</div>
+
+
+
+
+    <!-- Video Modal -->
+    <div id="video-modal" class="modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="card fade-in" style="width: 100%; max-width: 500px; margin: 20px; padding: 24px; background: var(--bg-card); border-radius: var(--radius);">
+            <h3 style="margin-bottom: 10px;">Zero-Trust Evidence</h3>
+            <p style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">Please review the 360°
+                walkaround video recorded by the Marshal. Your Handover OTP will be revealed after you finish watching.
+            </p>
+
+            <video id="customer-review-video"
+                style="width: 100%; border-radius: 8px; background: #000; max-height: 400px; margin-bottom: 15px;"
+                controls playsinline></video>
+
+            <div id="otp-reveal-box"
+                style="padding: 15px; background: var(--success); color: white; border-radius: 8px; text-align: center; display: none;">
+                <div style="font-size: 0.9rem; margin-bottom: 5px;">Your Handover OTP is:</div>
+                <div id="revealed-otp" style="font-size: 2.5rem; font-weight: 700; letter-spacing: 5px;"></div>
+            </div>
+
+            <button class="btn btn-secondary mt-20" style="width: 100%;" onclick="closeVideoModal()">Close</button>
+        </div>
+    </div>
+
+    <!-- Audit Review Modal -->
+    <div id="audit-modal" class="modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center;">
+        <style>
+            .audit-row {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+                background: rgba(255, 255, 255, 0.02);
+                padding: 12px;
+                border-radius: var(--radius-md);
+                margin-bottom: 8px;
+                border: 1px solid var(--border-color);
+            }
+        
+    @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+    .slide-up {
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+</style>
+        <div class="card fade-in"
+            style="width: 100%; max-width: 900px; margin: 20px; padding: 24px; max-height: 90vh; overflow-y: auto; background: var(--bg-card); border-radius: var(--radius);">
+            <div
+                style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+                <div>
+                    <h3 style="margin-bottom: 5px;">Comprehensive Audit Results</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin: 0;">Review the granular breakdown and
+                        video evidence provided by the garage.</p>
+                </div>
+            </div>
+
+            <!-- Header Row -->
+            <div
+                style="display:flex; font-weight: 700; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px; padding: 0 12px; text-transform: uppercase;">
+                <div style="width: 25%">ITEM</div>
+                <div style="width: 20%">CONDITION</div>
+                <div style="width: 15%; text-align: center">STATUS</div>
+                <div style="width: 20%; text-align: center">VIDEO EVIDENCE</div>
+                <div style="width: 20%; text-align: right">FINAL COST ₹</div>
+            </div>
+
+            <div id="audit-details-content" style="margin-bottom: 15px; font-size: 0.95rem;">
+                <!-- Filled by JS -->
+            </div>
+
+            <div id="service-approval-section" class="card mt-20"
+                style="display: none; border-top: 4px solid var(--warning);">
+                <h3><i data-lucide="alert-circle" style="color: var(--warning)"></i> Mechanic Audit Review</h3>
+                <p style="font-size:0.9rem; margin-bottom: 15px;">The garage has completed the 60-Point Audit. Review
+                    the video evidence and estimated costs below.</p>
+
+                <div id="audit-details-container"
+                    style="background: var(--bg-color); padding: 15px; border-radius: var(--radius-md); font-size: 0.9rem; margin-bottom: 15px;">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div style="text-align: center;">
+                    <button class="btn btn-primary" id="btn-approve-audit" onclick="approveAudit()"
+                        style="width: 100%;"><i data-lucide="check"></i> Approve Work & Start Service</button>
+                </div>
+            </div>
+
+            <div id="final-payment-section" class="card mt-20"
+                style="display: none; border-top: 4px solid var(--success);">
+                <h3><i data-lucide="credit-card" style="color: var(--success)"></i> Final Payment & Delivery</h3>
+                <p style="font-size:0.9rem; margin-bottom: 15px;">Your vehicle service is complete. Review the replaced
+                    parts evidence and pay the final invoice to receive your Delivery OTP.</p>
+
+                <div id="payment-details-container"
+                    style="background: var(--bg-color); padding: 15px; border-radius: var(--radius-md); font-size: 0.9rem; margin-bottom: 15px;">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div id="final-otp-display"
+                    style="display: none; text-align: center; padding: 20px; background: rgba(16, 185, 129, 0.1); border-radius: var(--radius-md); margin-bottom: 15px;">
+                    <p style="margin: 0; font-size: 0.9rem; color: var(--text-muted);">Provide this OTP to the Marshal
+                        upon delivery</p>
+                    <div style="font-size: 2rem; font-weight: bold; letter-spacing: 5px; color: var(--success);"
+                        id="the-otp-2"></div>
+                </div>
+
+                <div style="text-align: center; display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-success" id="btn-pay-invoice" onclick="payFinalInvoice()"
+                        style="width: 100%;"><i data-lucide="check-circle"></i> Pay <span id="final-pay-amt"></span> &
+                        Get OTP</button>
+                    <button class="btn btn-danger" id="btn-reject-handover" onclick="openDisputeForm()"
+                        style="width: 100%;"><i data-lucide="alert-triangle"></i> Report Damage / Reject Handover</button>
+                </div>
+            </div>
+            <div
+                style="padding: 15px; background: rgba(59, 130, 246, 0.1); border: 1px solid var(--primary); border-radius: 8px; text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 0.9rem; margin-bottom: 5px;">Total Estimated Cost (₹)</div>
+                <div id="audit-total-cost" style="font-size: 2rem; font-weight: 700; color: var(--primary);">0</div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" style="flex: 1;" onclick="closeAuditModal()">Close</button>
+                <button class="btn btn-success" id="modal-btn-approve-audit" style="flex: 1;" onclick=""><i
+                        data-lucide="check-circle"></i> Approve Work</button>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Booking Options Modal -->
+    <div id="booking-options-modal" class="v-modal" style="display: none; align-items: center; justify-content: center; z-index: 2000;">
+        <div class="v-modal-content" style="padding: 24px; max-width: 420px; width: 90%; background: #12161E; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="color: #fff; font-weight: 700; font-size: 1.2rem; margin: 0; font-family: 'Manrope', sans-serif;">Select Booking Type</h3>
+                <button onclick="closeBookingOptionsModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.5rem; line-height: 1;">&times;</button>
+            </div>
+            
+            <input type="hidden" id="booking-opt-vehicle-id">
+
+            <!-- Tab Buttons for Instant vs Scheduled -->
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; background: rgba(0, 0, 0, 0.2); padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <button id="btn-opt-instant" onclick="selectBookingOptionTab('instant')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: var(--primary); color: #000; font-weight: 700; font-size: 0.88rem; cursor: pointer; transition: all 0.2s;">
+                    Instant Pickup
+                </button>
+                <button id="btn-opt-schedule" onclick="selectBookingOptionTab('schedule')" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: transparent; color: #fff; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s;">
+                    Schedule
+                </button>
+            </div>
+
+            <!-- Instant Booking Info Section -->
+            <div id="booking-opt-instant-section" style="margin-bottom: 20px; display: block;">
+                <p style="font-size: 0.88rem; color: #a1a1aa; line-height: 1.5; margin: 0 0 20px 0;">A marshal will be assigned instantly to pick up your vehicle from your current location within 30-45 minutes.</p>
+                
+                <!-- Slide to Confirm (Instant) -->
+                <div id="slide-confirm-instant" class="slide-to-confirm-container" style="position: relative; width: 100%; height: 56px; border-radius: 28px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: center; user-select: none;">
+                    <span class="slide-text" style="font-size: 0.82rem; font-weight: 800; color: var(--text-muted); pointer-events: none; z-index: 1; letter-spacing: 0.5px; text-transform: uppercase;">Slide to Book Instantly</span>
+                    <div class="slide-handle" style="position: absolute; left: 4px; top: 4px; width: 48px; height: 48px; border-radius: 24px; background: var(--primary); display: flex; align-items: center; justify-content: center; cursor: grab; z-index: 2; box-shadow: 0 4px 15px rgba(250, 204, 21, 0.3);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </div>
+                    <div class="slide-highlight" style="position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(250, 204, 21, 0.15); border-radius: 28px 0 0 28px; pointer-events: none; z-index: 0;"></div>
+                </div>
+            </div>
+
+            <!-- Schedule Booking Form Section -->
+            <div id="booking-opt-schedule-section" style="margin-bottom: 20px; display: none;">
+                <p style="font-size: 0.88rem; color: #a1a1aa; line-height: 1.5; margin: 0 0 16px 0;">Schedule a pickup time slot. A marshal will be assigned closer to your scheduled window.</p>
+                
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;">Select Date</label>
+                    <div id="booking-schedule-date-container" style="display: flex; gap: 10px; overflow-x: auto; padding: 4px 0; width: 100%;" class="no-scrollbar"></div>
+                    <input type="hidden" id="booking-schedule-date">
+                </div>
+
+                <div style="margin-bottom: 24px;">
+                    <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;">Select Time Slot</label>
+                    <div id="booking-schedule-time-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 150px; overflow-y: auto; padding: 4px 2px;" class="no-scrollbar"></div>
+                    <input type="hidden" id="booking-schedule-time">
+                </div>
+
+                <!-- Slide to Confirm (Schedule) -->
+                <div id="slide-confirm-schedule" class="slide-to-confirm-container" style="position: relative; width: 100%; height: 56px; border-radius: 28px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: center; user-select: none;">
+                    <span class="slide-text" style="font-size: 0.82rem; font-weight: 800; color: var(--text-muted); pointer-events: none; z-index: 1; letter-spacing: 0.5px; text-transform: uppercase;">Slide to Confirm Schedule</span>
+                    <div class="slide-handle" style="position: absolute; left: 4px; top: 4px; width: 48px; height: 48px; border-radius: 24px; background: #22c55e; display: flex; align-items: center; justify-content: center; cursor: grab; z-index: 2; box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </div>
+                    <div class="slide-highlight" style="position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(34, 197, 94, 0.15); border-radius: 28px 0 0 28px; pointer-events: none; z-index: 0;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Address Details Modal -->
+    <div id="address-details-modal" class="v-modal" style="display: none; align-items: center; justify-content: center; z-index: 2000;">
+        <div class="v-modal-content" style="padding: 24px; max-width: 400px; width: 90%; background: #12161E; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="color: #fff; font-weight: 700; font-size: 1.2rem; margin: 0; font-family: 'Manrope', sans-serif;">Add Address Details</h3>
+                <button onclick="closeAddressModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.5rem; line-height: 1;">&times;</button>
+            </div>
+            
+            <input type="hidden" id="address-modal-type">
+            <input type="hidden" id="address-modal-lat">
+            <input type="hidden" id="address-modal-lng">
+
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">Flat / House No / Floor / Building <span style="color:#ef4444">*</span></label>
+                <input type="text" id="address-modal-flat" placeholder="e.g. Flat 101, A Wing" style="width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.95rem; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">Area / Sector / Locality</label>
+                <input type="text" id="address-modal-area" readonly style="width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); color: #a1a1aa; font-size: 0.95rem; outline: none;">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">Nearby Landmark (Optional)</label>
+                <input type="text" id="address-modal-landmark" placeholder="e.g. Opposite City Mall" style="width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.95rem; outline: none;">
+            </div>
+
+            <button onclick="saveAddressDetails()" class="btn" style="width: 100%; padding: 14px; border-radius: 14px; background: var(--primary); border: none; color: #000; font-weight: 700; font-size: 1rem; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                Save Address
+            </button>
+        </div>
+    </div>
+
+    <!-- GPS Prominent Disclosure Modal -->
+    <div id="gps-disclosure-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.95); backdrop-filter: blur(10px); z-index: 9999; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 440px; background: #12161D; border: 1.5px solid rgba(250, 204, 21, 0.2); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); text-align: center; font-family: 'Plus Jakarta Sans', sans-serif;">
+            <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary); filter: drop-shadow(0 0 12px rgba(250, 204, 21, 0.45));"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            </div>
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; font-family: 'Manrope', sans-serif;">Location Access Consent</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 20px; text-align: left;">
+                Re<span style="color: #FACC15;">D</span>rivo collects and accesses your device's location data to enable:
+                <br><br>
+                • <b>Finding Nearby Garages</b>: Automatically search and display active service centers near your current location.
+                <br>
+                • <b>Trip Routing & Proximity</b>: Calculate exact pickup/drop distances to match your requests with nearby marshals.
+                <br>
+                • <b>Live Marshal Tracking</b>: Track the assigned marshal's movement relative to your pickup location.
+                <br><br>
+                Location data is accessed only when you are actively using the application. We do not use your location for advertising, nor do we share it with third parties.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button onclick="acceptGpsConsent()" class="btn btn-primary" style="width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; border: none; background: var(--primary); color: #000; cursor: pointer; transition: all 0.2s;">
+                    Agree & Continue
+                </button>
+                <button onclick="denyGpsConsent()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #fff; cursor: pointer; transition: all 0.2s;">
+                    No Thanks, Use Fallback Location
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terms & Conditions Modal -->
+    <div id="terms-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Terms & Conditions</h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
+                <h4>1. Vehicle Ownership & Authorization</h4>
+                <p>By requesting a service, you warrant that you are the legal owner of the vehicle or have explicit permission from the legal owner to request service and entrust the vehicle to our marshals.</p>
+                <br>
+                <h4>2. Inspection & Handover Protocol</h4>
+                <p>Both the pickup and drop-off steps require a mandatory vehicle inspection, including an odometer reading check and a 360-degree walkaround photo/video capture. This visual log is used to verify the condition of the vehicle and avoid discrepancies. You agree to cooperate with the marshal during this process.</p>
+                <br>
+                <h4>3. Service Charges & Pricing</h4>
+                <p>Pricing is calculated based on pickup/drop distances from the selected partner garage and any service/inspection fees. All charges are transparently listed in your booking dashboard prior to trip initiation.</p>
+                <br>
+                <h4>4. Liability Limitation</h4>
+                <p>Re<span style="color: #FACC15;">D</span>rivo and its partner garages maintain commercial transit insurance. In the rare event of damage during marshal transit, liability is limited as per our transit policy terms. Re<span style="color: #FACC15;">D</span>rivo is not liable for personal belongings left inside the vehicle.</p>
+            </div>
+            <button onclick="closeTermsModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: var(--primary); color: #000; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Privacy Policy Modal (DPDP 2023 Compliant) -->
+    <div id="privacy-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 500px; background: #12161D; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif; display: flex; flex-direction: column; max-height: 80vh;">
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">Privacy Policy & Consent Notice</h3>
+            <div style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; overflow-y: auto; flex-grow: 1; margin-bottom: 20px; text-align: left; padding-right: 8px;">
+                <p><i>Compliant with the Digital Personal Data Protection (DPDP) Act, 2023 (India)</i></p>
+                <br>
+                <h4>1. Personal Data We Process</h4>
+                <p>We collect and process your name, contact phone number, vehicle registration plates, and device GPS coordinates. We also record 360-degree walkaround videos and odometer readings at vehicle handover.</p>
+                <br>
+                <h4>2. Purpose of Data Processing</h4>
+                <p>We process your data strictly to verify vehicle ownership, find nearby partner garages, assign nearby marshals for pickup/drop, track vehicle transit live, and process service invoices.</p>
+                <br>
+                <h4>3. Right to Withdraw Consent</h4>
+                <p>You have the right to withdraw your consent for location tracking or data collection at any time. Withdrawal can be requested by contacting our support team or updating permissions in your profile. Please note that withdrawing consent may limit our ability to provide transit services.</p>
+                <br>
+                <h4>4. Data Grievance Redressal Officer</h4>
+                <p>For any grievances regarding your data, you can reach out to our Grievance Redressal / Data Protection Officer:</p>
+                <p style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-top: 8px;">
+                    <b>Grievance Officer & DPO:</b> Rajesh Kumar<br>
+                    <b>Email:</b> grievance@redrivo.com / support@redrivo.com<br>
+                    <b>Address:</b> ReDrivo Tech Private Limited, BKC, Mumbai, India
+                </p>
+            </div>
+            <button onclick="closePrivacyModal()" class="btn btn-primary" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 700; border: none; background: var(--primary); color: #000; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- Garage Booking Options Modal -->
+    <div id="garage-booking-options-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 14, 20, 0.9); backdrop-filter: blur(10px); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 440px; background: #12161D; border: 1.5px solid rgba(212, 175, 55, 0.2); border-radius: 24px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); font-family: 'Plus Jakarta Sans', sans-serif;">
+            <h3 style="color: #fff; font-size: 1.35rem; font-weight: 800; margin-bottom: 12px; font-family: 'Manrope', sans-serif; text-align: center;">Select Booking Flow</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 24px; text-align: center;">
+                Choose how you would like to route this service trip.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button id="btn-flow-pickup" style="width: 100%; padding: 16px; border-radius: 12px; font-weight: 700; border: none; background: #27272A; color: #fff; cursor: pointer; text-align: left; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 0.95rem; color: #fff; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block;"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3C13 6.8 11.5 6 9 6H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h1"></path><circle cx="9" cy="18" r="1"></circle><circle cx="18" cy="18" r="1"></circle></svg>
+                        Home to Garage (2-Way)
+                    </div>
+                    <div style="font-size: 0.75rem; color: #a1a1aa; margin-top: 4px; font-weight: 500;">Marshal will pick up from your home and drop at the garage.</div>
+                </button>
+                <button id="btn-flow-return" style="width: 100%; padding: 16px; border-radius: 12px; font-weight: 700; border: none; background: #27272A; color: #fff; cursor: pointer; text-align: left; transition: all 0.2s; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size: 0.95rem; color: #fff; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; display: inline-block;"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5 3-3"></path></svg>
+                        Garage Return-Only (1-Way)
+                    </div>
+                    <div style="font-size: 0.75rem; color: #a1a1aa; margin-top: 4px; font-weight: 500;">Vehicle is already at the garage. Dispatch marshal to deliver it back to you.</div>
+                </button>
+                <button onclick="closeGarageOptionsModal()" style="width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #fff; cursor: pointer; transition: all 0.2s; margin-top: 8px; text-align: center;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dispute / Help & Support Modal -->
+    <div id="dispute-modal" class="modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div class="card fade-in" style="width: 100%; max-width: 450px; margin: 20px; padding: 24px; background: var(--bg-card); border-radius: var(--radius); border: 1px solid rgba(239, 68, 68, 0.2);">
+            <h3 style="color: var(--danger); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="alert-octagon"></i> File Dispute / Complaint
+            </h3>
+            <p style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">
+                Select the issue category and describe the problem in detail. Filing a dispute will put a temporary hold on the Marshal's payout for this trip.
+            </p>
+
+            <div class="form-group mb-15">
+                <label for="dispute-reason-category" style="display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 700; color: #fff;">Issue Category</label>
+                <select id="dispute-reason-category" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #121212; color: #fff; font-size: 0.9rem;">
+                    <option value="New physical damage (scratches, dents)">New physical damage (scratches, dents)</option>
+                    <option value="Mechanical issue (rough driving, clutch damage)">Mechanical issue (rough driving, clutch damage)</option>
+                    <option value="Missing items/accessories (keys, documents, tools)">Missing items/accessories (keys, documents, tools)</option>
+                    <option value="Unprofessional behavior / Asked for extra cash">Unprofessional behavior / Asked for extra cash</option>
+                    <option value="Vehicle returned dirty / Unhygienic">Vehicle returned dirty / Unhygienic</option>
+                </select>
+            </div>
+
+            <div class="form-group mb-20">
+                <label for="dispute-details" style="display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 700; color: #fff;">Detailed Description</label>
+                <textarea id="dispute-details" rows="4" placeholder="Describe the damage, missing items, or behavior..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #121212; color: #fff; font-size: 0.9rem; resize: none;"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" style="flex: 1;" onclick="closeDisputeModal()">Cancel</button>
+                <button class="btn btn-danger" style="flex: 1;" onclick="submitDispute()"><i data-lucide="check"></i> Submit Dispute</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div id="rating-modal" class="modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div class="card fade-in" style="width: 100%; max-width: 400px; margin: 20px; padding: 24px; background: var(--bg-card); border-radius: var(--radius); text-align: center;">
+            <h3 style="margin-bottom: 10px;">Rate your Marshal</h3>
+            <p style="margin-bottom: 20px; font-size: 0.9rem; color: var(--text-muted);">
+                How was your transit experience with <span id="rating-marshal-name" style="color:#fff; font-weight:700;">your Marshal</span>?
+            </p>
+
+            <div class="star-rating" style="display: flex; justify-content: center; gap: 12px; margin-bottom: 25px;">
+                <span class="star" data-rating="1" onclick="setRating(1)" style="font-size: 2.2rem; cursor: pointer; color: rgba(255,255,255,0.15); transition: color 0.2s;">★</span>
+                <span class="star" data-rating="2" onclick="setRating(2)" style="font-size: 2.2rem; cursor: pointer; color: rgba(255,255,255,0.15); transition: color 0.2s;">★</span>
+                <span class="star" data-rating="3" onclick="setRating(3)" style="font-size: 2.2rem; cursor: pointer; color: rgba(255,255,255,0.15); transition: color 0.2s;">★</span>
+                <span class="star" data-rating="4" onclick="setRating(4)" style="font-size: 2.2rem; cursor: pointer; color: rgba(255,255,255,0.15); transition: color 0.2s;">★</span>
+                <span class="star" data-rating="5" onclick="setRating(5)" style="font-size: 2.2rem; cursor: pointer; color: rgba(255,255,255,0.15); transition: color 0.2s;">★</span>
+            </div>
+
+            <button class="btn btn-primary" id="btn-submit-rating" style="width: 100%;" onclick="submitRating()">Submit Review</button>
+        </div>
+    </div>
+
+    <script src="app.js?v=202606280245"></script>
+    <!-- Account Deletion Feedback Modal -->
+    <div id="delete-account-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div class="card fade-in" style="width: 100%; max-width: 450px; margin: 20px; padding: 24px; background: var(--bg-card); border-radius: var(--radius);">
+            <h3 style="margin-bottom: 10px; color: #ef4444;">Delete Account</h3>
+            <p style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">We are sorry to see you go. Please help us improve by answering these quick questions before confirming deletion.</p>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">1. What is your primary reason for leaving?</label>
+                <select id="delete-reason" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem;">
+                    <option value="" disabled selected>Select a reason...</option>
+                    <option value="I don't need a delivery service anymore">I don't need a delivery service anymore</option>
+                    <option value="The prices are too high">The prices are too high</option>
+                    <option value="I had a bad experience with a driver">I had a bad experience with a driver</option>
+                    <option value="The app is too complicated">The app is too complicated</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">2. If you are switching to another driver/delivery service, what do they offer that we don't?</label>
+                <textarea id="delete-feedback" rows="3" placeholder="Your feedback..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem; resize: none;"></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" style="flex: 1;" onclick="document.getElementById('delete-account-modal').style.display='none';">Cancel</button>
+                <button class="btn" style="flex: 1; background: #ef4444; color: #fff;" onclick="submitAccountDeletion()">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Post-Service Customer Feedback Modal -->
+    <div id="post-service-feedback-modal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div class="card fade-in" style="width: 100%; max-width: 450px; margin: 20px; padding: 24px; background: var(--bg-card); border-radius: var(--radius); max-height: 90vh; overflow-y: auto;">
+            <h3 style="margin-bottom: 5px; color: var(--primary); text-align: center;">Delivery Complete!</h3>
+            <p style="margin-bottom: 20px; font-size: 0.9rem; color: var(--text-muted); text-align: center;">Help us improve by answering a few quick questions.</p>
+            
+            <!-- Hidden Trip ID -->
+            <input type="hidden" id="fb-trip-id">
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">1. How would you rate your vehicle delivery experience?</label>
+                <select id="fb-rating" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem;">
+                    <option value="5">5 Stars - Excellent</option>
+                    <option value="4">4 Stars - Good</option>
+                    <option value="3">3 Stars - Average</option>
+                    <option value="2">2 Stars - Poor</option>
+                    <option value="1">1 Star - Terrible</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">2. Was the marshal punctual and did they drive safely?</label>
+                <select id="fb-punctual" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem;">
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">3. What is the biggest challenge you face when moving your vehicle?</label>
+                <select id="fb-challenge" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem;">
+                    <option value="Finding a trustworthy driver">Finding a trustworthy driver</option>
+                    <option value="Time constraints">Time constraints</option>
+                    <option value="Unfair pricing">Unfair pricing</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 15px; padding: 12px; background: rgba(250,204,21,0.05); border: 1px dashed var(--primary); border-radius: 8px;">
+                <label style="font-size: 0.85rem; color: var(--primary); display: block; margin-bottom: 8px;">4. <strong>Sneak Peek:</strong> We will soon add trusted Garages so you can book servicing alongside pickup/drop-off. Would you use this?</label>
+                <select id="fb-garage-feature" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem;">
+                    <option value="Yes definitely">Yes definitely</option>
+                    <option value="Maybe">Maybe</option>
+                    <option value="No - I have my own mechanic">No - I have my own mechanic</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 0.85rem; color: #a1a1aa; display: block; margin-bottom: 8px;">5. What can we do to improve our service?</label>
+                <textarea id="fb-improve" rows="2" placeholder="Your feedback..." style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff; font-size: 0.9rem; resize: none;"></textarea>
+            </div>
+            
+            <button class="btn btn-primary" style="width: 100%; padding: 14px;" onclick="submitCustomerFeedback()">Submit Feedback</button>
+        </div>
+    </div>
+    
+        <script src="otp-boxes.js?v=838291"></script>
+<div id="vehicle-form-elements" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(15px); z-index: 1000; overflow-y: auto; display: none; justify-content: center;">
+    <div style="width: 100%; max-width: 500px; padding: 20px; position: relative; padding-bottom: 40px; margin: 0 auto; background: #0B0E14; min-height: 100vh;">
+        <div style="display: flex; align-items: center; margin-bottom: 24px; padding-top: 10px;">
+            <button onclick="hideVehicleForm()" style="background: none; border: none; color: #fff; cursor: pointer; display: flex; align-items: center; padding: 0; margin-right: 16px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <h4 id="vehicle-form-title" style="margin: 0; font-weight: 600; font-size: 1.2rem; color: #fff;">Add New Vehicle</h4>
+        </div>
+
+        <!-- Photo Upload (Premium Avatar Style) -->
+        <div id="photo-label" onclick="document.getElementById('photo-action-sheet').style.display='flex';"
+            style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:180px; background: rgba(255, 255, 255, 0.03); border:1px solid rgba(255,255,255,0.1); border-radius:16px; cursor:pointer; color:#a1a1aa; font-size:0.9rem; font-weight:500; margin-bottom:24px; transition:all 0.3s ease; position: relative; overflow: hidden; box-shadow: inset 0 4px 20px rgba(0,0,0,0.5);">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.5));"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            <span id="photo-label-text">Tap to upload vehicle photo</span>
+            <img id="v-photo-preview" src="" alt="Preview" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index: 5;">
+            <!-- Hover overlay -->
+            <div id="v-photo-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 10; justify-content:center; align-items:center; color:#fff; font-weight:600;">Change Photo</div>
+        </div>
+        
+        <input type="file" id="v-photo-camera" accept="image/*" capture="environment" style="display:none;" onchange="previewVehiclePhoto(this)">
+        <input type="file" id="v-photo-gallery" accept="image/*" style="display:none;" onchange="previewVehiclePhoto(this)">
+        
+        <!-- Action Sheet for Camera/Gallery -->
+        <div id="photo-action-sheet" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:2000; align-items:flex-end; justify-content:center;">
+            <div style="background:#1C1C1E; width:100%; border-radius:24px 24px 0 0; padding:24px; animation: slideUp 0.3s ease-out;">
+                <h3 style="color:#fff; margin:0 0 16px 0; font-family:'Plus Jakarta Sans', sans-serif; font-size:1.1rem; font-weight:700;">Upload Vehicle Photo</h3>
+                <button onclick="requestMediaPermission('camera')" class="btn" style="width:100%; background:#2C2C2E; color:#fff; border:none; padding:16px; border-radius:12px; margin-bottom:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                    Take Photo (Camera)
+                </button>
+                <button onclick="requestMediaPermission('gallery')" class="btn" style="width:100%; background:#2C2C2E; color:#fff; border:none; padding:16px; border-radius:12px; margin-bottom:16px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    Choose from Gallery
+                </button>
+                <button onclick="document.getElementById('photo-action-sheet').style.display='none';" class="btn" style="width:100%; background:transparent; color:#EF4444; border:1px solid rgba(239, 68, 68, 0.3); padding:16px; border-radius:12px; font-weight:700;">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Camera Permission Justification Modal -->
+        <div id="camera-permission-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:3000; align-items:center; justify-content:center; padding: 24px;">
+            <div style="background:#1C1C1E; width:100%; max-width: 400px; border-radius:24px; padding:30px 24px; text-align: center; border: 1px solid rgba(255,255,255,0.1);">
+                <div style="width: 64px; height: 64px; background: rgba(250, 204, 21, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; color: var(--primary);">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                </div>
+                <h3 style="color:#fff; margin:0 0 12px 0; font-size:1.3rem; font-weight:800;">Camera & Storage Access</h3>
+                <p style="color:var(--text-muted); font-size:0.95rem; line-height:1.5; margin-bottom:24px;">
+                    Re<span style="color: #FACC15;">D</span>rivo requires access to your camera and photo gallery to capture or select images of your vehicle. This helps our marshals identify your vehicle easily during pickup.
+                </p>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <button onclick="acceptMediaPermission()" style="width:100%; padding:14px; background:var(--primary); color:#000; border:none; border-radius:12px; font-weight:700; font-size:1rem;">Allow Access</button>
+                    <button onclick="denyMediaPermission()" style="width:100%; padding:14px; background:transparent; color:#EF4444; border:1px solid rgba(239, 68, 68, 0.3); border-radius:12px; font-weight:700; font-size:1rem;">Deny</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            document.getElementById('photo-label').addEventListener('mouseenter', function() {
+                if(document.getElementById('v-photo-preview').style.display === 'block') {
+                    document.getElementById('v-photo-overlay').style.display = 'flex';
+                }
+            });
+            document.getElementById('photo-label').addEventListener('mouseleave', function() {
+                document.getElementById('v-photo-overlay').style.display = 'none';
+            });
+        </script>
+
+        <!-- STEP 1: Vehicle Type -->
+        <style>
+            .vtype-btn {
+                padding: 12px 20px;
+                border-radius: 12px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                gap: 6px;
+                background: #1C1F26;
+                border: 1px solid rgba(255,255,255,0.05);
+                min-width: 80px;
+            }
+            .vtype-btn.active {
+                border-color: var(--primary);
+                background: var(--primary);
+                box-shadow: 0 4px 15px rgba(250, 204, 21, 0.3);
+            }
+            .vtype-btn.active .vtype-label { color: #000; font-weight: 800; }
+            .vtype-btn.active svg { stroke: #000; }
+            
+            .vtype-btn.inactive { border-color: rgba(255,255,255,0.05); }
+            .vtype-btn.inactive .vtype-label { color: var(--text-muted); font-weight: 600; }
+            .vtype-btn.inactive svg { stroke: var(--text-muted); }
+            
+            .vtype-label { font-size: 0.85rem; letter-spacing: 0.4px; }
+        </style>
+        <!-- VEHICLE TYPE -->
+        <div class="form-group mb-20">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">VEHICLE TYPE</label>
+            <div style="display:flex; gap:12px;">
+                <button type="button" id="vtype-Car" class="vtype-btn active" style="flex: 1;" onclick="changeVehicleCategory('Car')">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 4px;"><path d="M5 16l-1 4a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h10v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1l-1-4"></path><path d="M4 16h16v-4c0-1.5-1-3-2-3l-2.5-4h-7L6 9C5 9 4 10.5 4 12v4z"></path><path d="M7 13h2v2H7z"></path><path d="M15 13h2v2h-2z"></path></svg>
+                    <span class="vtype-label">Car</span>
+                </button>
+                <button type="button" id="vtype-Bike" class="vtype-btn inactive" style="flex: 1;" onclick="changeVehicleCategory('Bike')">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 4px;"><circle cx="5" cy="16" r="3"></circle><circle cx="19" cy="16" r="3"></circle><path d="M5 13l3-4h3l3 4"></path><path d="M14 13h5"></path><path d="M12 9V6"></path><path d="M9 6h6"></path></svg>
+                    <span class="vtype-label">Bike</span>
+                </button>
+            </div>
+            <input type="hidden" id="v-type" value="Hatchback">
+            <input type="hidden" id="v-main-category" value="Car">
+        </div>
+
+        <!-- CAR SUB-TYPE (Conditional) -->
+        <div id="car-subtype-group" class="form-group mb-20" style="display: block;">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">CAR SUB-TYPE</label>
+            <div class="horizontal-swipe">
+                <button type="button" id="subtype-Hatchback" class="fuel-btn active" style="flex: 1 0 auto; min-width: 100px;" onclick="selectCarSubtype('Hatchback')">Hatchback</button>
+                <button type="button" id="subtype-Sedan" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 100px;" onclick="selectCarSubtype('Sedan')">Sedan</button>
+                <button type="button" id="subtype-SUV" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 100px;" onclick="selectCarSubtype('SUV')">SUV</button>
+            </div>
+        </div>
+
+        <!-- License Plate -->
+        <div class="form-group mb-20">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">REGISTRATION NUMBER</label>
+            <div style="position: relative;">
+                <input type="text" id="v-plate" class="input" placeholder="e.g., MH 12 AB 1234" autocapitalize="characters" autocorrect="off" spellcheck="false" style="background: #1C1F26; border: 1px solid rgba(255,255,255,0.05); padding: 16px; font-size: 1rem; font-weight: 600; text-transform:uppercase; border-radius: 12px; width: 100%; color: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
+                <div style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%); opacity: 0.3;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="6" width="18" height="12" rx="3" ry="3"></rect>
+                        <text x="12" y="15" text-anchor="middle" font-size="8" font-family="sans-serif" font-weight="bold" fill="currentColor" stroke="none">123</text>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Brand & Model (Searchable Dropdown) -->
+        <div class="form-group mb-20">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">BRAND & MODEL</label>
+            <div style="display:flex; flex-direction: column; gap:12px;">
+                <div class="searchable-dropdown-wrapper">
+                    <input type="text" id="v-make" class="input" placeholder="Search Brand..." autocomplete="off" oninput="filterMakes(this.value)" onfocus="filterMakes(this.value)" style="background: #1C1F26; border: 1px solid rgba(255,255,255,0.05); padding: 16px; font-size: 1rem; font-weight: 600; border-radius: 12px; width: 100%; color: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
+                    <div id="make-dropdown" class="search-dropdown-menu"></div>
+                </div>
+                <input type="text" id="v-model" class="input" placeholder="Enter Model (e.g., M340i)" style="background: #1C1F26; border: 1px solid rgba(255,255,255,0.05); padding: 16px; font-size: 1rem; font-weight: 600; border-radius: 12px; width: 100%; color: #fff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
+            </div>
+        </div>
+
+        <!-- Fuel Type Selection -->
+        <div class="form-group mb-20">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">FUEL TYPE</label>
+            <div id="fuel-container" class="horizontal-swipe">
+                <!-- Dynamically populated -->
+            </div>
+            <input type="hidden" id="v-fuel" value="Petrol">
+        </div>
+
+        <!-- Transmission Selection -->
+        <div id="transmission-group" class="form-group mb-20">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">TRANSMISSION</label>
+            <div style="display:flex; gap:12px;">
+                <button type="button" id="trans-Manual" class="fuel-btn active" style="flex: 1;" onclick="selectTransmission('Manual')">Manual</button>
+                <button type="button" id="trans-Automatic" class="fuel-btn inactive" style="flex: 1;" onclick="selectTransmission('Automatic')">Automatic</button>
+            </div>
+            <input type="hidden" id="v-transmission" value="Manual">
+        </div>
+
+        <!-- Car Color Selection -->
+        <div id="car-color-group" class="form-group mb-20" style="display: block;">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">CAR COLOR</label>
+            <div id="color-swatch-container" style="display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 4px;">
+                <!-- Populated by JS -->
+            </div>
+            <input type="hidden" id="v-color" value="White">
+        </div>
+
+        <!-- Seats Selection -->
+        <div id="car-seats-group" class="form-group mb-20" style="display: block;">
+            <label style="font-size: 0.85rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 12px; display: block;">NUMBER OF SEATS</label>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="seats-2" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('2')">2</button>
+                <button type="button" id="seats-4" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('4')">4</button>
+                <button type="button" id="seats-5" class="fuel-btn active" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('5')">5</button>
+                <button type="button" id="seats-6" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('6')">6</button>
+                <button type="button" id="seats-7" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('7')">7</button>
+                <button type="button" id="seats-8" class="fuel-btn inactive" style="flex: 1 0 auto; min-width: 56px;" onclick="selectVehicleSeats('8')">8</button>
+            </div>
+            <input type="hidden" id="v-seats" value="5">
+        </div>
+
+        <script>
+        (function initVehicleColorPicker() {
+            const COLORS = [
+                { name: 'White',  hex: '#f1f5f9' },
+                { name: 'Black',  hex: '#1e293b' },
+                { name: 'Silver', hex: '#94a3b8' },
+                { name: 'Grey',   hex: '#6b7280' },
+                { name: 'Red',    hex: '#ef4444' },
+                { name: 'Blue',   hex: '#3b82f6' },
+                { name: 'Green',  hex: '#22c55e' },
+                { name: 'Brown',  hex: '#92400e' },
+                { name: 'Orange', hex: '#f97316' },
+                { name: 'Yellow', hex: '#facc15' },
+                { name: 'Purple', hex: '#a855f7' },
+                { name: 'Beige',  hex: '#d4b896' },
+                { name: 'Gold',   hex: '#d4af37' },
+                { name: 'Maroon', hex: '#7f1d1d' },
+                { name: 'Navy',   hex: '#1e3a5f' },
+            ];
+            const container = document.getElementById('color-swatch-container');
+            if (!container) return;
+            container.innerHTML = COLORS.map(c => `
+                <button type="button" id="color-swatch-${c.name}" title="${c.name}"
+                    onclick="selectVehicleColor('${c.name}')"
+                    style="width: 36px; height: 36px; border-radius: 50%; background: ${c.hex}; border: 2px solid ${ c.name === 'White' ? '#facc15' : 'transparent'}; cursor: pointer; transition: all 0.2s; box-shadow: ${ c.name === 'White' ? '0 0 0 3px rgba(250,204,21,0.3)' : '0 2px 6px rgba(0,0,0,0.4)'}; flex-shrink: 0;"
+                    aria-label="${c.name}"></button>
+            `).join('');
+        })();
+        </script>
+
+        <!-- Save Button -->
+        <input type="hidden" id="v-edit-id" value="">
+        <div style="margin-top: 20px;">
+            <button id="btn-submit-vehicle" class="btn btn-success"
+                style="width:100%; padding:12px 16px; font-weight:700; font-size:1rem; display:flex; align-items:center; justify-content:center; gap:8px; border-radius:8px; background: #15803D; color: #fff; border: none; box-shadow: 0 4px 12px rgba(21, 128, 61, 0.3);"
+                onclick="saveVehicle()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save Vehicle
+            </button>
+        </div>
+
+    </div> <!-- /inner wrapper -->
+</div>
+</body>
+
+</html>
+
+
+

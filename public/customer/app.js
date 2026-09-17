@@ -1,5 +1,6 @@
 // Consolidated Global Fetch Interceptor: Tunnel Bypass, Bearer Auth & Session Expiry Guard
-const nativeFetch = window.fetch;
+var nativeFetch = window._nativeFetchOrig || window.fetch;
+window._nativeFetchOrig = nativeFetch;
 window.fetch = async function (input, init) {
     init = init || {};
     init.headers = init.headers || {};
@@ -13348,6 +13349,11 @@ window.updateHireDriverPreviewRoute = function() {
     let pLat = 22.5535, pLng = 88.3518; // Park Street, Kolkata
     let dLat = isOutstation ? 21.6266 : 22.6547; // Digha or Kolkata Airport (CCU)
     let dLng = isOutstation ? 87.5074 : 88.4467;
+
+    if (window.previewHireDriverState.customDropCoords) {
+        dLat = window.previewHireDriverState.customDropCoords.lat;
+        dLng = window.previewHireDriverState.customDropCoords.lng;
+    }
     
     const pickupIconSvg = `<svg width="40" height="52" viewBox="0 0 40 52" fill="none" xmlns="http://www.w3.org/2000/svg">
         <filter id="shadow-p" x="0" y="0" width="40" height="52" filterUnits="userSpaceOnUse">
@@ -14213,6 +14219,9 @@ window.setPreviewTripType = function(type) {
     }
     
     updatePreviewOfferDisplay();
+    if (typeof window.updateHireDriverPreviewRoute === 'function') {
+        window.updateHireDriverPreviewRoute();
+    }
 };
 
 // -------------------------------------------------------------------------
@@ -14287,6 +14296,44 @@ window.setPreviewTiming = function(timing) {
     }
 };
 
+window.toggleRouteFieldEdit = function(field) {
+    const input = document.getElementById(field === 'pickup' ? 'preview-global-pickup' : 'preview-global-drop');
+    const btn = document.getElementById(field === 'pickup' ? 'btn-edit-pickup' : 'btn-edit-drop');
+    if (!input || !btn) return;
+
+    const isReadOnly = input.readOnly;
+    if (isReadOnly) {
+        // Unlock for editing
+        input.readOnly = false;
+        input.focus();
+        input.select();
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        btn.title = 'Save';
+        btn.style.background = field === 'pickup' ? 'rgba(250, 204, 21, 0.35)' : 'rgba(34, 197, 94, 0.35)';
+        if (field === 'drop') {
+            window.handlePreviewDropInput(input.value);
+        }
+    } else {
+        // Lock and save
+        input.readOnly = true;
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+        btn.title = field === 'pickup' ? 'Edit Pickup' : 'Edit Destination';
+        btn.style.background = field === 'pickup' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(34, 197, 94, 0.15)';
+        
+        const suggContainer = document.getElementById('preview-drop-suggestions');
+        if (suggContainer) suggContainer.style.display = 'none';
+
+        if (field === 'pickup') {
+            window.previewHireDriverState.pickupLocation = input.value;
+        } else {
+            window.previewHireDriverState.dropLocation = input.value;
+        }
+        if (typeof window.updateHireDriverPreviewRoute === 'function') {
+            window.updateHireDriverPreviewRoute();
+        }
+    }
+};
+
 window.handlePreviewDropInput = function(val) {
     const suggestions = document.getElementById('preview-drop-suggestions');
     if (!suggestions) return;
@@ -14297,37 +14344,59 @@ window.handlePreviewDropInput = function(val) {
     }
     
     const samplePlaces = [
-        'Digha, West Bengal',
-        'Mandarmoni, West Bengal',
-        'Puri, Odisha',
-        'Darjeeling, West Bengal',
-        'Siliguri, West Bengal',
-        'Mayapur, West Bengal',
-        'Bolpur / Santiniketan, West Bengal',
-        'Howrah Railway Station, Kolkata',
-        'Netaji Subhash Chandra Bose Airport, Kolkata'
-    ].filter(p => p.toLowerCase().includes(val.toLowerCase()));
+        { label: 'Howrah Railway Station, Kolkata', desc: 'Station Rd, Howrah', lat: 22.5830, lng: 88.3426 },
+        { label: 'Netaji Subhash Chandra Bose Int. Airport (CCU)', desc: 'Dum Dum, Kolkata', lat: 22.6547, lng: 88.4467 },
+        { label: 'Park Street / Park Circus, Kolkata', desc: 'Park Street, Kolkata', lat: 22.5535, lng: 88.3518 },
+        { label: 'Salt Lake Sector V (Tech Hub)', desc: 'Sector V, Bidhannagar, Kolkata', lat: 22.5768, lng: 88.4344 },
+        { label: 'South City Mall, Prince Anwar Shah Rd', desc: 'Jadavpur, Kolkata', lat: 22.4998, lng: 88.3619 },
+        { label: 'Eco Park / City Centre 2, New Town', desc: 'Action Area II, New Town', lat: 22.6074, lng: 88.4674 },
+        { label: 'Digha Sea Beach (Outstation)', desc: 'Purba Medinipur, West Bengal', lat: 21.6266, lng: 87.5074 },
+        { label: 'Puri Jagannath Temple (Outstation)', desc: 'Puri, Odisha', lat: 19.8135, lng: 85.8312 },
+        { label: 'Mayapur ISKCON (Outstation)', desc: 'Nadia, West Bengal', lat: 23.4243, lng: 88.3904 }
+    ];
+
+    const filtered = samplePlaces.filter(p => p.label.toLowerCase().includes(val.toLowerCase()) || p.desc.toLowerCase().includes(val.toLowerCase()));
     
-    if (samplePlaces.length === 0) {
+    if (filtered.length === 0) {
         suggestions.style.display = 'none';
         return;
     }
     
-    suggestions.innerHTML = samplePlaces.map(place => `
-        <div onclick="selectPreviewDropSuggestion('${place}')" style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+    suggestions.innerHTML = filtered.map(place => `
+        <div onclick="selectPreviewDropSuggestion('${place.label.replace(/'/g, "\\'")}', ${place.lat}, ${place.lng})" style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #fff; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
-            <span>${place}</span>
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${place.label}</div>
+                <div style="font-size: 0.68rem; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${place.desc}</div>
+            </div>
         </div>
     `).join('');
     
     suggestions.style.display = 'block';
 };
 
-window.selectPreviewDropSuggestion = function(place) {
+window.selectPreviewDropSuggestion = function(label, lat, lng) {
     const input = document.getElementById('preview-global-drop');
     const suggestions = document.getElementById('preview-drop-suggestions');
-    if (input) input.value = place;
+    if (input) {
+        input.value = label;
+        input.readOnly = true;
+    }
+    const btn = document.getElementById('btn-edit-drop');
+    if (btn) {
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+        btn.title = 'Edit Destination';
+        btn.style.background = 'rgba(34, 197, 94, 0.15)';
+    }
     if (suggestions) suggestions.style.display = 'none';
+
+    window.previewHireDriverState.dropLocation = label;
+    if (lat && lng) {
+        window.previewHireDriverState.customDropCoords = { lat, lng };
+    }
+    if (typeof window.updateHireDriverPreviewRoute === 'function') {
+        window.updateHireDriverPreviewRoute();
+    }
 };
 
 // -------------------------------------------------------------------------
