@@ -12742,12 +12742,6 @@ app.use('/vroomly-marshal-app', express.static(path.join(__dirname, 'public/mars
 app.use('/crm', express.static(path.join(__dirname, 'public/crm')));
 app.use('/admin', express.static(path.join(__dirname, 'public/crm')));
 
-// Root Public Favicons & Brand Assets
-app.use(express.static(path.join(__dirname, 'public'), {
-    maxAge: '4h',
-    index: false
-}));
-
 // Public Downloads with Persistent Volume Priority (APKs & App Distribution)
 app.get('/downloads/:filename', (req, res) => {
     const rawFilename = req.params.filename;
@@ -12789,7 +12783,9 @@ app.get('/downloads/:filename', (req, res) => {
     if (safeFilename.endsWith('.apk')) {
         res.setHeader('Content-Type', 'application/vnd.android.package-archive');
         res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
-        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
     }
 
     res.sendFile(targetPath);
@@ -12801,11 +12797,17 @@ app.use('/downloads', express.static(path.join(__dirname, 'public/downloads'), {
             res.setHeader('Content-Type', 'application/vnd.android.package-archive');
             const filename = path.basename(filePath);
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
         }
     }
+}));
+
+// Root Public Favicons & Brand Assets
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: '4h',
+    index: false
 }));
 
 
