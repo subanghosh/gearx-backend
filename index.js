@@ -9832,7 +9832,7 @@ apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, 
             const offer = boRes.rows[0];
             if (offer.status !== 'pending') {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: `Offer is already ${offer.status}` });
+                return res.status(409).json({ error: 'TRIP_ALREADY_ASSIGNED', message: `Offer is already ${offer.status}` });
             }
 
             // Check expiry
@@ -9855,7 +9855,7 @@ apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, 
 
             if (srUpdate.rows.length === 0) {
                 await client.query('ROLLBACK');
-                return res.status(409).json({ error: 'This ride has already been accepted by another driver or is no longer available.' });
+                return res.status(409).json({ error: 'TRIP_ALREADY_ASSIGNED', message: 'This ride has already been accepted by another driver or is no longer available.' });
             }
             const updatedSr = srUpdate.rows[0];
 
@@ -9865,11 +9865,9 @@ apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, 
             // 4. Expire all other pending offers for this request
             await client.query("UPDATE bid_offers SET status = 'expired' WHERE service_request_id = $1 AND id != $2 AND status = 'pending'", [requestId, offerId]);
 
-            // 5. Generate 4-digit OTPs
+            // 5. Generate 4-digit OTPs (For P2P trips: pickup OTP & delivery OTP; garage OTPs remain NULL)
             const tripId = `trip_${Date.now()}`;
             const otp1 = String(Math.floor(1000 + Math.random() * 9000));
-            const garageDropoffOtp = String(Math.floor(1000 + Math.random() * 9000));
-            const garagePickupOtp = String(Math.floor(1000 + Math.random() * 9000));
             const deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
             const pLat = parseFloat(updatedSr.lat) || 0;
             const pLng = parseFloat(updatedSr.lng) || 0;
@@ -9877,14 +9875,14 @@ apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, 
             // 6. Insert trip in pending_payment state
             const tripRes = await client.query(`
                 INSERT INTO trips (id, servicerequestid, marshalid, status, otp1, garagedropoffotp, garagepickupotp, deliveryotp, pickuplat, pickuplng, createdat)
-                VALUES ($1, $2, $3, 'pending_payment', $4, $5, $6, $7, $8, $9, NOW())
+                VALUES ($1, $2, $3, 'pending_payment', $4, NULL, NULL, $5, $6, $7, NOW())
                 RETURNING *
-            `, [tripId, requestId, chosenMarshalId, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pLat, pLng]);
+            `, [tripId, requestId, chosenMarshalId, otp1, deliveryOtp, pLat, pLng]);
 
             if (typeof db !== 'undefined' && db && db.run) {
                 try {
                     db.run("UPDATE service_requests SET workerId = ?, status = 'pending_payment' WHERE id = ?", [chosenMarshalId, requestId], () => {});
-                    db.run("INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pickupLat, pickupLng) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [tripId, requestId, chosenMarshalId, 'pending_payment', otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pLat, pLng], () => {});
+                    db.run("INSERT INTO trips (id, serviceRequestId, marshalId, status, otp1, garageDropoffOtp, garagePickupOtp, deliveryOtp, pickupLat, pickupLng) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)", [tripId, requestId, chosenMarshalId, 'pending_payment', otp1, deliveryOtp, pLat, pLng], () => {});
                 } catch(e) {}
             }
 
