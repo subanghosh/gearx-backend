@@ -19,6 +19,7 @@ const { OAuth2Client } = require('google-auth-library');
 const googleOAuthClient = new OAuth2Client();
 
 const app = express();
+app.disable('x-powered-by');
 app.set('trust proxy', 1); // Crucial for Render/reverse proxies to accurately identify client IPs for rate limiting
 
 console.log('[STARTUP-1] Starting GearX backend initialization...');
@@ -150,6 +151,25 @@ function isDriverDomain(req) {
            host === 'drivers.redrivo.in' || host === 'www.drivers.redrivo.in' ||
            host === 'driver.redrivo.in' || host === 'www.driver.redrivo.in';
 }
+
+function isApiDomain(req) {
+    const host = getNormalizedHost(req);
+    return host === 'api.redrivo.com' || host === 'www.api.redrivo.com' ||
+           host === 'api.redrivo.in' || host === 'www.api.redrivo.in';
+}
+
+function isRailwayDomain(req) {
+    const host = getNormalizedHost(req);
+    return host.endsWith('.railway.app') || host.endsWith('.up.railway.app');
+}
+
+// Defense-in-depth: Reject any traffic arriving directly on raw Railway-generated hosts
+app.use((req, res, next) => {
+    if (isRailwayDomain(req)) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    next();
+});
 
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
 // Apply noindex headers on non-customer domains (drivers, garages, and api); leave customer domains (redrivo.com / redrivo.in) indexable
@@ -12783,11 +12803,26 @@ const RESTRICTED_PORTALS_ON_DRIVER_DOMAIN = [
 ];
 
 app.use((req, res, next) => {
+    if (isApiDomain(req)) {
+        const p = req.path.toLowerCase();
+        // Allow API routes, health checks, downloads, uploads, and SEO verification
+        if (
+            p.startsWith('/api') ||
+            p === '/health' ||
+            p.startsWith('/downloads') ||
+            p.startsWith('/uploads') ||
+            p === '/robots.txt' ||
+            p === '/googleb3142194a3b63def.html'
+        ) {
+            return next();
+        }
+        return res.status(404).json({ error: 'Not found' });
+    }
     if (isCustomerDomain(req)) {
         const p = req.path.toLowerCase();
         for (const restricted of RESTRICTED_PORTALS_ON_CUSTOMER_DOMAIN) {
             if (p === restricted || p.startsWith(restricted + '/')) {
-                return res.status(404).send('Not Found');
+                return res.status(404).json({ error: 'Not found' });
             }
         }
     }
@@ -12795,7 +12830,7 @@ app.use((req, res, next) => {
         const p = req.path.toLowerCase();
         for (const restricted of RESTRICTED_PORTALS_ON_GARAGE_DOMAIN) {
             if (p === restricted || p.startsWith(restricted + '/')) {
-                return res.status(404).send('Not Found');
+                return res.status(404).json({ error: 'Not found' });
             }
         }
     }
@@ -12803,7 +12838,7 @@ app.use((req, res, next) => {
         const p = req.path.toLowerCase();
         for (const restricted of RESTRICTED_PORTALS_ON_DRIVER_DOMAIN) {
             if (p === restricted || p.startsWith(restricted + '/')) {
-                return res.status(404).send('Not Found');
+                return res.status(404).json({ error: 'Not found' });
             }
         }
     }
@@ -13052,6 +13087,9 @@ app.get('/', (req, res) => {
     if (isDriverDomain(req)) {
         return servePortalHtml('marshal', req, res);
     }
+    if (isApiDomain(req)) {
+        return res.status(404).json({ error: 'Not found' });
+    }
     res.redirect('/customer/');
 });
 
@@ -13065,9 +13103,17 @@ app.get('/index.html', (req, res) => {
     if (isDriverDomain(req)) {
         return servePortalHtml('marshal', req, res);
     }
+    if (isApiDomain(req)) {
+        return res.status(404).json({ error: 'Not found' });
+    }
     res.redirect('/customer/');
 });
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: Math.floor(process.uptime()) }));
+
+// Universal 404 handler for any unmapped route across all domains (Clean JSON instead of Express HTML)
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
 
 console.log('[STARTUP-3] Starting Express HTTP server on 0.0.0.0:' + PORT + '...');
 app.listen(PORT, '0.0.0.0', () => {
