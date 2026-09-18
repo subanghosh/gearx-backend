@@ -14325,17 +14325,9 @@ window.setPreviewTiming = function(timing) {
 window.updatePreviewCTA = function() {
     const searchBtn = document.getElementById('preview-btn-search-driver');
     if (searchBtn) {
-        const state = window.previewHireDriverState || {};
-        const offer = state.offerAmount || 450;
-        if (state.timing === 'schedule') {
-            searchBtn.textContent = `SCHEDULE RIDE (₹${offer.toLocaleString('en-IN')})`;
-            searchBtn.style.background = '#22c55e';
-            searchBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.35)';
-        } else {
-            searchBtn.textContent = 'SEARCH';
-            searchBtn.style.background = 'var(--primary)';
-            searchBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.35)';
-        }
+        searchBtn.textContent = 'SEARCH';
+        searchBtn.style.background = 'var(--primary)';
+        searchBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.35)';
     }
 };
 
@@ -14729,20 +14721,8 @@ window.updatePreviewUI = function() {
     setPreviewBookingMode(window.previewHireDriverState.bookingMode);
     setPreviewTiming(window.previewHireDriverState.timing);
     updatePreviewOfferDisplay();
-    
-    const searchBtn = document.getElementById('preview-btn-search-driver');
-    if (searchBtn) {
-        const state = window.previewHireDriverState || {};
-        const offer = state.offerAmount || 450;
-        if (state.timing === 'schedule') {
-            searchBtn.textContent = `SCHEDULE RIDE (₹${offer.toLocaleString('en-IN')})`;
-            searchBtn.style.background = '#22c55e';
-            searchBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.35)';
-        } else {
-            searchBtn.textContent = 'SEARCH';
-            searchBtn.style.background = 'var(--primary)';
-            searchBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.35)';
-        }
+    if (typeof window.updatePreviewCTA === 'function') {
+        window.updatePreviewCTA();
     }
 };
 
