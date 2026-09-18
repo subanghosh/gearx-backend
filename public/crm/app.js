@@ -863,125 +863,125 @@ async function renderDashboard(container) {
     if (demandTabActive) {
         sectionHtml = `
             <!-- SECTION 1: CUSTOMER & DEMAND DASHBOARD -->
-            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 24px; border-radius: var(--radius-lg);">
-                <h2 style="margin-top:0; color:var(--primary); font-size:1.3rem; margin-bottom:20px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-                    <i data-lucide="users" style="width:20px; height:20px;"></i>
+            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md);">
+                <h2 style="margin-top:0; color:var(--primary); font-size:1.05rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                    <i data-lucide="users" style="width:16px; height:16px;"></i>
                     SECTION 1: Customer & Demand Dashboard
                 </h2>
 
                 <!-- Live Active Orders Metric Card -->
-                <div style="background: rgba(250, 204, 21, 0.05); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="background: rgba(250, 204, 21, 0.05); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between;">
                     <div>
-                        <span style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Live Active Orders</span>
-                        <div style="font-size: 2.75rem; font-weight: 800; color: var(--primary); margin: 6px 0 0 0;">${activeRequests.length}</div>
+                        <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Live Active Orders</span>
+                        <div style="font-size: 1.75rem; font-weight: 800; color: var(--primary); margin: 4px 0 0 0;">${activeRequests.length}</div>
                     </div>
-                    <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                        <i data-lucide="shopping-bag" style="width:26px; height:26px;"></i>
+                    <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                        <i data-lucide="shopping-bag" style="width:18px; height:18px;"></i>
                     </div>
                 </div>
 
                 <!-- Geographic Heatmap (Origin vs. Destination) -->
-                <div style="margin-bottom: 24px;">
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="map" style="width:16px; height:16px; color:var(--primary);"></i>
+                <div style="margin-bottom: 18px;">
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="map" style="width:14px; height:14px; color:var(--primary);"></i>
                         Geographic Routing Heatmap (Origin vs. Destination)
                     </h3>
-                    <table class="data-table" style="width:100%; font-size:0.85rem;">
+                    <table class="data-table" style="width:100%; font-size:0.80rem;">
                         <thead>
                             <tr style="border-bottom:1px solid var(--border);">
-                                <th style="padding:10px; text-align:left;">Dispatch Route</th>
-                                <th style="padding:10px; text-align:right;">Active Requests</th>
+                                <th style="padding:8px 10px; text-align:left;">Dispatch Route</th>
+                                <th style="padding:8px 10px; text-align:right;">Active Requests</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${geoStats.map(stat => `
                                 <tr style="border-bottom: 1px dashed rgba(255,255,255,0.03);">
-                                    <td style="padding:12px 10px; font-weight:600; color:rgba(255,255,255,0.95); display:flex; align-items:center; gap:8px;">
-                                        <i data-lucide="navigation-2" style="width:13px; height:13px; color:var(--primary);"></i>
+                                    <td style="padding:8px 10px; font-weight:600; color:rgba(255,255,255,0.95); display:flex; align-items:center; gap:6px;">
+                                        <i data-lucide="navigation-2" style="width:12px; height:12px; color:var(--primary);"></i>
                                         <span>${stat.origin}</span>
                                         <span style="color:var(--text-muted);">→</span>
                                         <span style="color:var(--text-dim);">${stat.dest}</span>
                                     </td>
-                                    <td style="padding:12px 10px; text-align:right; font-weight:700; color:var(--primary);">${stat.count} requests</td>
+                                    <td style="padding:8px 10px; text-align:right; font-weight:700; color:var(--primary);">${stat.count} requests</td>
                                 </tr>
                             `).join('')}
-                            ${geoStats.length === 0 ? '<tr><td colspan="2" style="text-align:center; padding:30px; color:var(--text-dim);">No active dispatch routes.</td></tr>' : ''}
+                            ${geoStats.length === 0 ? '<tr><td colspan="2" style="text-align:center; padding:20px; color:var(--text-dim);">No active dispatch routes.</td></tr>' : ''}
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Top 5 Pincodes by Booking & Search Demand -->
-                <div style="margin-bottom: 24px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <h3 style="font-size:0.95rem; color:#fff; margin:0; display:flex; align-items:center; gap:6px;">
-                            <i data-lucide="bar-chart-2" style="width:16px; height:16px; color:var(--primary);"></i>
+                <div style="margin-bottom: 18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="font-size:0.82rem; color:#fff; margin:0; display:flex; align-items:center; gap:6px;">
+                            <i data-lucide="bar-chart-2" style="width:14px; height:14px; color:var(--primary);"></i>
                             Top 5 High Demand Pincodes (Live 2h Rolling Aggregation)
                         </h3>
-                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:4px;">Live Demand</span>
+                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:4px;">Live Demand</span>
                     </div>
-                    <table class="data-table" style="width:100%; font-size:0.85rem;">
+                    <table class="data-table" style="width:100%; font-size:0.80rem;">
                         <thead>
                             <tr style="border-bottom:1px solid var(--border);">
-                                <th style="padding:10px; text-align:left;">Pincode & Locality</th>
-                                <th style="padding:10px; text-align:center;">Searches / Orders</th>
-                                <th style="padding:10px; text-align:right;">Demand Score</th>
+                                <th style="padding:8px 10px; text-align:left;">Pincode & Locality</th>
+                                <th style="padding:8px 10px; text-align:center;">Searches / Orders</th>
+                                <th style="padding:8px 10px; text-align:right;">Demand Score</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${pincodeStats.map(stat => `
                                 <tr style="border-bottom: 1px dashed rgba(255,255,255,0.03);">
-                                    <td style="padding:12px 10px; font-weight:600; color:rgba(255,255,255,0.95);">
-                                        <div style="display:flex; align-items:center; gap:8px;">
-                                            <i data-lucide="map-pin" style="width:13px; height:13px; color:var(--primary);"></i>
+                                    <td style="padding:8px 10px; font-weight:600; color:rgba(255,255,255,0.95);">
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <i data-lucide="map-pin" style="width:12px; height:12px; color:var(--primary);"></i>
                                             <span style="font-weight:700; color:#fff;">${stat.pincode}</span>
-                                            <span style="color:var(--text-dim); font-size:0.75rem;">· ${stat.areaName || 'Kolkata'}</span>
+                                            <span style="color:var(--text-dim); font-size:0.72rem;">· ${stat.areaName || 'Kolkata'}</span>
                                         </div>
                                     </td>
-                                    <td style="padding:12px 10px; text-align:center; color:var(--text-muted); font-size:0.8rem;">
+                                    <td style="padding:8px 10px; text-align:center; color:var(--text-muted); font-size:0.75rem;">
                                         <span style="color:#fff; font-weight:700;">${stat.searchCount || 0}</span> searches · <span style="color:var(--primary); font-weight:700;">${stat.bookingCount || 0}</span> bookings
                                     </td>
-                                    <td style="padding:12px 10px; text-align:right;">
-                                        <span class="badge" style="background:${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.2)' : 'rgba(250,204,21,0.15)'}; color:${stat.demandLevel === 'Surge' ? '#EF4444' : '#FACC15'}; border:1px solid ${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.4)' : 'rgba(250,204,21,0.3)'}; font-weight:800; font-size:0.75rem; padding:3px 8px; border-radius:6px;">
+                                    <td style="padding:8px 10px; text-align:right;">
+                                        <span class="badge" style="background:${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.2)' : 'rgba(250,204,21,0.15)'}; color:${stat.demandLevel === 'Surge' ? '#EF4444' : '#FACC15'}; border:1px solid ${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.4)' : 'rgba(250,204,21,0.3)'}; font-weight:800; font-size:0.68rem; padding:2px 6px; border-radius:4px;">
                                             ${stat.demandScore} pts (${stat.demandLevel || 'High'})
                                         </span>
                                     </td>
                                 </tr>
                             `).join('')}
-                            ${pincodeStats.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:30px; color:var(--text-dim);">No demand search data available in the last 2 hours.</td></tr>' : ''}
+                            ${pincodeStats.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:20px; color:var(--text-dim);">No demand search data available in the last 2 hours.</td></tr>' : ''}
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Vehicle Type Split (Doughnut Chart UI Representation) -->
-                <div style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:12px;">
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:15px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="pie-chart" style="width:16px; height:16px; color:var(--primary);"></i>
+                <div style="margin-bottom: 18px; padding: 14px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:8px;">
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="pie-chart" style="width:14px; height:14px; color:var(--primary);"></i>
                         Live Vehicle Type Split (Car vs. Bike)
                     </h3>
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px;">
                         <div style="flex:1;">
-                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.80rem; margin-bottom:4px;">
                                 <span style="display:flex; align-items:center; gap:6px; color:#fff; font-weight:500;">
-                                    <span style="width:10px; height:10px; border-radius:50%; background:var(--primary); display:inline-block;"></span> Cars
+                                    <span style="width:8px; height:8px; border-radius:50%; background:var(--primary); display:inline-block;"></span> Cars
                                 </span>
                                 <span style="font-weight:700; color:var(--primary);">${cars} requests (${carPct}%)</span>
                             </div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.80rem; margin-bottom:4px;">
                                 <span style="display:flex; align-items:center; gap:6px; color:var(--text-dim);">
-                                    <span style="width:10px; height:10px; border-radius:50%; background:#4B5563; display:inline-block;"></span> Bikes
+                                    <span style="width:8px; height:8px; border-radius:50%; background:#4B5563; display:inline-block;"></span> Bikes
                                 </span>
                                 <span style="font-weight:700; color:#fff;">${bikes} requests (${bikePct}%)</span>
                             </div>
                         </div>
                         
-                        <div style="position:relative; width:80px; height:80px; display:flex; align-items:center; justify-content:center;">
-                            <svg width="80" height="80" viewBox="0 0 36 36">
+                        <div style="position:relative; width:64px; height:64px; display:flex; align-items:center; justify-content:center;">
+                            <svg width="64" height="64" viewBox="0 0 36 36">
                                 <circle cx="18" cy="18" r="15.915" fill="none" stroke="#4B5563" stroke-width="4"></circle>
                                 <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--primary)" stroke-width="4.2"
                                         stroke-dasharray="${carPct} ${100 - carPct}" stroke-dashoffset="25"></circle>
                             </svg>
-                            <div style="position:absolute; font-size:0.75rem; font-weight:800; color:#fff; text-align:center;">
-                                <span>${activeRequests.length}</span><br><span style="font-size:0.5rem; color:var(--text-dim); text-transform:uppercase;">Veh</span>
+                            <div style="position:absolute; font-size:0.70rem; font-weight:800; color:#fff; text-align:center;">
+                                <span>${activeRequests.length}</span><br><span style="font-size:0.45rem; color:var(--text-dim); text-transform:uppercase;">Veh</span>
                             </div>
                         </div>
                     </div>
@@ -989,11 +989,11 @@ async function renderDashboard(container) {
 
                 <!-- Live Order Status Feed Ticker -->
                 <div>
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="clock" style="width:16px; height:16px; color:var(--primary);"></i>
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="clock" style="width:14px; height:14px; color:var(--primary);"></i>
                         Live Active Order Feed Ticker
                     </h3>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; flex-direction:column; gap:8px;">
                         ${activeOrderTicker.map(r => {
                             let statusText = 'Searching for Marshal';
                             let badgeClass = 'badge-warning';
@@ -1006,16 +1006,16 @@ async function renderDashboard(container) {
                                 badgeClass = 'badge-success';
                             }
                             return `
-                                <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                                <div style="padding:9px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
                                     <div>
-                                        <div style="font-size:0.85rem; font-weight:600; color:#fff;">${r.customerName || 'Customer'}</div>
-                                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Order ID: #${r.id.substring(0,8)}</div>
+                                        <div style="font-size:0.80rem; font-weight:600; color:#fff;">${r.customerName || 'Customer'}</div>
+                                        <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px;">Order ID: #${r.id.substring(0,8)}</div>
                                     </div>
-                                    <span class="badge ${badgeClass}" style="font-size:0.7rem;">${statusText}</span>
+                                    <span class="badge ${badgeClass}" style="font-size:0.65rem;">${statusText}</span>
                                 </div>
                             `;
                         }).join('')}
-                        ${activeOrderTicker.length === 0 ? '<div style="padding:20px; text-align:center; color:var(--text-dim); border:1px dashed var(--border); border-radius:8px;">No active requests.</div>' : ''}
+                        ${activeOrderTicker.length === 0 ? '<div style="padding:16px; text-align:center; color:var(--text-dim); border:1px dashed var(--border); border-radius:6px;">No active requests.</div>' : ''}
                     </div>
                 </div>
             </div>
@@ -1023,72 +1023,72 @@ async function renderDashboard(container) {
     } else {
         sectionHtml = `
             <!-- SECTION 2: MARSHAL LOGISTICS DASHBOARD -->
-            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 24px; border-radius: var(--radius-lg);">
-                <h2 style="margin-top:0; color:var(--primary); font-size:1.3rem; margin-bottom:20px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
-                    <i data-lucide="truck" style="width:20px; height:20px;"></i>
+            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md);">
+                <h2 style="margin-top:0; color:var(--primary); font-size:1.05rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+                    <i data-lucide="truck" style="width:16px; height:16px;"></i>
                     SECTION 2: Marshal Logistics Dashboard
                 </h2>
 
                 <!-- Marshal On-Duty Status -->
-                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <div>
-                            <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Registered Marshals</span>
-                            <div style="font-size: 2.2rem; font-weight: 800; color: #fff; margin: 4px 0 0 0;">${totalRegistered}</div>
+                            <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Registered Marshals</span>
+                            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin: 2px 0 0 0;">${totalRegistered}</div>
                         </div>
                         <div style="text-align:right;">
-                            <span style="color: #10B981; font-size: 0.85rem; font-weight: 700; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
-                                <span style="width:8px; height:8px; border-radius:50%; background:#10B981; display:inline-block; animation: pulse 1.5s infinite;"></span>
+                            <span style="color: #10B981; font-size: 0.78rem; font-weight: 700; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
+                                <span style="width:6px; height:6px; border-radius:50%; background:#10B981; display:inline-block; animation: pulse 1.5s infinite;"></span>
                                 ${liveActiveCount} On-Duty
                             </span>
-                            <span style="color: var(--text-muted); font-size: 0.7rem; display:block; margin-top:2px;">Online / Active</span>
+                            <span style="color: var(--text-muted); font-size: 0.65rem; display:block; margin-top:2px;">Online / Active</span>
                         </div>
                     </div>
-                    <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
+                    <div style="height:5px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
                         <div style="width:${totalRegistered > 0 ? (liveActiveCount / totalRegistered * 100).toFixed(0) : 0}%; height:100%; background:var(--primary);"></div>
                     </div>
                 </div>
 
                 <!-- Live Duty Stages (Horizontal Bar Chart) -->
-                <div style="margin-bottom: 24px;">
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:15px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="bar-chart-2" style="width:16px; height:16px; color:var(--primary);"></i>
+                <div style="margin-bottom: 18px;">
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="bar-chart-2" style="width:14px; height:14px; color:var(--primary);"></i>
                         Live Marshal Duty Stages Track
                     </h3>
-                    <div style="display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; flex-direction:column; gap:10px;">
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Idle / Available</span>
                                 <span style="font-weight:700; color:var(--primary);">${stages.idle} marshals</span>
                             </div>
-                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
+                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.idle / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:var(--primary);"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
                                 <span style="color:var(--text-dim); font-weight:500;">En Route to Customer</span>
                                 <span style="font-weight:700; color:#fff;">${stages.enRoute} marshals</span>
                             </div>
-                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
+                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.enRoute / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#10B981;"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Driving to Garage</span>
                                 <span style="font-weight:700; color:#fff;">${stages.drivingToGarage} marshals</span>
                             </div>
-                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
+                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.drivingToGarage / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#3B82F6;"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Returning to Customer</span>
                                 <span style="font-weight:700; color:#fff;">${stages.returning} marshals</span>
                             </div>
-                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
+                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.returning / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#8B5CF6;"></div>
                             </div>
                         </div>
@@ -1096,50 +1096,50 @@ async function renderDashboard(container) {
                 </div>
 
                 <!-- Onboarding & Compliance Data -->
-                <div style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:12px;">
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="shield-check" style="width:16px; height:16px; color:var(--primary);"></i>
+                <div style="margin-bottom: 18px; padding: 14px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:8px;">
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="shield-check" style="width:14px; height:14px; color:var(--primary);"></i>
                         Marshal Onboarding & Compliance Metrics
                     </h3>
-                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; text-align:center;">
-                        <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.1); padding:12px; border-radius:8px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Verified (Approved)</div>
-                            <div style="font-size:1.25rem; font-weight:700; color:#10B981;">${compliance.verified}</div>
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; text-align:center;">
+                        <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.1); padding:10px; border-radius:6px;">
+                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">Verified (Approved)</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:#10B981;">${compliance.verified}</div>
                         </div>
-                        <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.1); padding:12px; border-radius:8px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">KYC Pending</div>
-                            <div style="font-size:1.25rem; font-weight:700; color:#F59E0B;">${compliance.pending}</div>
+                        <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.1); padding:10px; border-radius:6px;">
+                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">KYC Pending</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:#F59E0B;">${compliance.pending}</div>
                         </div>
-                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:12px; border-radius:8px;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Not Started</div>
-                            <div style="font-size:1.25rem; font-weight:700; color:#fff;">${compliance.unverified}</div>
+                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
+                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">Not Started</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:#fff;">${compliance.unverified}</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Logistics SLAs -->
                 <div>
-                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="award" style="width:16px; height:16px; color:var(--primary);"></i>
+                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="award" style="width:14px; height:14px; color:var(--primary);"></i>
                         Logistics SLA Response Milestones
                     </h3>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:15px; border-radius:10px; display:flex; align-items:center; gap:12px;">
-                            <div style="width:36px; height:36px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                                <i data-lucide="navigation" style="width:18px; height:18px;"></i>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; align-items:center; gap:10px;">
+                            <div style="width:32px; height:32px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                                <i data-lucide="navigation" style="width:15px; height:15px;"></i>
                             </div>
                             <div>
-                                <div style="font-size:0.75rem; color:var(--text-muted);">Avg. Time to Reach Customer</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:2px;">${avgReachTime} mins</div>
+                                <div style="font-size:0.70rem; color:var(--text-muted);">Avg. Time to Reach Customer</div>
+                                <div style="font-size:0.95rem; font-weight:800; color:#fff; margin-top:2px;">${avgReachTime} mins</div>
                             </div>
                         </div>
-                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:15px; border-radius:10px; display:flex; align-items:center; gap:12px;">
-                            <div style="width:36px; height:36px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                                <i data-lucide="shield-alert" style="width:18px; height:18px;"></i>
+                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; align-items:center; gap:10px;">
+                            <div style="width:32px; height:32px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                                <i data-lucide="shield-alert" style="width:15px; height:15px;"></i>
                             </div>
                             <div>
-                                <div style="font-size:0.75rem; color:var(--text-muted);">Avg. Transit Time to Garage</div>
-                                <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:2px;">${avgTransitTime} mins</div>
+                                <div style="font-size:0.70rem; color:var(--text-muted);">Avg. Transit Time to Garage</div>
+                                <div style="font-size:0.95rem; font-weight:800; color:#fff; margin-top:2px;">${avgTransitTime} mins</div>
                             </div>
                         </div>
                     </div>
@@ -1172,39 +1172,39 @@ async function renderDashboard(container) {
 
     const html = `
         <div class="fade-in">
-            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h1 class="page-title" style="display:flex; align-items:center; gap:10px; margin:0;">
-                        <i data-lucide="activity" style="color:var(--primary); width:28px; height:28px;"></i>
+                    <h1 class="page-title" style="display:flex; align-items:center; gap:8px; margin:0;">
+                        <i data-lucide="activity" style="color:var(--primary); width:20px; height:20px;"></i>
                         Live CEO Operations Command Center
                     </h1>
-                    <p style="color: var(--text-dim); margin-top: 4px; margin-bottom:0;">Real-time logistics supply-demand matching & dispatch metrics</p>
+                    <p style="color: var(--text-dim); margin-top: 3px; margin-bottom:0; font-size:0.78rem;">Real-time logistics supply-demand matching & dispatch metrics</p>
                 </div>
-                <div style="display:flex; gap: 12px;">
+                <div style="display:flex; gap: 10px;">
                     <button class="btn btn-secondary" onclick="fetchRealtimeData().then(() => renderDashboard(document.getElementById('app')))">
-                        <i data-lucide="refresh-cw"></i> Refresh Command Center
+                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh Command Center
                     </button>
                 </div>
             </header>
 
             <!-- EXECUTIVE FINANCIAL OVERVIEW PANEL -->
-            <div class="card" style="margin-top:0; margin-bottom:24px; background:var(--bg-surface); border:1px solid rgba(250,204,21,0.25); padding:22px; border-radius:var(--radius-lg);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
+            <div class="card" style="margin-top:0; margin-bottom:18px; background:var(--bg-surface); border:1px solid rgba(250,204,21,0.25); padding:16px; border-radius:var(--radius-md);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
                     <div>
-                        <h2 style="margin:0; font-size:1.25rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                            <i data-lucide="trending-up" style="color:var(--primary); width:22px; height:22px;"></i>
+                        <h2 style="margin:0; font-size:1.05rem; color:#fff; display:flex; align-items:center; gap:6px;">
+                            <i data-lucide="trending-up" style="color:var(--primary); width:18px; height:18px;"></i>
                             Executive Financial Summary
                         </h2>
-                        <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
+                        <p style="font-size:0.75rem; color:var(--text-muted); margin:3px 0 0 0;">
                             Realized revenue, partner fulfillment costs, net platform profit, and order volumes.
                         </p>
                     </div>
 
-                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <!-- Business Line Filter Dropdown -->
-                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
-                            <i data-lucide="layers" style="width:14px; height:14px; color:var(--primary);"></i>
-                            <select id="exec-business-line-select" class="select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
+                        <div style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:6px; border:1px solid var(--border);">
+                            <i data-lucide="layers" style="width:13px; height:13px; color:var(--primary);"></i>
+                            <select id="exec-business-line-select" class="select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark; padding:2px 4px;">
                                 <option value="all" ${bLine === 'all' ? 'selected' : ''}>All Combined</option>
                                 <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>Drivers (P2P Rides)</option>
                                 <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>Garage (Service & Repairs)</option>
@@ -1213,9 +1213,9 @@ async function renderDashboard(container) {
                         </div>
 
                         <!-- Date Range Filter Dropdown -->
-                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
-                            <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
-                            <select id="exec-range-select" class="select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
+                        <div style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:6px; border:1px solid var(--border);">
+                            <i data-lucide="calendar" style="width:13px; height:13px; color:var(--primary);"></i>
+                            <select id="exec-range-select" class="select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark; padding:2px 4px;">
                                 <option value="today" ${range === 'today' ? 'selected' : ''}>Today</option>
                                 <option value="week" ${range === 'week' ? 'selected' : ''}>This Week</option>
                                 <option value="month" ${range === 'month' ? 'selected' : ''}>This Month</option>
@@ -1226,30 +1226,30 @@ async function renderDashboard(container) {
 
                         ${range === 'custom' ? `
                             <div style="display:inline-flex; align-items:center; gap:6px;">
-                                <input type="date" id="exec-custom-start" value="${window._execCustomStart || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
-                                <span style="color:var(--text-muted); font-size:0.8rem;">to</span>
-                                <input type="date" id="exec-custom-end" value="${window._execCustomEnd || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
-                                <button onclick="window.applyExecCustomRange()" class="btn btn-sm btn-primary" style="font-weight:700; padding:6px 12px;">Apply</button>
+                                <input type="date" id="exec-custom-start" value="${window._execCustomStart || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
+                                <span style="color:var(--text-muted); font-size:0.75rem;">to</span>
+                                <input type="date" id="exec-custom-end" value="${window._execCustomEnd || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
+                                <button onclick="window.applyExecCustomRange()" class="btn btn-sm btn-primary" style="font-weight:700; padding:4px 10px; font-size:0.75rem;">Apply</button>
                             </div>
                         ` : ''}
                     </div>
                 </div>
 
                 <!-- 4 KPI Cards Grid -->
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:12px;">
                     <!-- Card 1: Gross Customer Revenue -->
-                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
-                                <div style="font-size: 2.1rem; font-weight: 800; color: #22C55E; margin: 6px 0 4px 0;">₹${finData.revenue.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
+                                <div style="font-size: 1.55rem; font-weight: 800; color: #22C55E; margin: 4px 0 2px 0;">₹${finData.revenue.toLocaleString()}</div>
                             </div>
-                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
-                                <i data-lucide="credit-card" style="width:20px; height:20px;"></i>
+                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
+                                <i data-lucide="credit-card" style="width:16px; height:16px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
                                 ${finData.completedCount} Completed
                             </span>
                             <span>realized receipts</span>
@@ -1257,18 +1257,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 2: Partner / Driver Payouts -->
-                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${card2Title}</span>
-                                <div style="font-size: 2.1rem; font-weight: 800; color: #3B82F6; margin: 6px 0 4px 0;">₹${finData.payout.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${card2Title}</span>
+                                <div style="font-size: 1.55rem; font-weight: 800; color: #3B82F6; margin: 4px 0 2px 0;">₹${finData.payout.toLocaleString()}</div>
                             </div>
-                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
-                                <i data-lucide="truck" style="width:20px; height:20px;"></i>
+                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
+                                <i data-lucide="truck" style="width:16px; height:16px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
                                 ${card2Badge}
                             </span>
                             <span>${card2Sub}</span>
@@ -1276,18 +1276,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 3: Net Platform Profit -->
-                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
-                                <div style="font-size: 2.1rem; font-weight: 800; color: #FACC15; margin: 6px 0 4px 0;">₹${finData.netProfit.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
+                                <div style="font-size: 1.55rem; font-weight: 800; color: #FACC15; margin: 4px 0 2px 0;">₹${finData.netProfit.toLocaleString()}</div>
                             </div>
-                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
-                                <i data-lucide="wallet" style="width:20px; height:20px;"></i>
+                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
+                                <i data-lucide="wallet" style="width:16px; height:16px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
                                 ${finData.marginPercent}% Net Margin
                             </span>
                             <span>retained profit</span>
@@ -1295,18 +1295,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 4: Total Completed Orders -->
-                    <div style="background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Completed Orders</span>
-                                <div style="font-size: 2.1rem; font-weight: 800; color: #A855F7; margin: 6px 0 4px 0;">${finData.completedCount}</div>
+                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Completed Orders</span>
+                                <div style="font-size: 1.55rem; font-weight: 800; color: #A855F7; margin: 4px 0 2px 0;">${finData.completedCount}</div>
                             </div>
-                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); display:flex; align-items:center; justify-content:center; color:#A855F7;">
-                                <i data-lucide="package-check" style="width:20px; height:20px;"></i>
+                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); display:flex; align-items:center; justify-content:center; color:#A855F7;">
+                                <i data-lucide="package-check" style="width:16px; height:16px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(168,85,247,0.15); color:#A855F7; border:1px solid rgba(168,85,247,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(168,85,247,0.15); color:#A855F7; border:1px solid rgba(168,85,247,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
                                 ${finData.completionRate}% Completion Rate
                             </span>
                             <span>${finData.completedCount} of ${finData.totalAttempts} total</span>
@@ -1316,22 +1316,22 @@ async function renderDashboard(container) {
             </div>
 
             <!-- Dashboard Tab Switcher -->
-            <div class="tabs-header" style="display:flex; gap:16px; border-bottom:1px solid var(--border); margin-bottom:24px; padding-bottom:1px;">
+            <div class="tabs-header" style="display:flex; gap:12px; border-bottom:1px solid var(--border); margin-bottom:18px; padding-bottom:1px;">
                 <button onclick="window.activeDashboardTab='demand'; renderDashboard(document.getElementById('app'))" 
                         class="tab-btn ${demandTabActive ? 'active' : ''}" 
-                        style="background:none; border:none; color:${demandTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:1.05rem; font-weight:700; padding:12px 16px; cursor:pointer; border-bottom:3px solid ${demandTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px;">
-                    <i data-lucide="users" style="width:18px; height:18px;"></i>
+                        style="background:none; border:none; color:${demandTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:0.85rem; font-weight:700; padding:8px 12px; cursor:pointer; border-bottom:2px solid ${demandTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px;">
+                    <i data-lucide="users" style="width:15px; height:15px;"></i>
                     Customer & Demand
                 </button>
                 <button onclick="window.activeDashboardTab='logistics'; renderDashboard(document.getElementById('app'))" 
                         class="tab-btn ${logisticsTabActive ? 'active' : ''}" 
-                        style="background:none; border:none; color:${logisticsTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:1.05rem; font-weight:700; padding:12px 16px; cursor:pointer; border-bottom:3px solid ${logisticsTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px;">
-                    <i data-lucide="truck" style="width:18px; height:18px;"></i>
+                        style="background:none; border:none; color:${logisticsTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:0.85rem; font-weight:700; padding:8px 12px; cursor:pointer; border-bottom:2px solid ${logisticsTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px;">
+                    <i data-lucide="truck" style="width:15px; height:15px;"></i>
                     Driver Logistics
                 </button>
             </div>
 
-            <div style="display:grid; grid-template-columns: 1fr; gap: 24px;">
+            <div style="display:grid; grid-template-columns: 1fr; gap: 18px;">
                 ${sectionHtml}
             </div>
         </div>

@@ -45,7 +45,8 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-base);
     color: var(--text-main);
-    line-height: 1.5;
+    font-size: 13.5px;
+    line-height: 1.45;
     overflow-x: hidden;
     min-height: 100vh;
 }
@@ -69,8 +70,8 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -93,19 +94,19 @@ body {
 
 .sidebar-toggle-btn i,
 .sidebar-toggle-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar {
-    width: 280px;
+    width: 245px;
     background: var(--bg-surface);
     border-right: 1px solid var(--border);
     height: 100%;
     display: flex;
     flex-direction: column;
-    padding: 1.5rem 1rem;
+    padding: 1rem 0.75rem;
     z-index: 10;
     transition: width 260ms cubic-bezier(0.4, 0, 0.2, 1), padding 260ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, border-color 260ms;
     overflow-y: auto;
@@ -119,7 +120,7 @@ body {
 
 .main-content {
     flex: 1 1 0%;
-    padding: 1.5rem 2rem;
+    padding: 1.25rem 1.5rem;
     overflow-y: auto;
     background: var(--bg-base);
     min-width: 0;
@@ -150,25 +151,25 @@ body {
 }
 
 .sidebar-label {
-    margin: 24px 0 12px;
-    font-size: 0.75rem;
+    margin: 14px 0 6px;
+    font-size: 0.65rem;
     text-transform: uppercase;
     color: var(--text-dim);
     font-weight: 800;
-    letter-spacing: 1px;
-    padding-left: 12px;
+    letter-spacing: 0.8px;
+    padding-left: 10px;
 }
 
 /* --- Sidebar Styling --- */
 .logo {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 1.75rem;
+    gap: 10px;
+    font-size: 1.05rem;
     font-weight: 800;
     color: #fff;
-    margin-bottom: 3rem;
-    letter-spacing: -0.04em;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.02em;
 }
 
 .logo i {
@@ -179,26 +180,26 @@ body {
 .nav-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     flex: 1;
 }
 
 .sidebar-footer {
     margin-top: auto;
-    padding-top: 2rem;
+    padding-top: 1rem;
     border-top: 1px solid rgba(255,255,255,0.05);
 }
 
 .nav-link {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 8px 12px;
     color: var(--text-muted);
     text-decoration: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 0.82rem;
     transition: var(--transition);
     cursor: pointer;
 }
@@ -212,11 +213,13 @@ body {
     background: var(--primary-dim);
     color: var(--primary);
     box-shadow: inset 3px 0 0 0 var(--primary);
+    font-weight: 600;
 }
 
-.nav-link i {
-    width: 20px;
-    height: 20px;
+.nav-link i,
+.nav-link svg {
+    width: 16px;
+    height: 16px;
 }
 
 .sidebar-profile {
@@ -248,20 +251,20 @@ body {
 
 .profile-name {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
 }
 
 .profile-role {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     color: var(--text-dim);
 }
 
 /* --- Dashboard & Metrics --- */
 .page-header {
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
@@ -269,23 +272,23 @@ body {
 
 .page-title {
     font-family: 'Manrope', sans-serif;
-    font-size: 2.25rem;
+    font-size: 1.45rem;
     font-weight: 700;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
 }
 
 .metric-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 3rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
 }
 
 .metric-card {
     background: var(--bg-surface);
     border: none;
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
+    border-radius: var(--radius-md);
+    padding: 1rem;
     position: relative;
     overflow: hidden;
     transition: var(--transition);
@@ -293,30 +296,30 @@ body {
 
 .metric-card:hover {
     background: var(--bg-surface-hover);
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px -8px rgba(0,0,0,0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -4px rgba(0,0,0,0.4);
 }
 
 .metric-label {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
     display: block;
 }
 
 .metric-value {
     font-family: 'Manrope', sans-serif;
-    font-size: 2rem;
+    font-size: 1.55rem;
     font-weight: 800;
     color: #fff;
 }
 
 .metric-trend {
-    font-size: 0.75rem;
-    margin-top: 8px;
+    font-size: 0.70rem;
+    margin-top: 6px;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -328,20 +331,20 @@ body {
 .card {
     background: var(--bg-surface);
     border: none;
-    border-radius: var(--radius-lg);
-    padding: 1.25rem;
-    margin-bottom: 1.25rem;
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
 }
 
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 12px 24px;
-    border-radius: var(--radius-md);
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.82rem;
     cursor: pointer;
     transition: var(--transition);
     border: none;
@@ -354,8 +357,8 @@ body {
 
 .btn-primary:hover {
     background: #FFD175;
-    box-shadow: 0 8px 24px var(--primary-glow);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 14px var(--primary-glow);
+    transform: translateY(-1px);
 }
 .btn-primary:active {
     transform: translateY(0);
@@ -381,8 +384,8 @@ body {
 .btn-success:hover {
     background: #10b981;
     color: #000;
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px);
 }
 
 .btn-danger {
@@ -394,8 +397,8 @@ body {
 .btn-danger:hover {
     background: #ef4444;
     color: #fff;
-    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+    transform: translateY(-1px);
 }
 
 /* --- Tables & Lists --- */
@@ -407,19 +410,19 @@ body {
 
 .data-table th {
     text-align: left;
-    padding: 0.75rem 1rem;
-    font-size: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.68rem;
     font-weight: 700;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    border-bottom: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
 }
 
 .data-table td {
-    padding: 0.75rem 1rem;
+    padding: 0.55rem 0.75rem;
     border-bottom: 1px solid var(--border);
-    font-size: 0.85rem;
+    font-size: 0.80rem;
 }
 
 .data-table tr:last-child td {
@@ -432,9 +435,9 @@ body {
 
 /* --- Badges --- */
 .chip {
-    padding: 4px 10px;
+    padding: 3px 8px;
     border-radius: var(--radius-full);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
 }
@@ -474,12 +477,12 @@ body {
 .sync-indicator {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     background: var(--primary-dim);
     border: 1px solid var(--border-bright);
-    padding: 6px 12px;
+    padding: 4px 10px;
     border-radius: var(--radius-full);
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--primary);
     position: fixed;
     bottom: 20px;
@@ -488,8 +491,8 @@ body {
 }
 
 .loader-spin {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border: 2px solid var(--primary-dim);
     border-top-color: var(--primary);
     border-radius: 50%;
@@ -527,9 +530,9 @@ body {
     background: var(--bg-surface);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-lg);
-    padding: 2.5rem;
+    padding: 1.75rem;
     width: 90%;
-    max-width: 650px;
+    max-width: 600px;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
     transform: translateY(20px) scale(0.95);
     transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -556,28 +559,28 @@ body {
 
 /* --- Form Elements --- */
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.15rem;
 }
 
 .label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.70rem;
     font-weight: 700;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.35rem;
 }
 
 .input, .select {
     width: 100%;
     background: #1D1D1D;
     border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 12px 16px;
+    border-radius: 6px;
+    padding: 8px 12px;
     color: var(--text-main);
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 0.82rem;
     outline: none;
     transition: var(--transition);
 }
@@ -589,7 +592,7 @@ body {
 .input:focus, .select:focus {
     border-color: var(--primary);
     background: rgba(255, 255, 255, 0.05);
-    box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.1);
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.1);
 }
 
 .select {
@@ -597,9 +600,9 @@ body {
     /* Use a more robust custom arrow that doesn't rely on appearance:none being perfectly implemented */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 16px;
-    padding-right: 40px;
+    background-position: right 10px center;
+    background-size: 14px;
+    padding-right: 32px;
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
@@ -610,35 +613,35 @@ body {
 .select option {
     background: #1a1a1a; /* Darker background for options to ensure contrast */
     color: #fff;
-    padding: 8px 12px;
+    padding: 6px 10px;
 }
 
 /* --- Search Box --- */
 .search-box {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 0 16px;
-    height: 44px;
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    height: 36px;
 }
 
 .search-input {
     background: none;
     border: none;
     color: var(--text-main);
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     width: 100%;
     outline: none;
 }
 
 /* --- Custom Components --- */
 .badge {
-    padding: 4px 10px;
+    padding: 3px 8px;
     border-radius: var(--radius-sm);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
 }
@@ -651,8 +654,8 @@ body {
 
 /* --- Scrollbars --- */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
 }
 ::-webkit-scrollbar-track {
     background: var(--bg-base);
@@ -669,8 +672,8 @@ body {
 .marshal-card {
     background: var(--bg-surface);
     border: none;
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
+    border-radius: var(--radius-md);
+    padding: 1.15rem;
     transition: var(--transition);
 }
 .marshal-card:hover {
@@ -678,8 +681,8 @@ body {
     transform: translateY(-2px);
 }
 .marshal-avatar {
-    width: 60px;
-    height: 60px;
+    width: 48px;
+    height: 48px;
     background: var(--primary-dim);
     border: 1px solid var(--primary);
     border-radius: 50%;
@@ -688,26 +691,26 @@ body {
     justify-content: center;
     color: var(--primary);
     font-weight: 700;
-    font-size: 1.25rem;
+    font-size: 1rem;
 }
 
 /* --- Rate Management Styles --- */
 .rate-grid {
     display: grid;
     grid-template-columns: 1fr 1.2fr 1fr 1fr 1fr 1.2fr;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
-    padding: 12px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .rate-header {
     background: rgba(255,255,255,0.03);
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.8px;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -718,8 +721,8 @@ body {
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 6px;
     color: #fff;
-    padding: 8px 12px;
-    font-size: 0.9rem;
+    padding: 6px 10px;
+    font-size: 0.82rem;
     width: 100%;
     transition: all 0.2s;
 }
@@ -747,18 +750,18 @@ body {
 }
 
 /* --- Grids --- */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 
 /* --- Tabs --- */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap; margin-bottom: 20px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap; margin-bottom: 16px; }
 .tab-btn {
     background: none; border: none; color: var(--text-muted);
-    padding: 16px 20px; font-size: 0.9rem; font-weight: 700; cursor: pointer;
-    border-bottom: 3px solid transparent; display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px;
     transition: all 0.2s;
 }
-.tab-btn i { width: 18px; height: 18px; }
+.tab-btn i { width: 15px; height: 15px; }
 .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.03); }
 .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: rgba(250,204,21,0.05); }
 
@@ -809,10 +812,10 @@ body {
 .confirm-modal-content {
     background: #18181b;
     border: 1px solid #333;
-    border-radius: 16px;
+    border-radius: 12px;
     width: 90%;
-    max-width: 420px;
-    padding: 30px;
+    max-width: 400px;
+    padding: 22px;
     text-align: center;
     transform: scale(0.9);
     transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -824,16 +827,16 @@ body {
 }
 
 .confirm-icon {
-    width: 60px; height: 60px;
+    width: 48px; height: 48px;
     background: var(--primary-dim);
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 20px auto; color: var(--primary);
+    margin: 0 auto 16px auto; color: var(--primary);
 }
 
-.confirm-title { font-size: 1.25rem; font-weight: 700; color: #fff; margin-bottom: 12px; }
-.confirm-message { font-size: 0.95rem; color: var(--text-dim); margin-bottom: 30px; line-height: 1.6; }
-.confirm-actions { display: flex; gap: 12px; }
+.confirm-title { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.confirm-message { font-size: 0.82rem; color: var(--text-dim); margin-bottom: 22px; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 10px; }
 .confirm-actions button { flex: 1; }
 
 /* 6-Box OTP Input Styling */
