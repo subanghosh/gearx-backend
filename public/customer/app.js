@@ -3653,7 +3653,7 @@ window.openHireDriverForVehicle = function(vehicleId) {
     }
 };
 
-window.updateFixedActionButton = function() {
+function updateFixedActionButton() {
     const container = document.getElementById('fixed-action-btn-container');
     if (!container) return;
     const activeList = (window.userVehicles && window.userVehicles.length > 0) ? window.userVehicles : userVehicles;
@@ -3690,7 +3690,8 @@ window.updateFixedActionButton = function() {
             Hire Driver for ${v.make} ${v.model}
         </button>
     `;
-};
+}
+window.updateFixedActionButton = updateFixedActionButton;
 
 window.prevVehicle = function() {
     if (userVehicles.length === 0) return;
@@ -14310,6 +14311,9 @@ window.setPreviewTiming = function(timing) {
         if (btnSchedule) { btnSchedule.style.background = 'var(--primary)'; btnSchedule.style.color = '#000'; }
         if (instantSec) instantSec.style.display = 'none';
         if (scheduleSec) scheduleSec.style.display = 'flex';
+        if (typeof window.renderPreviewSchedulePickers === 'function') {
+            window.renderPreviewSchedulePickers();
+        }
     }
 
     if (typeof window.updatePreviewCTA === 'function') {
