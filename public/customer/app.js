@@ -3412,7 +3412,9 @@ function renderVehicles() {
     const addMoreContainer = document.getElementById('add-more-container');
     const garageContainer = document.getElementById('garage-container');
 
-    if (userVehicles.length === 0) {
+    const activeVehiclesList = (window.userVehicles && window.userVehicles.length > 0) ? window.userVehicles : userVehicles;
+
+    if (activeVehiclesList.length === 0) {
         if (list) {
             list.innerHTML = `
                 <div style="background: rgba(18, 22, 29, 0.85); backdrop-filter: blur(20px); border-radius: 16px; padding: 24px; text-align: center; border: 1px dashed rgba(255, 255, 255, 0.15);">
@@ -3440,15 +3442,15 @@ function renderVehicles() {
     if (typeof updateRouteVisibility === 'function') updateRouteVisibility();
 
     // Clamp active index
-    if (activeVehicleIndex >= userVehicles.length) {
-        activeVehicleIndex = userVehicles.length - 1;
+    if (activeVehicleIndex >= activeVehiclesList.length) {
+        activeVehicleIndex = activeVehiclesList.length - 1;
     }
     if (activeVehicleIndex < 0) {
         activeVehicleIndex = 0;
     }
 
     // Generate cards HTML for all vehicles
-    const cardsHtml = userVehicles.map((v, idx) => {
+    const cardsHtml = activeVehiclesList.map((v, idx) => {
         const fuel = v.fuel || 'Petrol';
         const transmission = v.transmission || 'Manual';
         const type = v.type || 'Hatchback';
@@ -3523,8 +3525,8 @@ function renderVehicles() {
     }).join('');
 
     let html = '';
-    if (userVehicles.length > 1) {
-        const dotsHtml = userVehicles.map((veh, idx) => {
+    if (activeVehiclesList.length > 1) {
+        const dotsHtml = activeVehiclesList.map((veh, idx) => {
             const isActive = idx === activeVehicleIndex;
             return `<button id="dot-${idx}" onclick="jumpToVehicle(${idx})" style="
                 width: 34px;
@@ -3574,7 +3576,7 @@ function renderVehicles() {
 
     // Dropdown for booking
     if (select) {
-        select.innerHTML = `<option value="">Select a vehicle...</option>` + userVehicles.map(v => {
+        select.innerHTML = `<option value="">Select a vehicle...</option>` + activeVehiclesList.map(v => {
             if (activeBookedVehicleIds.includes(v.id)) return '';
             return `<option value="${v.id}">${v.make} ${v.model} (${v.plate})</option>`;
         }).join('');
