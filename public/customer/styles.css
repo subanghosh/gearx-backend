@@ -30,6 +30,35 @@ body {
     line-height: 1.5;
 }
 
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#service-card-unified-preview,
+#service-card-unified-preview:link,
+#service-card-unified-preview:visited,
+#service-card-unified-preview:hover,
+#service-card-unified-preview:active {
+    color: #ffffff !important;
+    text-decoration: none !important;
+    outline: none !important;
+}
+
+#service-card-unified-preview * {
+    text-decoration: none !important;
+}
+
+.hire-driver-card-title {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
+.hire-driver-card-subtitle {
+    color: #a1a1aa !important;
+    text-decoration: none !important;
+}
+
 h1, h2, h3, h4, .logo-text, .accent {
     font-family: 'Manrope', sans-serif;
 }
