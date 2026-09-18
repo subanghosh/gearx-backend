@@ -9641,6 +9641,60 @@ apiRouter.post('/service-requests/:id/bid-offers/broadcast', async (req, res) =>
             WHERE id = $2
         `, [baseAmount, requestId]);
 
+        // Priority High: Dispatch native FCM wake-up push to target drivers
+        if (fcmInitialized && insertedOffers.length > 0) {
+            (async () => {
+                try {
+                    const custRes = await pool.query("SELECT name, phone FROM customers WHERE id = $1", [sr.customerid]);
+                    const cust = custRes.rows[0] || {};
+                    const vehRes = await pool.query("SELECT make, model, type, plate, fuel FROM vehicles WHERE id = $1", [sr.vehicleid]);
+                    const veh = vehRes.rows[0] || {};
+
+                    for (const offer of insertedOffers) {
+                        const driverRes = await pool.query("SELECT fcmToken, fcmtoken FROM users WHERE id = $1", [offer.marshal_id]);
+                        const token = driverRes.rows[0]?.fcmToken || driverRes.rows[0]?.fcmtoken;
+                        if (token) {
+                            const payload = {
+                                type: 'incoming_request',
+                                requestId: String(requestId),
+                                offerId: String(offer.id),
+                                price: String(offer.amount),
+                                floorAmount: String(offer.floor_amount),
+                                ceilingAmount: String(offer.ceiling_amount),
+                                requestType: String(sr.pickup_drop_type || sr.service_category || 'Hire Driver (P2P)'),
+                                pickupAddress: String(sr.pickup_address || 'Pickup Location'),
+                                dropAddress: String(sr.drop_address || 'Drop Destination'),
+                                pickupLat: String(sr.lat || ''),
+                                pickupLng: String(sr.lng || ''),
+                                customerName: String(cust.name || 'Customer'),
+                                vehicleMake: String(veh.make || 'Vehicle'),
+                                vehicleModel: String(veh.model || ''),
+                                vehicleType: String(veh.type || 'Car'),
+                                vehiclePlate: String(veh.plate || ''),
+                                expiresAt: new Date(offer.expires_at).toISOString(),
+                                timestamp: String(Date.now())
+                            };
+
+                            await getMessaging().send({
+                                token: token,
+                                data: payload,
+                                android: {
+                                    priority: 'high',
+                                    ttl: 60 * 1000
+                                }
+                            }).then(msgId => {
+                                console.log(`[FCM_BROADCAST] Dispatched high-priority wake to driver ${offer.marshal_id} (msg: ${msgId})`);
+                            }).catch(e => {
+                                console.warn(`[FCM_BROADCAST_ERR] Driver ${offer.marshal_id}:`, e.message);
+                            });
+                        }
+                    }
+                } catch (fcmErr) {
+                    console.error('[FCM_BROADCAST_GLOBAL_ERR]', fcmErr.message);
+                }
+            })();
+        }
+
         res.json({
             success: true,
             marshalsNotified: marshals.length,
@@ -9794,6 +9848,45 @@ apiRouter.post('/service-requests/:id/bid-offers/update-amount', async (req, res
 
         await client.query('COMMIT');
 
+        // Priority High: Notify pending candidate drivers of increased price
+        if (fcmInitialized) {
+            (async () => {
+                try {
+                    const pendingOffers = await pool.query(`
+                        SELECT bo.id as offer_id, bo.marshal_id, u.fcmToken, u.fcmtoken
+                        FROM bid_offers bo
+                        JOIN users u ON bo.marshal_id = u.id
+                        WHERE bo.service_request_id = $1 AND bo.status = 'pending'
+                    `, [requestId]);
+
+                    for (const row of pendingOffers.rows) {
+                        const token = row.fcmtoken || row.fcmToken;
+                        if (token) {
+                            await getMessaging().send({
+                                token: token,
+                                data: {
+                                    type: 'incoming_request',
+                                    requestId: String(requestId),
+                                    offerId: String(row.offer_id),
+                                    price: String(amountNum),
+                                    requestType: String(sr.pickup_drop_type || sr.service_category || 'Hire Driver (P2P)'),
+                                    pickupAddress: String(sr.pickup_address || ''),
+                                    dropAddress: String(sr.drop_address || ''),
+                                    isBump: 'true',
+                                    timestamp: String(Date.now())
+                                },
+                                android: { priority: 'high', ttl: 60 * 1000 }
+                            }).then(msgId => {
+                                console.log(`[FCM_PRICE_BUMP] Notified driver ${row.marshal_id} of bump to ₹${amountNum} (msg: ${msgId})`);
+                            }).catch(() => {});
+                        }
+                    }
+                } catch(e) {
+                    console.warn('[FCM_PRICE_BUMP_ERR]', e.message);
+                }
+            })();
+        }
+
         res.json({
             success: true,
             newAmount: amountNum,
@@ -9850,6 +9943,38 @@ apiRouter.post('/service-requests/:id/cancel-bidding', async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        // Priority High: Stop ringtone and clear notification on all candidate drivers
+        if (fcmInitialized) {
+            (async () => {
+                try {
+                    const driverTokens = await pool.query(`
+                        SELECT DISTINCT u.fcmToken, u.fcmtoken
+                        FROM bid_offers bo
+                        JOIN users u ON bo.marshal_id = u.id
+                        WHERE bo.service_request_id = $1
+                    `, [requestId]);
+
+                    for (const row of driverTokens.rows) {
+                        const token = row.fcmtoken || row.fcmToken;
+                        if (token) {
+                            await getMessaging().send({
+                                token: token,
+                                data: {
+                                    type: 'request_cancelled',
+                                    requestId: String(requestId),
+                                    timestamp: String(Date.now())
+                                },
+                                android: { priority: 'high' }
+                            }).catch(() => {});
+                        }
+                    }
+                    console.log(`[FCM_CANCEL] Dispatched request_cancelled push to ${driverTokens.rows.length} drivers`);
+                } catch(e) {
+                    console.warn('[FCM_CANCEL_ERR]', e.message);
+                }
+            })();
+        }
         return res.json({
             success: true,
             cancelled: true,
@@ -9944,6 +10069,60 @@ apiRouter.post('/service-requests/:id/bid-offers/:offerId/respond', async (req, 
             }
 
             await client.query('COMMIT');
+
+            // Priority High: Notify Customer of Acceptance and Cancel Competing Driver Requests
+            if (fcmInitialized) {
+                (async () => {
+                    try {
+                        // 1. Notify Customer that Driver Accepted
+                        const custRes = await pool.query("SELECT fcmToken, fcmtoken FROM customers WHERE id = $1 UNION SELECT fcmToken, fcmtoken FROM users WHERE id = $1", [updatedSr.customerid]);
+                        const custToken = custRes.rows[0]?.fcmToken || custRes.rows[0]?.fcmtoken;
+                        if (custToken) {
+                            await getMessaging().send({
+                                token: custToken,
+                                notification: {
+                                    title: 'Driver Accepted Your Offer!',
+                                    body: `Driver has accepted your offer for ₹${finalAgreedAmount}. Tap to view your driver.`
+                                },
+                                data: {
+                                    type: 'offer_accepted',
+                                    requestId: String(requestId),
+                                    tripId: String(tripId),
+                                    marshalId: String(chosenMarshalId),
+                                    finalAmount: String(finalAgreedAmount),
+                                    timestamp: String(Date.now())
+                                },
+                                android: { priority: 'high' }
+                            }).catch(() => {});
+                        }
+
+                        // 2. Cancel all other competing pending driver offers via FCM
+                        const otherDrivers = await pool.query(`
+                            SELECT DISTINCT u.fcmToken, u.fcmtoken
+                            FROM bid_offers bo
+                            JOIN users u ON bo.marshal_id = u.id
+                            WHERE bo.service_request_id = $1 AND bo.id != $2
+                        `, [requestId, offerId]);
+
+                        for (const row of otherDrivers.rows) {
+                            const token = row.fcmtoken || row.fcmToken;
+                            if (token) {
+                                await getMessaging().send({
+                                    token: token,
+                                    data: {
+                                        type: 'request_cancelled',
+                                        requestId: String(requestId),
+                                        timestamp: String(Date.now())
+                                    },
+                                    android: { priority: 'high' }
+                                }).catch(() => {});
+                            }
+                        }
+                    } catch(e) {
+                        console.warn('[FCM_ACCEPT_NOTIF_ERR]', e.message);
+                    }
+                })();
+            }
 
             return res.json({
                 success: true,

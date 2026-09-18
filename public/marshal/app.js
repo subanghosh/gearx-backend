@@ -3577,6 +3577,25 @@ function syncNativeDeclinedIds() {
 
 async function triggerIncomingPickupFromPush(requestId) {
     try {
+        console.log('[PUSH_WAKE] Processing incoming push for requestId:', requestId);
+        // 1. Check if there is an active P2P Bid Offer matching this requestId
+        if (currentUser && currentUser.id) {
+            const bRes = await fetch(`${API_URL}/marshals/active-bid-offers?marshalId=${currentUser.id}`, { cache: 'no-store' });
+            if (bRes.ok) {
+                const bData = await bRes.json();
+                const activeOffers = (bData && bData.offers) || [];
+                const matchingOffer = requestId 
+                    ? activeOffers.find(o => o.serviceRequestId === requestId || o.id === requestId)
+                    : activeOffers[0];
+                if (matchingOffer) {
+                    console.log('[PUSH_WAKE] Found matching active bid offer. Opening bid request preview modal.');
+                    window.openDriverBidRequestPreview(matchingOffer);
+                    return;
+                }
+            }
+        }
+
+        // 2. Legacy / Standard pickup fallback
         const res = await fetch(`${API_URL}/requests`, { cache: 'no-store' });
         if (res.ok) {
             const requests = await res.json();
@@ -3586,7 +3605,7 @@ async function triggerIncomingPickupFromPush(requestId) {
             }
         }
     } catch (e) {
-        console.warn("Failed to fetch details for push notification", e);
+        console.warn("[PUSH_WAKE] Failed to fetch details for push notification:", e);
     }
 }
 window.triggerIncomingPickupFromPush = triggerIncomingPickupFromPush;
@@ -9878,148 +9897,196 @@ window.openDriverBidRequestPreview = function(offerData = null) {
     }, 1000);
 
     modal.style.display = 'flex';
+
+    // Synchronously populate fallback text in case map is delayed/offline
+    const fbPickup = document.getElementById('driver-fallback-pickup');
+    const fbDrop = document.getElementById('driver-fallback-drop');
+    const fbRoute = document.getElementById('driver-fallback-route-info');
+    if (fbPickup) fbPickup.textContent = window.driverBidPreviewState.pickupAddress || 'Pickup Location';
+    if (fbDrop) fbDrop.textContent = window.driverBidPreviewState.dropAddress || 'Drop Destination';
+    if (fbRoute) fbRoute.textContent = `${offerData?.distanceKm || '25.5'} km • ~${offerData?.etaMinutes || '54'} mins (Map Offline)`;
+
+    // Asynchronously kick off map load in background without blocking
+    driverBidMapInitAttempts = 0;
     setTimeout(() => {
         if (typeof window.initDriverBidPreviewMap === 'function') {
             window.initDriverBidPreviewMap();
         }
-    }, 60);
+    }, 40);
 };
 
 let driverBidPreviewMap = null;
 let driverBidPreviewDirectionsRenderer = null;
 let driverBidPreviewMarkers = [];
+let driverBidMapInitAttempts = 0;
 
 window.initDriverBidPreviewMap = function() {
     const canvas = document.getElementById('driver-bid-map-canvas');
+    const skeleton = document.getElementById('driver-bid-map-skeleton');
+    const fallback = document.getElementById('driver-bid-map-fallback');
     if (!canvas) return;
 
+    // Reset visual loading state
+    if (skeleton) skeleton.style.display = 'flex';
+    if (fallback) fallback.style.display = 'none';
+    if (canvas) canvas.style.opacity = '0';
+
     if (typeof google === 'undefined' || !google.maps) {
-        setTimeout(window.initDriverBidPreviewMap, 300);
-        return;
-    }
-
-    const state = window.driverBidPreviewState;
-    const driverPos = { 
-        lat: (typeof marshalLat !== 'undefined' && marshalLat !== null) ? marshalLat : 22.5650, 
-        lng: (typeof marshalLng !== 'undefined' && marshalLng !== null) ? marshalLng : 88.4280 
-    };
-    const pickupPos = state.pickupPos || { lat: 22.5697, lng: 88.4337 };
-    const dropPos = state.dropPos || { lat: 22.5830, lng: 88.3426 };
-
-    if (!driverBidPreviewMap) {
-        driverBidPreviewMap = new google.maps.Map(canvas, {
-            center: pickupPos,
-            zoom: 12,
-            disableDefaultUI: true,
-            gestureHandling: 'greedy',
-            styles: typeof lightMapStyle !== 'undefined' ? lightMapStyle : []
-        });
-    } else {
-        google.maps.event.trigger(driverBidPreviewMap, 'resize');
-    }
-
-    // Clear old preview markers
-    driverBidPreviewMarkers.forEach(m => { if (m && m.setMap) m.setMap(null); });
-    driverBidPreviewMarkers = [];
-
-    // Driver Marker (Live position icon)
-    const driverMarker = new google.maps.Marker({
-        position: driverPos,
-        map: driverBidPreviewMap,
-        title: 'Driver Location (You)',
-        icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="18" cy="18" r="16" fill="#FACC15" stroke="#FFFFFF" stroke-width="3" />
-                    <path d="M11 19L18 9L25 19H20V27H16V19H11Z" fill="#000000" />
-                </svg>
-            `),
-            scaledSize: new google.maps.Size(36, 36),
-            anchor: new google.maps.Point(18, 18)
-        }
-    });
-    driverBidPreviewMarkers.push(driverMarker);
-
-    // Pickup Marker (Green Pin)
-    const pickupMarker = new google.maps.Marker({
-        position: pickupPos,
-        map: driverBidPreviewMap,
-        title: 'Pickup Location',
-        icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#22C55E"/>
-                    <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
-                </svg>
-            `),
-            scaledSize: new google.maps.Size(32, 40),
-            anchor: new google.maps.Point(16, 40)
-        }
-    });
-    driverBidPreviewMarkers.push(pickupMarker);
-
-    // Drop Marker (Destination Pin)
-    const dropMarker = new google.maps.Marker({
-        position: dropPos,
-        map: driverBidPreviewMap,
-        title: 'Drop Destination',
-        icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#EF4444"/>
-                    <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
-                </svg>
-            `),
-            scaledSize: new google.maps.Size(32, 40),
-            anchor: new google.maps.Point(16, 40)
-        }
-    });
-    driverBidPreviewMarkers.push(dropMarker);
-
-    // Route Directions from Pickup to Drop
-    if (!driverBidPreviewDirectionsRenderer) {
-        driverBidPreviewDirectionsRenderer = new google.maps.DirectionsRenderer({
-            map: driverBidPreviewMap,
-            suppressMarkers: true,
-            polylineOptions: {
-                strokeColor: '#0F172A',
-                strokeOpacity: 0.9,
-                strokeWeight: 5
-            }
-        });
-    } else {
-        driverBidPreviewDirectionsRenderer.setMap(driverBidPreviewMap);
-    }
-
-    const directionsService = new google.maps.DirectionsService();
-    directionsService.route({
-        origin: pickupPos,
-        destination: dropPos,
-        travelMode: google.maps.TravelMode.DRIVING
-    }, (response, status) => {
-        if (status === 'OK' && response) {
-            driverBidPreviewDirectionsRenderer.setDirections(response);
-            
-            const bounds = new google.maps.LatLngBounds();
-            bounds.extend(driverPos);
-            bounds.extend(pickupPos);
-            bounds.extend(dropPos);
-            if (response.routes[0] && response.routes[0].bounds) {
-                bounds.union(response.routes[0].bounds);
-            }
-            driverBidPreviewMap.fitBounds(bounds, { top: 60, bottom: 20, left: 30, right: 30 });
+        driverBidMapInitAttempts++;
+        if (driverBidMapInitAttempts <= 10) { // Up to 3.5 seconds (10 x 350ms)
+            setTimeout(window.initDriverBidPreviewMap, 350);
+            return;
         } else {
-            const bounds = new google.maps.LatLngBounds();
-            bounds.extend(driverPos);
-            bounds.extend(pickupPos);
-            bounds.extend(dropPos);
-            driverBidPreviewMap.fitBounds(bounds, 40);
+            // Graceful 3.5s Timeout Fallback - Show clean SVG route card
+            console.warn('[DRIVER_BID_MAP] Google Maps SDK load timeout (3.5s). Displaying SVG fallback route card.');
+            if (skeleton) skeleton.style.display = 'none';
+            if (fallback) fallback.style.display = 'flex';
+            return;
         }
-    });
+    }
+
+    try {
+        const state = window.driverBidPreviewState;
+        const driverPos = { 
+            lat: (typeof marshalLat !== 'undefined' && marshalLat !== null) ? marshalLat : 22.5650, 
+            lng: (typeof marshalLng !== 'undefined' && marshalLng !== null) ? marshalLng : 88.4280 
+        };
+        const pickupPos = state.pickupPos || { lat: 22.5697, lng: 88.4337 };
+        const dropPos = state.dropPos || { lat: 22.5830, lng: 88.3426 };
+
+        if (!driverBidPreviewMap) {
+            driverBidPreviewMap = new google.maps.Map(canvas, {
+                center: pickupPos,
+                zoom: 12,
+                disableDefaultUI: true,
+                gestureHandling: 'greedy',
+                styles: typeof lightMapStyle !== 'undefined' ? lightMapStyle : []
+            });
+        } else {
+            google.maps.event.trigger(driverBidPreviewMap, 'resize');
+        }
+
+        // Clear old preview markers
+        driverBidPreviewMarkers.forEach(m => { if (m && m.setMap) m.setMap(null); });
+        driverBidPreviewMarkers = [];
+
+        // Driver Marker (Live position icon)
+        const driverMarker = new google.maps.Marker({
+            position: driverPos,
+            map: driverBidPreviewMap,
+            title: 'Driver Location (You)',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="18" cy="18" r="16" fill="#FACC15" stroke="#FFFFFF" stroke-width="3" />
+                        <path d="M11 19L18 9L25 19H20V27H16V19H11Z" fill="#000000" />
+                    </svg>
+                `),
+                scaledSize: new google.maps.Size(36, 36),
+                anchor: new google.maps.Point(18, 18)
+            }
+        });
+        driverBidPreviewMarkers.push(driverMarker);
+
+        // Pickup Marker (Green Pin)
+        const pickupMarker = new google.maps.Marker({
+            position: pickupPos,
+            map: driverBidPreviewMap,
+            title: 'Pickup Location',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#22C55E"/>
+                        <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+                    </svg>
+                `),
+                scaledSize: new google.maps.Size(32, 40),
+                anchor: new google.maps.Point(16, 40)
+            }
+        });
+        driverBidPreviewMarkers.push(pickupMarker);
+
+        // Drop Marker (Destination Pin)
+        const dropMarker = new google.maps.Marker({
+            position: dropPos,
+            map: driverBidPreviewMap,
+            title: 'Drop Destination',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16 0C7.16 0 0 7.16 0 16C0 27 16 40 16 40C16 40 32 27 32 16C32 7.16 24.84 0 16 0Z" fill="#EF4444"/>
+                        <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+                    </svg>
+                `),
+                scaledSize: new google.maps.Size(32, 40),
+                anchor: new google.maps.Point(16, 40)
+            }
+        });
+        driverBidPreviewMarkers.push(dropMarker);
+
+        // Route Directions from Pickup to Drop
+        if (!driverBidPreviewDirectionsRenderer) {
+            driverBidPreviewDirectionsRenderer = new google.maps.DirectionsRenderer({
+                map: driverBidPreviewMap,
+                suppressMarkers: true,
+                polylineOptions: {
+                    strokeColor: '#0F172A',
+                    strokeOpacity: 0.9,
+                    strokeWeight: 5
+                }
+            });
+        } else {
+            driverBidPreviewDirectionsRenderer.setMap(driverBidPreviewMap);
+        }
+
+        const directionsService = new google.maps.DirectionsService();
+        directionsService.route({
+            origin: pickupPos,
+            destination: dropPos,
+            travelMode: google.maps.TravelMode.DRIVING
+        }, (response, status) => {
+            if (status === 'OK' && response) {
+                driverBidPreviewDirectionsRenderer.setDirections(response);
+                
+                const bounds = new google.maps.LatLngBounds();
+                bounds.extend(driverPos);
+                bounds.extend(pickupPos);
+                bounds.extend(dropPos);
+                if (response.routes[0] && response.routes[0].bounds) {
+                    bounds.union(response.routes[0].bounds);
+                }
+                driverBidPreviewMap.fitBounds(bounds, { top: 60, bottom: 20, left: 30, right: 30 });
+            } else {
+                const bounds = new google.maps.LatLngBounds();
+                bounds.extend(driverPos);
+                bounds.extend(pickupPos);
+                bounds.extend(dropPos);
+                driverBidPreviewMap.fitBounds(bounds, 40);
+            }
+            // Smoothly reveal map canvas & dismiss skeleton
+            if (skeleton) skeleton.style.display = 'none';
+            if (fallback) fallback.style.display = 'none';
+            if (canvas) canvas.style.opacity = '1';
+        });
+    } catch (mapErr) {
+        console.warn('[DRIVER_BID_MAP_ERROR] Non-blocking exception handled:', mapErr.message);
+        if (skeleton) skeleton.style.display = 'none';
+        if (fallback) fallback.style.display = 'flex';
+    }
+};
+
+window.retryDriverBidPreviewMap = function() {
+    driverBidMapInitAttempts = 0;
+    const skeleton = document.getElementById('driver-bid-map-skeleton');
+    const fallback = document.getElementById('driver-bid-map-fallback');
+    if (skeleton) skeleton.style.display = 'flex';
+    if (fallback) fallback.style.display = 'none';
+    window.initDriverBidPreviewMap();
 };
 
 window.closeDriverBidRequestPreview = function() {
     if (typeof stopRideRequestRingtone === 'function') stopRideRequestRingtone();
+    if (typeof stopNativeRingtone === 'function') stopNativeRingtone();
     if (driverBidPreviewInterval) {
         clearInterval(driverBidPreviewInterval);
         driverBidPreviewInterval = null;
