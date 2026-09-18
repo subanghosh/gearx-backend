@@ -152,6 +152,14 @@ function isDriverDomain(req) {
            host === 'driver.redrivo.in' || host === 'www.driver.redrivo.in';
 }
 
+function isCrmDomain(req) {
+    const host = getNormalizedHost(req);
+    return host === 'crm.redrivo.com' || host === 'www.crm.redrivo.com' ||
+           host === 'admin.redrivo.com' || host === 'www.admin.redrivo.com' ||
+           host === 'crm.redrivo.in' || host === 'www.crm.redrivo.in' ||
+           host === 'admin.redrivo.in' || host === 'www.admin.redrivo.in';
+}
+
 function isApiDomain(req) {
     const host = getNormalizedHost(req);
     return host === 'api.redrivo.com' || host === 'www.api.redrivo.com' ||
@@ -172,7 +180,7 @@ app.use((req, res, next) => {
 });
 
 // --- ANTI-CRAWLING & SEARCH ENGINE EXCLUSION ---
-// Apply noindex headers on non-customer domains (drivers, garages, and api); leave customer domains (redrivo.com / redrivo.in) indexable
+// Apply noindex headers on non-customer domains (drivers, garages, crm, and api); leave customer domains (redrivo.com / redrivo.in) indexable
 app.use((req, res, next) => {
     if (!isCustomerDomain(req)) {
         res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -184,7 +192,7 @@ app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     if (isCustomerDomain(req)) {
         res.send('User-agent: *\nAllow: /\n');
-    } else if (isGarageDomain(req) || isDriverDomain(req)) {
+    } else if (isGarageDomain(req) || isDriverDomain(req) || isCrmDomain(req)) {
         res.send('User-agent: *\nDisallow: /\n');
     } else {
         // Temporarily allow crawling so search engines can read the 'X-Robots-Tag: noindex' header and purge api.redrivo.in from the search index
@@ -219,6 +227,14 @@ const allowedOrigins = [
     'https://www.garages.redrivo.in',
     'https://garage.redrivo.in',
     'https://www.garage.redrivo.in',
+    'https://crm.redrivo.com',
+    'https://www.crm.redrivo.com',
+    'https://admin.redrivo.com',
+    'https://www.admin.redrivo.com',
+    'https://crm.redrivo.in',
+    'https://www.crm.redrivo.in',
+    'https://admin.redrivo.in',
+    'https://www.admin.redrivo.in',
     'https://api.redrivo.in',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
@@ -12802,17 +12818,33 @@ const RESTRICTED_PORTALS_ON_DRIVER_DOMAIN = [
     '/uploads'
 ];
 
+// On CRM / Admin domain (crm.redrivo.com / crm.redrivo.in / admin.redrivo.in), only expose CRM app and APIs
+const RESTRICTED_PORTALS_ON_CRM_DOMAIN = [
+    '/customer',
+    '/vroomly-customer-app',
+    '/garage',
+    '/redrivo-garage-portal',
+    '/vroomly-garage-portal',
+    '/marshal',
+    '/driver',
+    '/drivers',
+    '/vroomly-marshal-app',
+    '/uploads'
+];
+
 app.use((req, res, next) => {
     if (isApiDomain(req)) {
         const p = req.path.toLowerCase();
-        // Allow API routes, health checks, downloads, uploads, and SEO verification
+        // Allow API routes, health checks, downloads, uploads, SEO verification, and CRM/Admin portals
         if (
             p.startsWith('/api') ||
             p === '/health' ||
             p.startsWith('/downloads') ||
             p.startsWith('/uploads') ||
             p === '/robots.txt' ||
-            p === '/googleb3142194a3b63def.html'
+            p === '/googleb3142194a3b63def.html' ||
+            p === '/crm' || p.startsWith('/crm/') ||
+            p === '/admin' || p.startsWith('/admin/')
         ) {
             return next();
         }
@@ -12842,6 +12874,14 @@ app.use((req, res, next) => {
             }
         }
     }
+    if (isCrmDomain(req)) {
+        const p = req.path.toLowerCase();
+        for (const restricted of RESTRICTED_PORTALS_ON_CRM_DOMAIN) {
+            if (p === restricted || p.startsWith(restricted + '/')) {
+                return res.status(404).json({ error: 'Not found' });
+            }
+        }
+    }
     next();
 });
 
@@ -12849,6 +12889,7 @@ app.use((req, res, next) => {
 // /customer on customer domain -> /
 // /garage on garage domain -> /
 // /marshal on driver domain -> /
+// /crm or /admin on crm domain -> /
 app.use((req, res, next) => {
     if (isCustomerDomain(req)) {
         if (req.path === '/customer' || req.path === '/customer/') {
@@ -12895,6 +12936,20 @@ app.use((req, res, next) => {
             return res.redirect(301, target);
         }
     }
+    if (isCrmDomain(req)) {
+        if (req.path === '/crm' || req.path === '/crm/' ||
+            req.path === '/admin' || req.path === '/admin/') {
+            return res.redirect(301, '/');
+        }
+        if (req.path.startsWith('/crm/')) {
+            const target = req.path.replace(/^\/crm/, '') || '/';
+            return res.redirect(301, target);
+        }
+        if (req.path.startsWith('/admin/')) {
+            const target = req.path.replace(/^\/admin/, '') || '/';
+            return res.redirect(301, target);
+        }
+    }
     next();
 });
 
@@ -12904,6 +12959,8 @@ const customerStatic = express.static(path.join(__dirname, 'public/customer'));
 const garageStatic = express.static(path.join(__dirname, 'public/garage'));
 // Driver App Static Serving (at root on driver domain)
 const driverStatic = express.static(path.join(__dirname, 'public/marshal'));
+// CRM & Admin Portal Static Serving (at root on CRM domain)
+const crmStatic = express.static(path.join(__dirname, 'public/crm'));
 
 app.use((req, res, next) => {
     if (isCustomerDomain(req) && !req.path.startsWith('/api')) {
@@ -12914,6 +12971,9 @@ app.use((req, res, next) => {
     }
     if (isDriverDomain(req) && !req.path.startsWith('/api')) {
         return driverStatic(req, res, next);
+    }
+    if (isCrmDomain(req) && !req.path.startsWith('/api')) {
+        return crmStatic(req, res, next);
     }
     next();
 });
@@ -13087,6 +13147,9 @@ app.get('/', (req, res) => {
     if (isDriverDomain(req)) {
         return servePortalHtml('marshal', req, res);
     }
+    if (isCrmDomain(req)) {
+        return servePortalHtml('crm', req, res);
+    }
     if (isApiDomain(req)) {
         return res.status(404).json({ error: 'Not found' });
     }
@@ -13102,6 +13165,9 @@ app.get('/index.html', (req, res) => {
     }
     if (isDriverDomain(req)) {
         return servePortalHtml('marshal', req, res);
+    }
+    if (isCrmDomain(req)) {
+        return servePortalHtml('crm', req, res);
     }
     if (isApiDomain(req)) {
         return res.status(404).json({ error: 'Not found' });
