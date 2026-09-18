@@ -3563,23 +3563,14 @@ function renderVehicles() {
 
     // Append wrapped views and action container
     list.innerHTML = `
-    <div id="step2-vehicle-details" style="display: ${window.bookingSubView === '2A' ? 'block' : 'none'}; width: 100%;">
+    <div id="step2-vehicle-details" style="display: block; width: 100%;">
         ${html}
-    </div>
-    <div id="step2-service-config" style="display: ${window.bookingSubView === '2B' ? 'flex' : 'none'}; flex-direction: column; gap: 14px; width: 100%;">
-        <button type="button" onclick="window.goToBookingSubView('2A')" style="align-self: flex-start; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; outline: none; margin-bottom: 2px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-            Change Vehicle
-        </button>
-        <div id="booking-options-inline-panel" style="width: 100%; display: none; background: rgba(18, 22, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; padding: 16px; box-sizing: border-box; flex-direction: column; gap: 14px; position: relative; z-index: 20;"></div>
     </div>
     <div id="fixed-action-btn-container" style="width: 100%; margin-top: 16px; z-index: 20; position: relative;"></div>
     `;
 
     // Immediately render the button for the active vehicle
     updateFixedActionButton();
-
-    // Immediate innerHTML was already set above, no need to overwrite it
 
     // Dropdown for booking
     if (select) {
@@ -3644,11 +3635,17 @@ window.handleVehicleScroll = function(el) {
 
 window.goToBookingSubView = function(target) {
     window.bookingSubView = target;
-    if (target === '2A') {
-        window.userManuallySelectedHours = false;
-        lastRenderedVehicleId = null;
-    }
     window.updateFixedActionButton();
+};
+
+window.openHireDriverForVehicle = function(vehicleId) {
+    const v = userVehicles.find(veh => veh.id === vehicleId) || userVehicles[activeVehicleIndex];
+    if (v) {
+        window.selectedVehicle = v;
+    }
+    if (typeof window.openHireDriverPreviewScreen === 'function') {
+        window.openHireDriverPreviewScreen();
+    }
 };
 
 window.updateFixedActionButton = function() {
@@ -3659,22 +3656,8 @@ window.updateFixedActionButton = function() {
     
     const isBooked = activeBookedVehicleIds.includes(v.id);
     const activeTripForVehicle = window._activeTripsByVehicle ? window._activeTripsByVehicle[v.id] : null;
-    const inlinePanel = document.getElementById('booking-options-inline-panel');
-    const detailsContainer = document.getElementById('step2-vehicle-details');
-    const configContainer = document.getElementById('step2-service-config');
-
-    // Sync subview element displays
-    if (window.bookingSubView === '2A') {
-        if (detailsContainer) detailsContainer.style.display = 'block';
-        if (configContainer) configContainer.style.display = 'none';
-        if (inlinePanel) inlinePanel.style.display = 'none';
-    } else {
-        if (detailsContainer) detailsContainer.style.display = 'none';
-        if (configContainer) configContainer.style.display = 'flex';
-    }
 
     if (activeTripForVehicle) {
-        if (inlinePanel) inlinePanel.style.display = 'none';
         container.innerHTML = `
             <button class="yellow-btn" onclick="sessionStorage.removeItem('minimizeEnRoute'); showMarshalEnRoute(window._activeTripsByVehicle['${v.id}']);" style="background: #facc15; color: #0b0e14; font-weight: 800; font-size: 1rem; padding: 14px 20px; border-radius: 14px; box-shadow: 0 8px 25px rgba(250, 204, 21, 0.3); border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative; z-index: 20;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -3685,7 +3668,6 @@ window.updateFixedActionButton = function() {
     }
     
     if (isBooked) {
-        if (inlinePanel) inlinePanel.style.display = 'none';
         container.innerHTML = `
             <button class="yellow-btn" disabled style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.08); box-shadow: none; cursor: not-allowed; pointer-events: none; font-weight: 800; font-size: 1rem; padding: 14px 20px; border-radius: 14px; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -3695,60 +3677,13 @@ window.updateFixedActionButton = function() {
         return;
     }
 
-    // Available for Booking
-    const locInput = document.getElementById(`pickup-location-global`);
-    const dropInput = document.getElementById(`drop-location-global`);
-    const pickupAddress = locInput ? (locInput.value.trim() || locInput.getAttribute('data-address') || '').trim() : '';
-    const dropAddress = dropInput ? dropInput.value.trim() : '';
-    const locationsSet = pickupAddress && dropAddress;
-
-    if (!locationsSet) {
-        if (inlinePanel) inlinePanel.style.display = 'none';
-        container.innerHTML = `
-            <button class="yellow-btn" disabled style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.08); box-shadow: none; cursor: not-allowed; pointer-events: none; font-weight: 800; font-size: 0.9rem; padding: 14px 20px; border-radius: 14px; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative;">
-                Enter Pickup & Drop Address Above to Book
-            </button>
-        `;
-        return;
-    }
-
-    // Locations are set: handle depending on view substate
-    if (window.bookingSubView === '2A') {
-        container.innerHTML = `
-            <button class="yellow-btn" onclick="window.goToBookingSubView('2B')" style="background: #facc15; color: #0b0e14; font-weight: 800; font-size: 1rem; padding: 14px 20px; border-radius: 14px; box-shadow: 0 8px 25px rgba(250, 204, 21, 0.3); border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative; z-index: 20;">
-                Select Vehicle
-            </button>
-        `;
-    } else {
-        if (inlinePanel) {
-            inlinePanel.style.display = 'flex';
-            window.renderInlineBookingPanel(v.id);
-        }
-
-        // Render confirm slider inside container
-        if (window.activeBookingTab === 'instant') {
-            container.innerHTML = `
-                <button type="button" id="btn-request-service-instant" onclick="confirmInstantBooking()" class="yellow-btn" style="width: 100%; height: 52px; border-radius: 26px; background: var(--primary); color: #000; font-size: 0.9rem; font-weight: 800; border: none; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(250, 204, 21, 0.3); outline: none;">
-                    Search Driver
-                </button>
-            `;
-        } else {
-            container.innerHTML = `
-                <div id="slide-confirm-schedule" class="slide-to-confirm-container" style="position: relative; width: 100%; height: 52px; border-radius: 26px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: center; user-select: none; z-index: 20;">
-                    <span class="slide-text" style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); pointer-events: none; z-index: 1; letter-spacing: 0.5px; text-transform: uppercase;">Slide to Confirm Schedule</span>
-                    <div class="slide-handle" style="position: absolute; left: 4px; top: 4px; width: 44px; height: 44px; border-radius: 22px; background: #22c55e; display: flex; align-items: center; justify-content: center; cursor: grab; z-index: 2; box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-                    </div>
-                    <div class="slide-highlight" style="position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(34, 197, 94, 0.15); border-radius: 26px 0 0 26px; pointer-events: none; z-index: 0;"></div>
-                </div>
-            `;
-            setTimeout(() => {
-                initSlideToConfirm(document.getElementById('slide-confirm-schedule'), () => {
-                    confirmScheduleBooking();
-                });
-            }, 50);
-        }
-    }
+    // Direct Action: Hire Driver for this vehicle
+    container.innerHTML = `
+        <button class="yellow-btn" onclick="openHireDriverForVehicle('${v.id}')" style="background: #facc15; color: #0b0e14; font-weight: 800; font-size: 1rem; padding: 14px 20px; border-radius: 14px; box-shadow: 0 8px 25px rgba(250, 204, 21, 0.3); border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative; z-index: 20;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>
+            Hire Driver for ${v.make} ${v.model}
+        </button>
+    `;
 };
 
 window.prevVehicle = function() {
@@ -12436,6 +12371,11 @@ function getOutstationVehiclesList() {
 }
 
 window.openOutstationBookingScreen = function() {
+    window.previewHireDriverState.tripType = 'outstation';
+    if (typeof window.openHireDriverPreviewScreen === 'function') {
+        window.openHireDriverPreviewScreen();
+        return;
+    }
     const screen = document.getElementById('outstation-booking-screen');
     if (!screen) return;
 
@@ -13741,6 +13681,20 @@ window.customerBiddingState = {
 
 window.startHireDriverLiveSearch = async function(customRequestId = null) {
     const state = window.previewHireDriverState || { offerAmount: 550, floorAmount: 440 };
+    const vehicleId = window.selectedVehicle ? window.selectedVehicle.id : (userVehicles && userVehicles[0] ? userVehicles[0].id : null);
+
+    // Profile completion guard
+    if (currentUser && (!currentUser.name || currentUser.name === 'New Partner' || !currentUser.email || currentUser.email === 'pending@redrivo.com')) {
+        if (vehicleId) {
+            const vInput = document.getElementById('ud-pending-vehicle-id');
+            if (vInput) vInput.value = vehicleId;
+        }
+        window.userProfileTriggeredByBooking = true;
+        const modal = document.getElementById('user-details-modal');
+        if (modal) modal.style.display = 'flex';
+        return;
+    }
+
     let reqId = customRequestId || window.currentPendingRequestId || `sr_${Date.now()}`;
     window.customerBiddingState.activeRequestId = reqId;
     window.customerBiddingState.elapsedSeconds = 0;
@@ -13756,7 +13710,6 @@ window.startHireDriverLiveSearch = async function(customRequestId = null) {
         try {
             const pickupAddr = state.pickupLocation || 'Mani Casadona, Newtown';
             const dropAddr = state.dropLocation || (document.getElementById('preview-global-drop')?.value) || 'Howrah Railway Station';
-            const vehicleId = window.selectedVehicle ? window.selectedVehicle.id : (userVehicles && userVehicles[0] ? userVehicles[0].id : null);
             
             await apiPost('/service-requests', {
                 id: reqId,
@@ -14551,61 +14504,152 @@ window.selectPreviewOutstation = function(label, floor, offer) {
     updatePreviewOfferDisplay();
 };
 
+const PREVIEW_TIME_SLOT_RANGES = [
+    { label: "06:00 AM - 07:00 AM", startHour: 6, startMin: 0 },
+    { label: "07:00 AM - 08:00 AM", startHour: 7, startMin: 0 },
+    { label: "08:00 AM - 09:00 AM", startHour: 8, startMin: 0 },
+    { label: "09:00 AM - 10:00 AM", startHour: 9, startMin: 0 },
+    { label: "10:00 AM - 11:00 AM", startHour: 10, startMin: 0 },
+    { label: "11:00 AM - 12:00 PM", startHour: 11, startMin: 0 },
+    { label: "12:00 PM - 01:00 PM", startHour: 12, startMin: 0 },
+    { label: "01:00 PM - 02:00 PM", startHour: 13, startMin: 0 },
+    { label: "02:00 PM - 03:00 PM", startHour: 14, startMin: 0 },
+    { label: "03:00 PM - 04:00 PM", startHour: 15, startMin: 0 },
+    { label: "04:00 PM - 05:00 PM", startHour: 16, startMin: 0 },
+    { label: "05:00 PM - 06:00 PM", startHour: 17, startMin: 0 },
+    { label: "06:00 PM - 07:00 PM", startHour: 18, startMin: 0 },
+    { label: "07:00 PM - 08:00 PM", startHour: 19, startMin: 0 },
+    { label: "08:00 PM - 09:00 PM", startHour: 20, startMin: 0 },
+    { label: "09:00 PM - 10:00 PM", startHour: 21, startMin: 0 },
+    { label: "10:00 PM - 11:00 PM", startHour: 22, startMin: 0 }
+];
+
+function getISTDateObj() {
+    const now = new Date();
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utcMs + istOffsetMs);
+}
+
 window.renderPreviewSchedulePickers = function() {
     const dateContainer = document.getElementById('preview-schedule-date-pills');
-    const timeContainer = document.getElementById('preview-schedule-time-slots');
-    
-    if (dateContainer) {
-        const dates = [
-            { label: 'Today', sub: '18 Sep' },
-            { label: 'Tomorrow', sub: '19 Sep' },
-            { label: 'Sat', sub: '20 Sep' },
-            { label: 'Sun', sub: '21 Sep' },
-            { label: 'Mon', sub: '22 Sep' },
-            { label: 'Tue', sub: '23 Sep' }
-        ];
-        dateContainer.innerHTML = dates.map((d, i) => `
-            <div onclick="selectPreviewDate(${i}, this)" style="flex-shrink: 0; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${i === 0 ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${i === 0 ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
-                <div style="font-size: 0.75rem; font-weight: 800; color: ${i === 0 ? 'var(--primary)' : '#fff'};">${d.label}</div>
+    if (!dateContainer) return;
+
+    const nowIST = getISTDateObj();
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(nowIST);
+        d.setDate(nowIST.getDate() + i);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${yyyy}-${mm}-${dd}`;
+        
+        let label = '';
+        if (i === 0) label = 'Today';
+        else if (i === 1) label = 'Tomorrow';
+        else label = d.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        const sub = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+        dates.push({ dateKey, label, sub });
+    }
+
+    if (!window.previewHireDriverState.selectedDate || !dates.some(d => d.dateKey === window.previewHireDriverState.selectedDate)) {
+        window.previewHireDriverState.selectedDate = dates[0].dateKey;
+    }
+
+    dateContainer.innerHTML = dates.map((d, i) => {
+        const isSel = window.previewHireDriverState.selectedDate === d.dateKey;
+        return `
+            <div onclick="selectPreviewDate('${d.dateKey}', this)" style="flex-shrink: 0; padding: 6px 12px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'};">${d.label}</div>
                 <div style="font-size: 0.65rem; color: #a1a1aa; font-weight: 600;">${d.sub}</div>
             </div>
-        `).join('');
-    }
-    
-    if (timeContainer) {
-        const times = ['06:00 AM', '08:00 AM', '10:00 AM', '12:00 PM', '02:00 PM', '04:00 PM', '06:00 PM', '08:00 PM', '10:00 PM'];
-        timeContainer.innerHTML = times.map((t, i) => `
-            <div onclick="selectPreviewTime(${i}, this)" style="padding: 6px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: ${i === 1 ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.06)'}; background: ${i === 1 ? 'rgba(250,204,21,0.12)' : 'rgba(0,0,0,0.2)'}; text-align: center; font-size: 0.72rem; font-weight: 700; color: ${i === 1 ? 'var(--primary)' : '#fff'};">
-                ${t}
+        `;
+    }).join('');
+
+    renderPreviewTimeSlotsForDate(window.previewHireDriverState.selectedDate);
+};
+
+function renderPreviewTimeSlotsForDate(dateKey) {
+    const timeContainer = document.getElementById('preview-schedule-time-slots');
+    if (!timeContainer) return;
+
+    const nowIST = getISTDateObj();
+    const todayKey = `${nowIST.getFullYear()}-${String(nowIST.getMonth() + 1).padStart(2, '0')}-${String(nowIST.getDate()).padStart(2, '0')}`;
+    const isToday = dateKey === todayKey;
+
+    // 45-minute buffer so drivers have adequate lead time to accept and reach
+    const currentTotalMins = isToday ? (nowIST.getHours() * 60 + nowIST.getMinutes() + 45) : 0;
+
+    const availableSlots = PREVIEW_TIME_SLOT_RANGES.filter(s => {
+        if (!isToday) return true;
+        const slotStartMins = s.startHour * 60 + s.startMin;
+        return slotStartMins >= currentTotalMins;
+    });
+
+    if (availableSlots.length === 0) {
+        timeContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; padding: 12px; background: rgba(250,204,21,0.08); border: 1px dashed rgba(250,204,21,0.3); border-radius: 10px; text-align: center; color: #facc15; font-size: 0.75rem; font-weight: 700;">
+                No more slots available for Today.
+                <div style="font-size: 0.65rem; color: #a1a1aa; margin-top: 3px;">Please select Tomorrow or a later date.</div>
             </div>
-        `).join('');
+        `;
+        window.previewHireDriverState.selectedTimeSlot = '';
+        return;
     }
-};
 
-window.selectPreviewDate = function(idx, el) {
+    if (!window.previewHireDriverState.selectedTimeSlot || !availableSlots.some(s => s.label === window.previewHireDriverState.selectedTimeSlot)) {
+        window.previewHireDriverState.selectedTimeSlot = availableSlots[0].label;
+    }
+
+    timeContainer.innerHTML = availableSlots.map(s => {
+        const isSel = window.previewHireDriverState.selectedTimeSlot === s.label;
+        return `
+            <div onclick="selectPreviewTime('${s.label}', this)" style="padding: 9px 8px; border-radius: 10px; cursor: pointer; transition: all 0.2s; border: ${isSel ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.08)'}; background: ${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(0,0,0,0.3)'}; text-align: center; font-size: 0.72rem; font-weight: 800; color: ${isSel ? 'var(--primary)' : '#fff'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                ${s.label}
+            </div>
+        `;
+    }).join('');
+}
+
+window.selectPreviewDate = function(dateKey, el) {
+    window.previewHireDriverState.selectedDate = dateKey;
     const container = document.getElementById('preview-schedule-date-pills');
-    if (!container) return;
-    Array.from(container.children).forEach(c => {
-        c.style.border = '1px solid rgba(255,255,255,0.08)';
-        c.style.background = 'rgba(0,0,0,0.3)';
-        c.querySelector('div').style.color = '#fff';
-    });
-    el.style.border = '1.5px solid var(--primary)';
-    el.style.background = 'rgba(250,204,21,0.15)';
-    el.querySelector('div').style.color = 'var(--primary)';
+    if (container) {
+        Array.from(container.children).forEach(c => {
+            c.style.border = '1px solid rgba(255,255,255,0.08)';
+            c.style.background = 'rgba(0,0,0,0.3)';
+            const titleEl = c.querySelector('div');
+            if (titleEl) titleEl.style.color = '#fff';
+        });
+    }
+    if (el) {
+        el.style.border = '1.5px solid var(--primary)';
+        el.style.background = 'rgba(250,204,21,0.15)';
+        const titleEl = el.querySelector('div');
+        if (titleEl) titleEl.style.color = 'var(--primary)';
+    }
+    renderPreviewTimeSlotsForDate(dateKey);
+    updatePreviewUI();
 };
 
-window.selectPreviewTime = function(idx, el) {
+window.selectPreviewTime = function(timeLabel, el) {
+    window.previewHireDriverState.selectedTimeSlot = timeLabel;
     const container = document.getElementById('preview-schedule-time-slots');
-    if (!container) return;
-    Array.from(container.children).forEach(c => {
-        c.style.border = '1px solid rgba(255,255,255,0.06)';
-        c.style.background = 'rgba(0,0,0,0.2)';
-        c.style.color = '#fff';
-    });
-    el.style.border = '1.5px solid var(--primary)';
-    el.style.background = 'rgba(250,204,21,0.12)';
-    el.style.color = 'var(--primary)';
+    if (container) {
+        Array.from(container.children).forEach(c => {
+            c.style.border = '1px solid rgba(255,255,255,0.08)';
+            c.style.background = 'rgba(0,0,0,0.3)';
+            c.style.color = '#fff';
+        });
+    }
+    if (el) {
+        el.style.border = '1.5px solid var(--primary)';
+        el.style.background = 'rgba(250,204,21,0.15)';
+        el.style.color = 'var(--primary)';
+    }
+    updatePreviewUI();
 };
 
 // -------------------------------------------------------------------------
@@ -14623,6 +14667,7 @@ window.stepPreviewOffer = function(delta) {
     }
     window.previewHireDriverState.offerAmount = current;
     updatePreviewOfferDisplay();
+    updatePreviewUI();
 };
 
 window.updatePreviewOfferDisplay = function() {
@@ -14652,14 +14697,108 @@ window.updatePreviewUI = function() {
     setPreviewBookingMode(window.previewHireDriverState.bookingMode);
     setPreviewTiming(window.previewHireDriverState.timing);
     updatePreviewOfferDisplay();
+    
+    const searchBtn = document.getElementById('preview-btn-search-driver');
+    if (searchBtn) {
+        const state = window.previewHireDriverState || {};
+        const offer = state.offerAmount || 450;
+        if (state.timing === 'schedule') {
+            searchBtn.textContent = `SCHEDULE RIDE (₹${offer.toLocaleString('en-IN')})`;
+            searchBtn.style.background = '#22c55e';
+            searchBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.35)';
+        } else {
+            searchBtn.textContent = 'SEARCH';
+            searchBtn.style.background = 'var(--primary)';
+            searchBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.35)';
+        }
+    }
 };
 
-// SEARCH BUTTON ACTION: Opens Searching Screen A & broadcasts bid offers
+window.confirmHireDriverSchedule = async function() {
+    const state = window.previewHireDriverState || {};
+    const vehicleId = window.selectedVehicle ? window.selectedVehicle.id : (userVehicles && userVehicles[0] ? userVehicles[0].id : null);
+
+    // Profile completion guard
+    if (currentUser && (!currentUser.name || currentUser.name === 'New Partner' || !currentUser.email || currentUser.email === 'pending@redrivo.com')) {
+        if (vehicleId) {
+            const vInput = document.getElementById('ud-pending-vehicle-id');
+            if (vInput) vInput.value = vehicleId;
+        }
+        window.userProfileTriggeredByBooking = true;
+        const modal = document.getElementById('user-details-modal');
+        if (modal) modal.style.display = 'flex';
+        return;
+    }
+
+    const dateVal = state.selectedDate;
+    const timeVal = state.selectedTimeSlot;
+
+    if (!dateVal || !timeVal) {
+        showToast('Please select a pickup date and time slot.', 'error');
+        return;
+    }
+
+    const pickupAddr = state.pickupLocation || 'Mani Casadona, Newtown';
+    const dropAddr = state.dropLocation || (document.getElementById('preview-global-drop')?.value) || 'Howrah Railway Station';
+    const baseAmount = state.offerAmount || 550;
+    const reqId = `sr_sched_${Date.now()}`;
+
+    const btn = document.getElementById('preview-btn-search-driver');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'SCHEDULING...';
+        btn.style.opacity = '0.7';
+    }
+
+    try {
+        await apiPost('/service-requests', {
+            id: reqId,
+            customerId: currentUser.id,
+            vehicleId,
+            date: dateVal,
+            issue: `Scheduled Driver (${timeVal})`,
+            serviceType: 'Hire Driver',
+            bookingFlow: 'p2p',
+            pickupDropType: state.tripType || 'One-Way',
+            pickupDropCost: baseAmount,
+            totalCustomerPrice: baseAmount,
+            lat: window.currentCustomerLat || 22.5697,
+            lng: window.currentCustomerLng || 88.4337,
+            pickup_address: pickupAddr,
+            drop_address: dropAddr,
+            status: 'scheduled',
+            pricing_source: 'bidding'
+        });
+
+        window.closeHireDriverPreviewScreen();
+        showToast(`Ride scheduled for ${dateVal} (${timeVal})! Added to My Bookings.`, 'success');
+
+        if (typeof loadDashboard === 'function') {
+            loadDashboard();
+        }
+    } catch (e) {
+        console.error('Failed to create scheduled service request:', e);
+        showToast(e.message || 'Failed to schedule ride. Please retry.', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            updatePreviewUI();
+        }
+    }
+};
+
+// SEARCH BUTTON ACTION: Opens Searching Screen A for Instant OR submits Scheduled Booking
 window.triggerPreviewSearch = function() {
-    if (typeof window.startHireDriverLiveSearch === 'function') {
-        window.startHireDriverLiveSearch();
+    const state = window.previewHireDriverState || {};
+    if (state.timing === 'schedule') {
+        window.confirmHireDriverSchedule();
     } else {
-        openHireDriverSearchingPreview();
+        if (typeof window.startHireDriverLiveSearch === 'function') {
+            window.startHireDriverLiveSearch();
+        } else {
+            openHireDriverSearchingPreview();
+        }
     }
 };
 
