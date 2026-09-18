@@ -3574,7 +3574,7 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     
     // Role-based template selection for Fast2SMS WhatsApp (Pointing to live +91 62892 47097)
     const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb';
-    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '8793c3bfe3';
+    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '0345a7eafb';
     const fast2SmsOtpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
 
     // =========================================================================
