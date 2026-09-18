@@ -9228,20 +9228,22 @@ const createRequest = async (req, res) => {
         const discountAmt = isPromo ? pricing.promoDiscountAmount : 0;
         const absorbedBy = isPromo ? pricing.promoAbsorbedBy : 'redrivo';
         
+        const pricingSource = req.body.pricing_source || req.body.pricingSource || pricingMode || 'distance';
+
         const insertReq = async (assignedGarageId) => {
             // 1. SQLite Write
             db.run(
-                `INSERT INTO service_requests
+                `INSERT INTO service_requests 
                  (id, customerId, vehicleId, garageId, date, status, totalCustomerPrice, workerId,
-                  lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(id) DO UPDATE SET status = EXCLUDED.status, totalCustomerPrice = EXCLUDED.totalCustomerPrice`,
+                  lat, lng, pickup_address, drop_address, issue, service_category, booking_flow, pickup_drop_type, route_stops, pricing_source, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET status = EXCLUDED.status, totalCustomerPrice = EXCLUDED.totalCustomerPrice, pricing_source = EXCLUDED.pricing_source`,
                 [
                     id, customerId, vehicleId || null, assignedGarageId || garageId || null,
                     date || new Date().toISOString().split('T')[0], status || 'pending', finalPrice, workerId || null,
                     lat || null, lng || null,
                     pickup_address || null, drop_address || null,
-                    issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString, Date.now()
+                    issue || null, serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString, pricingSource, Date.now()
                 ], async (err) => {
                     if (err) {
                         console.error('Error creating request in SQLite:', err.message);
@@ -9255,8 +9257,8 @@ const createRequest = async (req, res) => {
                             INSERT INTO service_requests (
                                 id, customerid, vehicleid, garageid, date, status, totalcustomerprice, workerid,
                                 lat, lng, pickup_address, drop_address, service_category, booking_flow, pickup_drop_type, route_stops, created_at,
-                                is_promotional_ride, promo_type, original_customer_fare, promo_discount_amount, promo_absorbed_by, offer_id
-                            ) VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, EXTRACT(EPOCH FROM NOW())*1000, $16, $17, $18, $19, $20, $21)
+                                is_promotional_ride, promo_type, original_customer_fare, promo_discount_amount, promo_absorbed_by, offer_id, pricing_source
+                            ) VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, EXTRACT(EPOCH FROM NOW())*1000, $16, $17, $18, $19, $20, $21, $22)
                             ON CONFLICT (id) DO UPDATE SET
                                 status = EXCLUDED.status,
                                 totalcustomerprice = EXCLUDED.totalcustomerprice,
@@ -9265,13 +9267,14 @@ const createRequest = async (req, res) => {
                                 original_customer_fare = EXCLUDED.original_customer_fare,
                                 promo_discount_amount = EXCLUDED.promo_discount_amount,
                                 promo_absorbed_by = EXCLUDED.promo_absorbed_by,
-                                offer_id = EXCLUDED.offer_id;
+                                offer_id = EXCLUDED.offer_id,
+                                pricing_source = EXCLUDED.pricing_source;
                         `, [
                             id, customerId, vehicleId || null, assignedGarageId || garageId || null,
                             status || 'pending', finalPrice, workerId || null,
                             lat || null, lng || null, pickup_address || null, drop_address || null,
                             serviceCategory, bookingFlow || 'p2p', pickupDropType || 'Pickup', routeStopsString,
-                            isPromo, promoType, origFare, discountAmt, absorbedBy, offerId
+                            isPromo, promoType, origFare, discountAmt, absorbedBy, offerId, pricingSource
                         ]);
 
                         // 3. Register promo vehicle plate if applicable
