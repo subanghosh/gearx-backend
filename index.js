@@ -5699,7 +5699,7 @@ apiRouter.post('/demand/log-search', async (req, res) => {
     }
 });
 
-apiRouter.get('/marshals/:id/active-trip', async (req, res) => {
+apiRouter.get('/marshals/:id/active-trip', authMiddleware, verifyOwnership, async (req, res) => {
     try {
         const marshalId = req.params.id;
         const activeTripStatuses = [
@@ -6001,7 +6001,7 @@ function canSwitchPayoutModel(lastSwitchedAt) {
     return (last.getFullYear() !== now.getFullYear()) || (last.getMonth() !== now.getMonth());
 }
 
-apiRouter.put('/workers/:id/payout-plan', async (req, res) => {
+apiRouter.put('/workers/:id/payout-plan', authMiddleware, verifyOwnership, async (req, res) => {
     try {
         const id = req.params.id;
         const { requestedModel, requestedCycle } = req.body;
@@ -6106,9 +6106,10 @@ function getCycleDurationDays(cycle) {
 }
 
 // 1. Create Razorpay Order (Strict Real Outbound API Call to api.razorpay.com)
-apiRouter.post('/driver/subscription/create-order', async (req, res) => {
+apiRouter.post('/driver/subscription/create-order', authMiddleware, async (req, res) => {
     try {
-        const { driverId, cycle } = req.body;
+        const driverId = (req.user.role === 'admin' && req.body.driverId) ? req.body.driverId : req.user.id;
+        const { cycle } = req.body;
         if (!driverId) return res.status(400).json({ error: 'Driver ID is required.' });
         if (!['weekly', 'monthly', 'quarterly', 'yearly', 'annually', 'daily'].includes(cycle)) {
             return res.status(400).json({ error: 'Invalid subscription cycle.' });
@@ -6255,9 +6256,10 @@ async function activateDriverSubscriptionAtomic(gatewayOrderId, gatewayPaymentId
 }
 
 // 2. Client-Side Signature Verification & Activation (Strict HMAC Verification)
-apiRouter.post('/driver/subscription/verify', async (req, res) => {
+apiRouter.post('/driver/subscription/verify', authMiddleware, async (req, res) => {
     try {
-        const { orderId, paymentId, signature, driverId } = req.body;
+        const { orderId, paymentId, signature } = req.body;
+        const driverId = (req.user.role === 'admin' && req.body.driverId) ? req.body.driverId : req.user.id;
         if (!orderId || !paymentId || !signature) {
             return res.status(400).json({ error: 'orderId, paymentId, and signature are required.' });
         }
@@ -8549,7 +8551,10 @@ apiRouter.get('/garages/:id/owners', authMiddleware, (req, res) => {
     });
 });
 
-apiRouter.post('/garages/:id/owners', (req, res) => {
+apiRouter.post('/garages/:id/owners', authMiddleware, requireRole('garage', 'admin'), (req, res) => {
+    if (req.user.role !== 'admin' && req.user.garageId !== req.params.id && req.user.id !== req.params.id) {
+        return res.status(403).json({ error: 'Forbidden: You can only modify your own garage owners.' });
+    }
     const { name, phone, altPhone, email, aadhaar, pan } = req.body;
     const id = 'own_' + Date.now();
     db.run("INSERT INTO garage_owners (id, garageId, name, phone, altPhone, email, aadhaar, pan) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -8559,28 +8564,58 @@ apiRouter.post('/garages/:id/owners', (req, res) => {
         });
 });
 
-apiRouter.put('/owners/:id', (req, res) => {
-    const allowed = ['name', 'phone', 'altPhone', 'email', 'aadhaar', 'pan', 'phoneVerified', 'altPhoneVerified', 'emailVerified', 'aadhaarVerified', 'panVerified'];
-    const fields = []; const vals = [];
-    allowed.forEach(col => {
-        if (req.body[col] !== undefined) {
-            fields.push(`${col} = ?`);
-            vals.push(req.body[col]);
-        }
-    });
-    if (fields.length === 0) return res.json({ success: true });
-    vals.push(req.params.id);
-    db.run(`UPDATE garage_owners SET ${fields.join(', ')} WHERE id = ?`, vals, (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
+apiRouter.put('/owners/:id', authMiddleware, requireRole('garage', 'admin'), (req, res) => {
+    const executeUpdate = () => {
+        const allowed = ['name', 'phone', 'altPhone', 'email', 'aadhaar', 'pan', 'phoneVerified', 'altPhoneVerified', 'emailVerified', 'aadhaarVerified', 'panVerified'];
+        const fields = []; const vals = [];
+        allowed.forEach(col => {
+            if (req.body[col] !== undefined) {
+                fields.push(`${col} = ?`);
+                vals.push(req.body[col]);
+            }
+        });
+        if (fields.length === 0) return res.json({ success: true });
+        vals.push(req.params.id);
+        db.run(`UPDATE garage_owners SET ${fields.join(', ')} WHERE id = ?`, vals, (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    };
+
+    if (req.user.role !== 'admin') {
+        db.get("SELECT garageId FROM garage_owners WHERE id = ?", [req.params.id], (err, owner) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (!owner) return res.status(404).json({ error: 'Owner not found' });
+            if (owner.garageId !== req.user.garageId && owner.garageId !== req.user.id) {
+                return res.status(403).json({ error: 'Forbidden: You can only modify owners for your own garage.' });
+            }
+            executeUpdate();
+        });
+    } else {
+        executeUpdate();
+    }
 });
 
-apiRouter.delete('/owners/:id', (req, res) => {
-    db.run("DELETE FROM garage_owners WHERE id = ?", [req.params.id], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
+apiRouter.delete('/owners/:id', authMiddleware, requireRole('garage', 'admin'), (req, res) => {
+    const executeDelete = () => {
+        db.run("DELETE FROM garage_owners WHERE id = ?", [req.params.id], (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        });
+    };
+
+    if (req.user.role !== 'admin') {
+        db.get("SELECT garageId FROM garage_owners WHERE id = ?", [req.params.id], (err, owner) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (!owner) return res.status(404).json({ error: 'Owner not found' });
+            if (owner.garageId !== req.user.garageId && owner.garageId !== req.user.id) {
+                return res.status(403).json({ error: 'Forbidden: You can only modify owners for your own garage.' });
+            }
+            executeDelete();
+        });
+    } else {
+        executeDelete();
+    }
 });
 
 // Generic Verifier (Simulates OTP/KYC success)
@@ -9003,7 +9038,7 @@ apiRouter.get('/vehicles/:id/plate-change-requests', async (req, res) => {
 });
 
 // GET /crm/vehicle-plate-requests
-apiRouter.get('/crm/vehicle-plate-requests', async (req, res) => {
+apiRouter.get('/crm/vehicle-plate-requests', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const { status } = req.query;
         let query = `
@@ -9042,7 +9077,7 @@ apiRouter.get('/crm/vehicle-plate-requests', async (req, res) => {
 });
 
 // POST /crm/vehicle-plate-requests/:id/approve
-apiRouter.post('/crm/vehicle-plate-requests/:id/approve', async (req, res) => {
+apiRouter.post('/crm/vehicle-plate-requests/:id/approve', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const requestId = req.params.id;
         const reqRes = await pool.query("SELECT * FROM vehicle_plate_change_requests WHERE id = $1", [requestId]);
@@ -9124,7 +9159,7 @@ apiRouter.post('/crm/vehicle-plate-requests/:id/approve', async (req, res) => {
 });
 
 // POST /crm/vehicle-plate-requests/:id/reject
-apiRouter.post('/crm/vehicle-plate-requests/:id/reject', async (req, res) => {
+apiRouter.post('/crm/vehicle-plate-requests/:id/reject', authMiddleware, requireRole('admin'), async (req, res) => {
     try {
         const requestId = req.params.id;
         const { reason } = req.body;
@@ -11001,7 +11036,7 @@ apiRouter.post('/trips/:id/extend-rental', authMiddleware, async (req, res) => {
     }
 });
 
-apiRouter.post('/trips/:id/location', async (req, res) => {
+apiRouter.post('/trips/:id/location', authMiddleware, async (req, res) => {
     const tripId = req.params.id;
     const { lat, lng, speed, accuracy } = req.body;
 
@@ -11024,6 +11059,10 @@ apiRouter.post('/trips/:id/location', async (req, res) => {
         );
         const trip = tripRes.rows[0];
         if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+        if (req.user.role !== 'admin' && req.user.id !== trip.marshalid && req.user.id !== trip.deliverymarshalid) {
+            return res.status(403).json({ error: 'Forbidden: You are not the assigned driver for this trip.' });
+        }
 
         const now = new Date();
         const lastLat = trip.last_lat ? parseFloat(trip.last_lat) : (trip.pickuplat ? parseFloat(trip.pickuplat) : null);
@@ -11720,7 +11759,7 @@ apiRouter.get('/users/:id/wallet', authMiddleware, async (req, res) => {
 });
 
 // POST request withdrawal (Driver initiates withdrawal request)
-apiRouter.post('/users/:id/withdrawals', async (req, res) => {
+apiRouter.post('/users/:id/withdrawals', authMiddleware, verifyOwnership, async (req, res) => {
     const userId = req.params.id;
     const { amount, payoutMethod } = req.body;
     const withdrawAmount = parseFloat(amount);
