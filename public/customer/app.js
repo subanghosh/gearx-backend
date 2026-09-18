@@ -3583,6 +3583,9 @@ function renderVehicles() {
     }
 }
 
+window.renderVehicles = renderVehicles;
+window.updateFixedActionButton = updateFixedActionButton;
+
 // Flag to suppress scroll events during programmatic scrolls
 let _isProgrammaticScroll = false;
 
