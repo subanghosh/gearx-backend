@@ -756,7 +756,7 @@ function switchLoginMode(mode) {
         if (prefix) prefix.style.display = 'none';
         if (input) {
             input.type = 'email';
-            input.placeholder = 'Enter your email address';
+            input.placeholder = 'Enter your Email address';
             input.maxLength = 100;
         }
         const chGroup = document.getElementById('marshal-otp-channel-group');
