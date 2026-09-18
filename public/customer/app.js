@@ -13584,11 +13584,13 @@ window.closeHireDriverPreviewScreen = function() {
 // Bottom Sheet Gesture & Drag Handling
 // -------------------------------------------------------------------------
 window.togglePreviewSheetExpand = function() {
+    if (window._justDraggedPreviewSheet) return;
     const sheet = document.getElementById('preview-hire-bottom-sheet');
     const icon = document.getElementById('preview-sheet-expand-icon');
     if (!sheet) return;
     
     window.previewHireDriverState.sheetExpanded = !window.previewHireDriverState.sheetExpanded;
+    sheet.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)';
     if (window.previewHireDriverState.sheetExpanded) {
         sheet.style.transform = 'translateY(0px)';
         if (icon) icon.textContent = '▼';
@@ -13600,72 +13602,136 @@ window.togglePreviewSheetExpand = function() {
 
 function initPreviewSheetDragging(sheetId, handleId) {
     const sheet = document.getElementById(sheetId);
-    const handle = document.getElementById(handleId);
-    if (!sheet || !handle || sheet._dragInitialized) return;
+    if (!sheet || sheet._dragInitialized) return;
     sheet._dragInitialized = true;
+    
+    // Collect all drag trigger elements for this sheet
+    const handleElements = [];
+    const mainHandle = document.getElementById(handleId);
+    if (mainHandle) handleElements.push(mainHandle);
+    
+    if (sheetId === 'preview-hire-bottom-sheet') {
+        const strip = document.getElementById('preview-sheet-collapsed-strip');
+        if (strip && !handleElements.includes(strip)) handleElements.push(strip);
+    }
+    
+    if (handleElements.length === 0) return;
     
     let startY = 0;
     let currentY = 0;
+    let startOffsetY = 0;
+    let collapsedOffsetY = 0;
     let isDragging = false;
+    let hasMoved = false;
+    let startTime = 0;
+    
+    const peekHeight = sheetId.includes('searching') ? 250 : 210;
     
     function onStart(e) {
+        // Only primary mouse button or touch
+        if (e.type === 'mousedown' && e.button !== 0) return;
+        
         isDragging = true;
-        startY = (e.touches ? e.touches[0].clientY : e.clientY);
+        hasMoved = false;
+        startTime = Date.now();
+        
+        startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+        currentY = startY;
+        
+        // Calculate exact pixel offset of sheet at current state
+        const sheetHeight = sheet.offsetHeight || sheet.getBoundingClientRect().height || (window.innerHeight * 0.8);
+        collapsedOffsetY = Math.max(0, sheetHeight - peekHeight);
+        
+        let isExpanded = false;
+        if (sheetId === 'preview-hire-bottom-sheet') {
+            isExpanded = !!(window.previewHireDriverState && window.previewHireDriverState.sheetExpanded);
+        } else {
+            isExpanded = !!sheet._isExpanded;
+        }
+        
+        startOffsetY = isExpanded ? 0 : collapsedOffsetY;
         sheet.style.transition = 'none';
     }
     
     function onMove(e) {
         if (!isDragging) return;
-        currentY = (e.touches ? e.touches[0].clientY : e.clientY);
-        const deltaY = currentY - startY;
         
-        const isExpanded = window.previewHireDriverState.sheetExpanded;
-        if (isExpanded) {
-            if (deltaY > 0) {
-                sheet.style.transform = `translateY(${deltaY}px)`;
+        const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+        const deltaY = clientY - startY;
+        
+        if (!hasMoved && Math.abs(deltaY) > 5) {
+            hasMoved = true;
+        }
+        
+        if (hasMoved) {
+            if (e.cancelable) {
+                e.preventDefault();
             }
-        } else {
-            if (deltaY < 0) {
-                sheet.style.transform = `translateY(calc(100% - 210px + ${deltaY}px))`;
-            }
+            currentY = clientY;
+            
+            // Calculate new translateY clamped with subtle resistance
+            let targetY = startOffsetY + deltaY;
+            targetY = Math.max(-25, Math.min(collapsedOffsetY + 25, targetY));
+            sheet.style.transform = `translateY(${targetY}px)`;
         }
     }
     
-    function onEnd() {
+    function onEnd(e) {
         if (!isDragging) return;
         isDragging = false;
-        sheet.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
-        const deltaY = currentY - startY;
         
-        if (Math.abs(deltaY) > 60) {
-            if (deltaY < 0) {
-                // Dragged up -> expand
-                window.previewHireDriverState.sheetExpanded = true;
-                sheet.style.transform = 'translateY(0px)';
-                const icon = document.getElementById('preview-sheet-expand-icon');
-                if (icon) icon.textContent = '▼';
-            } else {
-                // Dragged down -> collapse
-                window.previewHireDriverState.sheetExpanded = false;
-                sheet.style.transform = 'translateY(calc(100% - 210px))';
-                const icon = document.getElementById('preview-sheet-expand-icon');
-                if (icon) icon.textContent = '▲';
-            }
+        sheet.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        const icon = document.getElementById('preview-sheet-expand-icon');
+        
+        if (!hasMoved) {
+            // It was a pure tap/click, let click handler manage or toggle if tapped on handle
+            return;
+        }
+        
+        // Suppress click events immediately after active drag
+        window._justDraggedPreviewSheet = true;
+        setTimeout(() => { window._justDraggedPreviewSheet = false; }, 250);
+        
+        const deltaY = currentY - startY;
+        const elapsed = Date.now() - startTime;
+        const velocityY = deltaY / Math.max(1, elapsed);
+        
+        let shouldExpand = false;
+        if (startOffsetY > 0) {
+            // Was collapsed: expand if dragged up > 35px or flicked up
+            shouldExpand = (deltaY < -35 || velocityY < -0.3);
         } else {
-            // Revert to current state
-            if (window.previewHireDriverState.sheetExpanded) {
-                sheet.style.transform = 'translateY(0px)';
-            } else {
-                sheet.style.transform = 'translateY(calc(100% - 210px))';
-            }
+            // Was expanded: stay expanded unless dragged down > 35px or flicked down
+            shouldExpand = !(deltaY > 35 || velocityY > 0.3);
+        }
+        
+        if (sheetId === 'preview-hire-bottom-sheet' && window.previewHireDriverState) {
+            window.previewHireDriverState.sheetExpanded = shouldExpand;
+        }
+        sheet._isExpanded = shouldExpand;
+        
+        if (shouldExpand) {
+            sheet.style.transform = 'translateY(0px)';
+            if (icon) icon.textContent = '▼';
+        } else {
+            sheet.style.transform = `translateY(calc(100% - ${peekHeight}px))`;
+            if (icon) icon.textContent = '▲';
         }
     }
     
-    handle.addEventListener('touchstart', onStart, { passive: true });
-    window.addEventListener('touchmove', onMove, { passive: true });
-    window.addEventListener('touchend', onEnd);
+    handleElements.forEach(el => {
+        el.style.touchAction = 'none';
+        el.style.userSelect = 'none';
+        el.style.webkitUserSelect = 'none';
+        
+        el.addEventListener('touchstart', onStart, { passive: false });
+        el.addEventListener('mousedown', onStart);
+    });
     
-    handle.addEventListener('mousedown', onStart);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd, { passive: true });
+    window.addEventListener('touchcancel', onEnd, { passive: true });
+    
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
 }

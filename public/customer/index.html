@@ -1727,12 +1727,12 @@
         <div id="preview-hire-bottom-sheet" class="draggable-sheet" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; background: rgba(18, 22, 29, 0.96); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-top: 1.5px solid rgba(255, 255, 255, 0.12); border-radius: 28px 28px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; max-height: 85vh; transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); transform: translateY(calc(100% - 210px));">
             
             <!-- Drag Handle Bar (Draggable & Clickable) -->
-            <div id="preview-sheet-drag-handle" style="padding: 10px 0 4px 0; display: flex; flex-direction: column; align-items: center; cursor: grab; user-select: none; flex-shrink: 0;">
+            <div id="preview-sheet-drag-handle" style="padding: 10px 0 4px 0; display: flex; flex-direction: column; align-items: center; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0;">
                 <div style="width: 44px; height: 5px; background: rgba(255, 255, 255, 0.25); border-radius: 3px;"></div>
             </div>
 
             <!-- COLLAPSED PEEK HEADER STRIP (Always visible in collapsed peek state) -->
-            <div id="preview-sheet-collapsed-strip" onclick="togglePreviewSheetExpand()" style="padding: 6px 20px 10px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <div id="preview-sheet-collapsed-strip" onclick="togglePreviewSheetExpand()" style="padding: 6px 20px 10px 20px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.04); touch-action: none; user-select: none; -webkit-user-select: none;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="preview-peek-triptype-badge" style="background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); color: var(--primary); font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 8px;">One-Way</span>
                     <span id="preview-peek-mode-badge" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 8px;">Km</span>
@@ -1910,7 +1910,7 @@
         <div id="preview-searching-bottom-sheet" class="draggable-sheet" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; background: rgba(18, 22, 29, 0.96); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border-top: 1.5px solid rgba(250, 204, 21, 0.35); border-radius: 28px 28px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; max-height: 80vh; transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); transform: translateY(calc(100% - 250px));">
             
             <!-- Drag Handle Bar -->
-            <div id="preview-searching-drag-handle" style="padding: 10px 0 4px 0; display: flex; flex-direction: column; align-items: center; cursor: grab; user-select: none; flex-shrink: 0;">
+            <div id="preview-searching-drag-handle" style="padding: 10px 0 4px 0; display: flex; flex-direction: column; align-items: center; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; flex-shrink: 0;">
                 <div style="width: 44px; height: 5px; background: rgba(255, 255, 255, 0.25); border-radius: 3px;"></div>
             </div>
 
@@ -1920,7 +1920,7 @@
                     <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px #22c55e; animation: dotBlink 1.2s infinite;"></span>
                     <div>
                         <div style="font-size: 0.95rem; font-weight: 800; color: #fff;">Searching for drivers...</div>
-                        <div style="font-size: 0.72rem; color: #22c55e; font-weight: 700; margin-top: 1px;">🟢 4 drivers viewing your request</div>
+                        <div style="font-size: 0.72rem; color: #22c55e; font-weight: 700; margin-top: 1px;">4 drivers viewing your request</div>
                     </div>
                 </div>
                 <span id="searching-preview-timer" style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 800; color: var(--primary); font-family: monospace;">18s</span>
