@@ -556,6 +556,48 @@ const toggleSidebar = () => {
     if (overlay) overlay.classList.toggle('active');
 };
 
+const updateSidebarToggleUi = (isCollapsed) => {
+    const layout = document.querySelector('.main-layout');
+    const toggleIcon = document.getElementById('sidebar-toggle-icon');
+    const toggleBtn = document.getElementById('sidebar-toggle-btn');
+    if (layout) {
+        layout.classList.toggle('sidebar-collapsed', isCollapsed);
+    }
+    if (document.documentElement) {
+        document.documentElement.classList.toggle('sidebar-collapsed-preload', isCollapsed);
+    }
+    if (toggleIcon) {
+        toggleIcon.setAttribute('data-lucide', isCollapsed ? 'panel-left-open' : 'panel-left-close');
+    }
+    if (toggleBtn) {
+        toggleBtn.setAttribute('title', isCollapsed ? 'Expand Navigation Sidebar (Ctrl+B)' : 'Collapse Navigation Sidebar (Ctrl+B)');
+    }
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+};
+
+const toggleSidebarCollapse = () => {
+    const layout = document.querySelector('.main-layout');
+    const isCurrentlyCollapsed = layout ? layout.classList.contains('sidebar-collapsed') : (localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true');
+    const nextState = !isCurrentlyCollapsed;
+    localStorage.setItem('redrivo_crm_sidebar_collapsed', nextState ? 'true' : 'false');
+    updateSidebarToggleUi(nextState);
+};
+
+const initSidebarCollapseState = () => {
+    const isCollapsed = localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true';
+    updateSidebarToggleUi(isCollapsed);
+};
+
+// Global keyboard shortcut (Ctrl+B / Cmd+B) to toggle sidebar
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+        e.preventDefault();
+        toggleSidebarCollapse();
+    }
+});
+
 const router = {
     currentPage: 'dashboard',
     navigate: async (page) => {
@@ -5948,6 +5990,7 @@ function prefillSurvey(custId, vehId) {
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
+    initSidebarCollapseState();
     const urlParams = new URLSearchParams(window.location.search);
     const viewParam = urlParams.get('view');
     const savedPage = localStorage.getItem('redrivo_crm_page');

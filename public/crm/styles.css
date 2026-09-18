@@ -64,6 +64,40 @@ body {
     position: relative;
 }
 
+/* --- Sidebar Collapse / Expand Toggle Button --- */
+.sidebar-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.sidebar-toggle-btn:active {
+    transform: translateY(0);
+}
+
+.sidebar-toggle-btn i,
+.sidebar-toggle-btn svg {
+    width: 18px;
+    height: 18px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .sidebar {
     width: 280px;
     background: var(--bg-surface);
@@ -73,9 +107,10 @@ body {
     flex-direction: column;
     padding: 1.5rem 1rem;
     z-index: 10;
-    transition: var(--transition);
+    transition: width 260ms cubic-bezier(0.4, 0, 0.2, 1), padding 260ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, border-color 260ms;
     overflow-y: auto;
     scrollbar-width: none; /* Firefox */
+    flex-shrink: 0;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -83,10 +118,35 @@ body {
 }
 
 .main-content {
-    flex: 1;
+    flex: 1 1 0%;
     padding: 1.5rem 2rem;
     overflow-y: auto;
     background: var(--bg-base);
+    min-width: 0;
+    width: 100%;
+    transition: flex 260ms cubic-bezier(0.4, 0, 0.2, 1), width 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Collapsed State: Sidebar cleanly hides with zero width, Main Content smoothly expands */
+.main-layout.sidebar-collapsed .sidebar,
+.sidebar-collapsed-preload .sidebar {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-right: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+}
+
+.main-layout.sidebar-collapsed .main-content,
+.sidebar-collapsed-preload .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
 }
 
 .sidebar-label {

@@ -19,6 +19,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Apply saved sidebar collapse state before initial paint to prevent layout flash
+        try {
+            if (localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true') {
+                document.documentElement.classList.add('sidebar-collapsed-preload');
+            }
+        } catch (_) {}
+    </script>
 </head>
 
 <body>
@@ -26,8 +34,11 @@
     <div class="app-wrapper">
         <!-- Top Navigation -->
         <header class="top-nav" style="display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--bg-surface); border-bottom:1px solid var(--border); width: 100%; z-index: 100;">
-            <div style="display:flex; align-items:center; gap: 16px;">
+            <div style="display:flex; align-items:center; gap: 14px;">
                 <button class="btn-icon mobile-menu-btn" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; display:none;" onclick="document.querySelector('.sidebar').classList.toggle('active');"><i data-lucide="menu"></i></button>
+                <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" onclick="toggleSidebarCollapse()" title="Toggle Navigation Sidebar (Ctrl+B)" aria-label="Toggle navigation sidebar">
+                    <i data-lucide="panel-left-close" id="sidebar-toggle-icon"></i>
+                </button>
                 <div class="logo" style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.25rem;">
                     <i data-lucide="shield-check" style="color:var(--primary);"></i>
                     <span>Re<span style="color: #FACC15;">D</span>rivo <span style="font-weight:400; color:var(--text-muted);">Command Center</span></span>
