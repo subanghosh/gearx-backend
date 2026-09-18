@@ -4663,6 +4663,8 @@ apiRouter.post('/auth/google-signin', loginLimiter, async (req, res) => {
                 kycStatus: user.kycStatus || user.kycstatus,
                 phone: user.phone,
                 email: user.email,
+                phoneVerified: (user.phoneverified === 1 || user.phoneVerified === 1 || (user.phone && String(user.phone).trim().length >= 10)) ? 1 : 0,
+                emailVerified: (user.emailverified === 1 || user.emailVerified === 1 || !!user.email) ? 1 : 0,
                 token_version: user.token_version || user.tokenversion || 1
             });
         }

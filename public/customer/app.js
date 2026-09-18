@@ -1597,7 +1597,8 @@ async function handleProfileSendPhoneOtp() {
     }
 
     const phoneInput = document.getElementById('profile-input-phone');
-    const phone = phoneInput ? phoneInput.value.trim() : '';
+    let phone = phoneInput ? phoneInput.value.trim() : '';
+    phone = phone.replace(/\D/g, '').slice(-10);
     if (!phone || !/^\d{10}$/.test(phone)) {
         showToast('Please enter a valid 10-digit mobile number.', 'error');
         return;
@@ -3489,7 +3490,7 @@ function renderVehicles() {
                 <!-- Middle Section: Image Frame (always fits, any aspect ratio) -->
                 <div class="vehicle-card-image-wrapper" style="width: 100%; height: 190px; border-radius: 16px; overflow: hidden; background: ${v.photo ? '#0d1017' : 'transparent'}; display: flex; align-items: center; justify-content: center; z-index: 1; margin: 0; position: relative; border: ${v.photo ? '1px solid rgba(255,255,255,0.06)' : 'none'};">
                     ${v.photo ? '' : '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: 150px; background: radial-gradient(ellipse, rgba(250, 204, 21, 0.2) 0%, transparent 70%); z-index: 0; pointer-events: none;"></div>'}
-                    <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}'; this.style.filter='drop-shadow(0 20px 25px rgba(0,0,0,0.6))';" style="width: 100%; height: 100%; object-fit: cover; ${v.photo ? '' : 'filter: drop-shadow(0 20px 25px rgba(0,0,0,0.6));'} position: relative; z-index: 1; display: block;">
+                    <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}'; this.style.filter='drop-shadow(0 20px 25px rgba(0,0,0,0.6))';" style="width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; ${v.photo ? '' : 'filter: drop-shadow(0 20px 25px rgba(0,0,0,0.6));'} position: relative; z-index: 1; display: block;">
                 </div>
 
                 <!-- Premium 2x2 details grid below the image -->
@@ -3683,11 +3684,11 @@ function updateFixedActionButton() {
         return;
     }
 
-    // Direct Action: Hire Driver for this vehicle
+    // Direct Action: Select this vehicle
     container.innerHTML = `
         <button class="yellow-btn" onclick="openHireDriverForVehicle('${v.id}')" style="background: #facc15; color: #0b0e14; font-weight: 800; font-size: 1rem; padding: 14px 20px; border-radius: 14px; box-shadow: 0 8px 25px rgba(250, 204, 21, 0.3); border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; position: relative; z-index: 20;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>
-            Hire Driver for ${v.make} ${v.model}
+            Select ${v.make} ${v.model}
         </button>
     `;
 }
@@ -8596,7 +8597,7 @@ function renderProfileVehicles() {
 
             <!-- Floating car/bike image on the right -->
             <div class="vehicle-card-right-image-wrapper" style="position: absolute; right: 10px; bottom: 10px; top: 10px; width: 40%; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 1;">
-                <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px; filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));">
+                <img src="${imageSrc}" alt="${v.model}" class="vehicle-card-image" onerror="this.onerror=null; this.src='${fallbackImg}';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 12px; filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));">
             </div>
         </div>
         `;
