@@ -3574,7 +3574,7 @@ async function sendUnifiedOtp(phone, otp, role = 'customer', preferredChannel = 
     
     // Role-based template selection for Fast2SMS WhatsApp (Pointing to live +91 62892 47097)
     const customerOtpId = process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb';
-    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '0345a7eafb';
+    const driverOtpId = process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '771161e54a';
     const fast2SmsOtpId = (role === 'marshal' || role === 'driver') ? driverOtpId : customerOtpId;
 
     // =========================================================================
@@ -4029,7 +4029,7 @@ apiRouter.get('/admin/test-whatsapp', authMiddleware, requireRole('admin'), asyn
             configured: true,
             targetPhone: phone,
             role,
-            customOtpId: customOtpId || ((role === 'marshal' || role === 'driver') ? (process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '8793c3bfe3') : (process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb')),
+            customOtpId: customOtpId || ((role === 'marshal' || role === 'driver') ? (process.env.FAST2SMS_WHATSAPP_DRIVER_OTP_ID || '771161e54a') : (process.env.FAST2SMS_WHATSAPP_CUSTOMER_OTP_ID || '0345a7eafb')),
             latencyMs: Date.now() - start,
             result
         });
