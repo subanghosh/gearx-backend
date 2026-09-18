@@ -3656,7 +3656,8 @@ window.openHireDriverForVehicle = function(vehicleId) {
 window.updateFixedActionButton = function() {
     const container = document.getElementById('fixed-action-btn-container');
     if (!container) return;
-    const v = userVehicles[activeVehicleIndex];
+    const activeList = (window.userVehicles && window.userVehicles.length > 0) ? window.userVehicles : userVehicles;
+    const v = activeList[activeVehicleIndex];
     if (!v) return;
     
     const isBooked = activeBookedVehicleIds.includes(v.id);
