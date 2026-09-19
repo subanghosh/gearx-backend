@@ -1095,7 +1095,7 @@
                 <div>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span class="material-symbols-outlined" style="font-size: 18px; color: var(--primary);">account_balance_wallet</span>
-                        <span style="font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Outstanding Commission</span>
+                        <span style="font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Outstanding Amount</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 4px;">
                         <span style="font-size: 1.75rem; font-weight: 900; color: #fff;" id="driver-outstanding-amount">₹300.00</span>
@@ -1118,11 +1118,10 @@
                 </div>
             </div>
 
-            <!-- Explanatory note & Action button -->
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
-                <span style="font-size: 0.7rem; color: #a1a1aa; line-height: 1.3;">Owed commission on cash rides. Pay down anytime via Razorpay.</span>
-                <button type="button" onclick="showToast('Mockup: Opening Razorpay to clear ₹300 balance...', 'info')" style="padding: 8px 14px; border-radius: 10px; background: var(--primary); color: #000; font-size: 0.78rem; font-weight: 800; border: none; cursor: pointer; flex-shrink: 0; box-shadow: 0 2px 10px rgba(250, 204, 21, 0.25);">
-                    Pay Down
+            <!-- Action button -->
+            <div style="display: flex; align-items: center; justify-content: flex-end; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                <button type="button" id="btn-pay-outstanding-now" onclick="payDriverOutstanding()" style="padding: 9px 20px; border-radius: 10px; background: var(--primary); color: #000; font-size: 0.8rem; font-weight: 800; border: none; cursor: pointer; flex-shrink: 0; box-shadow: 0 2px 10px rgba(250, 204, 21, 0.25);">
+                    Pay Now
                 </button>
             </div>
         </div>
@@ -1905,12 +1904,12 @@
                 <div>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="font-size: 0.62rem; font-weight: 800; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.6px;">Customer Offer</span>
-                        <span id="driver-preview-above-base-badge" style="display: inline-flex; align-items: center; font-size: 0.62rem; font-weight: 800; color: #22c55e; background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.35); padding: 1px 7px; border-radius: 6px; letter-spacing: 0.2px;">+₹50 above base fare</span>
+                        <span id="driver-preview-above-base-badge" style="display: inline-flex; align-items: center; font-size: 0.62rem; font-weight: 800; color: #22c55e; background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.35); padding: 1px 7px; border-radius: 6px; letter-spacing: 0.2px;">+₹50</span>
                     </div>
                     <div style="display: flex; align-items: baseline; gap: 3px; margin-top: 2px;">
                         <span style="font-size: 1.1rem; font-weight: 900; color: #facc15;">₹</span>
                         <span id="driver-preview-offer-amount" style="font-size: 1.6rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">550</span>
-                        <span id="driver-preview-base-ref" style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600; margin-left: 6px;">(Base: ₹500)</span>
+                        <span id="driver-preview-base-ref" style="font-size: 0.68rem; color: #a1a1aa; font-weight: 600; margin-left: 6px;">Base: ₹500</span>
                     </div>
                 </div>
                 <div style="text-align: right;">
@@ -1927,8 +1926,8 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 5px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        <span style="font-size: 0.7rem; font-weight: 700; color: #d4d4d8;">Pickup Distance:</span>
-                        <span id="driver-preview-pickup-dist" style="font-size: 0.7rem; font-weight: 800; color: #facc15;">1.2 km away</span>
+                        <span style="font-size: 0.7rem; font-weight: 700; color: #d4d4d8;">Pickup:</span>
+                        <span id="driver-preview-pickup-dist" style="font-size: 0.7rem; font-weight: 800; color: #facc15;">1.2 km</span>
                     </div>
                     <span id="driver-preview-pickup-eta" style="font-size: 0.7rem; font-weight: 700; color: #22c55e;">~4 mins ETA</span>
                 </div>
@@ -1957,17 +1956,17 @@
                 <!-- Trip Metrics Strip -->
                 <div style="background: rgba(255, 255, 255, 0.04); border-radius: 8px; padding: 5px 8px; display: flex; align-items: center; justify-content: space-around;">
                     <div style="text-align: center;">
-                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Trip Distance</div>
+                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Distance</div>
                         <div id="driver-preview-trip-dist" style="font-size: 0.78rem; font-weight: 800; color: #fff;">25.5 km</div>
                     </div>
                     <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1);"></div>
                     <div style="text-align: center;">
-                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Estimated Duration</div>
+                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Duration</div>
                         <div id="driver-preview-trip-duration" style="font-size: 0.78rem; font-weight: 800; color: #fff;">~54 mins</div>
                     </div>
                     <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1);"></div>
                     <div style="text-align: center;">
-                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Trip Type</div>
+                        <div style="font-size: 0.6rem; color: #71717a; font-weight: 600;">Type</div>
                         <div id="driver-preview-trip-type" style="font-size: 0.78rem; font-weight: 800; color: #facc15;">One-Way</div>
                     </div>
                 </div>
@@ -1993,7 +1992,6 @@
             <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 0.68rem; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px;">Your Offer</span>
-                    <span style="font-size: 0.62rem; color: #71717a; font-weight: 600;">Tap amount to type</span>
                 </div>
                 
                 <div style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;">
@@ -2041,7 +2039,7 @@
                     DECLINE
                 </button>
                 <button type="button" id="driver-preview-main-action-btn" onclick="submitDriverBidPreview()" style="flex: 2; padding: 12px; border-radius: 12px; background: #22c55e; border: none; color: #000; font-size: 0.9rem; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
-                    ACCEPT ₹550 CASH
+                    ACCEPT ₹550
                 </button>
             </div>
         </div>
@@ -2095,7 +2093,7 @@
 
         <!-- Single Payment Action: Simplified Label Pay Now -->
         <div style="display: flex; flex-direction: column; gap: 8px;">
-            <button type="button" onclick="showToast('Mockup: Launching Razorpay for ₹660.00...', 'success')" style="width: 100%; padding: 14px; border-radius: 14px; background: #22c55e; border: none; color: #000; font-size: 0.95rem; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 18px rgba(34, 197, 94, 0.35); text-transform: uppercase; letter-spacing: 0.5px;">
+            <button type="button" onclick="payDriverOutstanding(660)" style="width: 100%; padding: 14px; border-radius: 14px; background: #22c55e; border: none; color: #000; font-size: 0.95rem; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 18px rgba(34, 197, 94, 0.35); text-transform: uppercase; letter-spacing: 0.5px;">
                 <span>Pay Now</span>
             </button>
         </div>

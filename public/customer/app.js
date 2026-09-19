@@ -14824,7 +14824,7 @@ window.setPreviewPaymentMode = function(mode) {
             onlineRadio.innerHTML = '';
         }
         if (peekBadge) {
-            peekBadge.textContent = 'Cash';
+            peekBadge.textContent = 'After Trip';
             peekBadge.style.color = '#22c55e';
             peekBadge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
             peekBadge.style.background = 'rgba(34, 197, 94, 0.12)';
@@ -14849,7 +14849,7 @@ window.setPreviewPaymentMode = function(mode) {
             cashRadio.innerHTML = '';
         }
         if (peekBadge) {
-            peekBadge.textContent = 'Online';
+            peekBadge.textContent = 'In Advance';
             peekBadge.style.color = 'var(--primary)';
             peekBadge.style.borderColor = 'rgba(250, 204, 21, 0.3)';
             peekBadge.style.background = 'rgba(250, 204, 21, 0.12)';

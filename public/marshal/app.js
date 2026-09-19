@@ -9782,7 +9782,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
         }
 
         const pDistEl = document.getElementById('driver-preview-pickup-dist');
-        if (pDistEl && offerData.distanceKm != null) pDistEl.textContent = `${offerData.distanceKm} km away`;
+        if (pDistEl && offerData.distanceKm != null) pDistEl.textContent = `${offerData.distanceKm} km`;
 
         const pEtaEl = document.getElementById('driver-preview-pickup-eta');
         if (pEtaEl && offerData.etaMinutes != null) pEtaEl.textContent = `~${offerData.etaMinutes} mins ETA`;
@@ -9848,7 +9848,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
 
     if (aboveBaseBadge) {
         if (diff > 0) {
-            aboveBaseBadge.textContent = `+₹${diff.toLocaleString('en-IN')} above base fare`;
+            aboveBaseBadge.textContent = `+₹${diff.toLocaleString('en-IN')}`;
             aboveBaseBadge.style.color = '#22c55e';
             aboveBaseBadge.style.background = 'rgba(34, 197, 94, 0.16)';
             aboveBaseBadge.style.border = '1px solid rgba(34, 197, 94, 0.35)';
@@ -9864,7 +9864,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
         }
     }
     if (baseRef) {
-        baseRef.textContent = `(Base: ₹${floorAmt.toLocaleString('en-IN')})`;
+        baseRef.textContent = `Base: ₹${floorAmt.toLocaleString('en-IN')}`;
     }
 
     window.updateDriverCounterUI();
@@ -10224,7 +10224,7 @@ window.updateDriverCounterUI = function() {
             subLabel.style.color = '#22c55e';
         }
         if (actionBtn) {
-            actionBtn.textContent = isCash ? `ACCEPT ₹${current} CASH` : `ACCEPT ₹${current}`;
+            actionBtn.textContent = `ACCEPT ₹${current}`;
             actionBtn.style.background = '#22c55e';
             actionBtn.style.color = '#000';
             actionBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.4)';
@@ -10235,7 +10235,7 @@ window.updateDriverCounterUI = function() {
             subLabel.style.color = '#facc15';
         }
         if (actionBtn) {
-            actionBtn.textContent = isCash ? `SEND ₹${current} COUNTER` : `SEND ₹${current}`;
+            actionBtn.textContent = `SEND ₹${current}`;
             actionBtn.style.background = '#facc15';
             actionBtn.style.color = '#000';
             actionBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.4)';
@@ -10424,6 +10424,76 @@ window.openCashIncomingPickupPreview = function() {
 
 window.closeCashIncomingPickupPreview = function() {
     window.closeDriverBidRequestPreview();
+};
+
+window.payDriverOutstanding = function(explicitAmt) {
+    let amount = explicitAmt;
+    if (!amount) {
+        const el = document.getElementById('driver-outstanding-amount');
+        if (el) {
+            const m = el.textContent.replace(/[^0-9.]/g, '');
+            amount = parseFloat(m);
+        }
+    }
+    amount = amount || 300;
+
+    console.log(`[PAY_OUTSTANDING] Initiating Razorpay checkout with auto-prefilled amount: ₹${amount}`);
+
+    if (window.Razorpay) {
+        const options = {
+            key: 'rzp_test_placeholder',
+            amount: Math.round(amount * 100), // Pre-fills exact outstanding amount in paise (₹300 -> 30000 paise)
+            currency: 'INR',
+            name: 'ReDrivo Marshal Network',
+            description: `Clear Outstanding Balance - ₹${amount}`,
+            prefill: {
+                name: (typeof currentUser !== 'undefined' && currentUser?.name) || 'Driver Partner',
+                contact: (typeof currentUser !== 'undefined' && currentUser?.phone) || '9876543210',
+                amount: Math.round(amount * 100)
+            },
+            notes: {
+                type: 'driver_outstanding_clearance',
+                driver_id: (typeof currentUser !== 'undefined' && currentUser?.id) || 'driver_preview',
+                prefilled_amount: `${amount}`
+            },
+            theme: { color: '#22c55e' },
+            handler: function(response) {
+                if (typeof showToast === 'function') {
+                    showToast(`Payment of ₹${amount} successful! Outstanding cleared.`, 'success');
+                }
+                const amtEl = document.getElementById('driver-outstanding-amount');
+                if (amtEl) amtEl.textContent = '₹0.00';
+                const pill = document.getElementById('driver-outstanding-status-pill');
+                if (pill) {
+                    pill.textContent = 'ACTIVE (₹500 BUFFER)';
+                    pill.style.color = '#22c55e';
+                }
+                const bar = document.getElementById('driver-outstanding-progress-bar');
+                if (bar) bar.style.width = '0%';
+            },
+            modal: {
+                ondismiss: function() {
+                    if (typeof showToast === 'function') {
+                        showToast('Payment cancelled.', 'info');
+                    }
+                }
+            }
+        };
+
+        try {
+            const rzp = new Razorpay(options);
+            rzp.open();
+        } catch (e) {
+            console.warn('[RAZORPAY_FALLBACK]', e);
+            if (typeof showToast === 'function') {
+                showToast(`Launching Razorpay Checkout: Pre-filled ₹${amount.toFixed(2)}`, 'success');
+            }
+        }
+    } else {
+        if (typeof showToast === 'function') {
+            showToast(`Launching Razorpay Checkout: Pre-filled ₹${amount.toFixed(2)}`, 'success');
+        }
+    }
 };
 
 window.openDriverWalletPreview = function() {
