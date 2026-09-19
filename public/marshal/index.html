@@ -2019,8 +2019,13 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- Sticky Action Buttons Strip -->
+        <div style="padding: 10px 14px 16px 14px; background: rgba(11, 14, 20, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+            
             <!-- 5. Simplified Payment Mode & Commission Block (Sit BELOW offer/stepper, ABOVE action buttons) -->
-            <div id="driver-bid-cash-banner" style="display: none; background: rgba(34, 197, 94, 0.1); border: 1.5px solid rgba(34, 197, 94, 0.4); border-radius: 12px; padding: 9px 12px; align-items: center; justify-content: space-between; flex-shrink: 0;">
+            <div id="driver-bid-cash-banner" style="display: none; background: rgba(34, 197, 94, 0.1); border: 1.5px solid rgba(34, 197, 94, 0.4); border-radius: 12px; padding: 8px 12px; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
                     <span style="font-size: 0.78rem; font-weight: 800; color: #22c55e; letter-spacing: 0.3px;">Payment Mode: Cash</span>
@@ -2031,16 +2036,14 @@
                 </div>
             </div>
 
-        </div>
-
-        <!-- Sticky Action Buttons Strip -->
-        <div style="padding: 10px 14px 16px 14px; background: rgba(11, 14, 20, 0.98); border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; gap: 10px; flex-shrink: 0;">
-            <button type="button" onclick="rejectDriverBidPreview()" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.12); border: 1.5px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.85rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
-                DECLINE
-            </button>
-            <button type="button" id="driver-preview-main-action-btn" onclick="submitDriverBidPreview()" style="flex: 2; padding: 12px; border-radius: 12px; background: #22c55e; border: none; color: #000; font-size: 0.9rem; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
-                ACCEPT ₹550 CASH
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" onclick="rejectDriverBidPreview()" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.12); border: 1.5px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.85rem; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;">
+                    DECLINE
+                </button>
+                <button type="button" id="driver-preview-main-action-btn" onclick="submitDriverBidPreview()" style="flex: 2; padding: 12px; border-radius: 12px; background: #22c55e; border: none; color: #000; font-size: 0.9rem; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
+                    ACCEPT ₹550 CASH
+                </button>
+            </div>
         </div>
 
     </div>
