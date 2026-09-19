@@ -9719,10 +9719,23 @@ window.driverBidPreviewState = {
     roundNumber: 1,
     offeredBy: 'customer',
     timeRemaining: 60,
+    isCashRide: false,
     pickupPos: { lat: 22.5697, lng: 88.4337 },
     dropPos: { lat: 22.5830, lng: 88.3426 },
     pickupAddress: 'Mani Casadona, Newtown',
     dropAddress: 'Howrah Railway Station'
+};
+
+// Dynamic helper to get the driver's configured commission rate (not hardcoded)
+window.getDriverCommissionRate = function() {
+    if (typeof currentUser !== 'undefined' && currentUser) {
+        if (currentUser.commission_rate != null) return parseFloat(currentUser.commission_rate);
+        if (currentUser.commissionRate != null) return parseFloat(currentUser.commissionRate);
+    }
+    if (window._cachedPayoutRates && window._cachedPayoutRates.commissionRatePercent != null) {
+        return parseFloat(window._cachedPayoutRates.commissionRatePercent);
+    }
+    return window._mockupCommissionRate || 20.0;
 };
 
 window.openDriverBidRequestPreview = function(offerData = null) {
@@ -9735,6 +9748,7 @@ window.openDriverBidRequestPreview = function(offerData = null) {
     if (!modal) return;
 
     if (offerData) {
+        window.driverBidPreviewState.isCashRide = !!(offerData.paymentMode === 'cash' || offerData.payment_mode === 'cash' || offerData.isCash);
         window.driverBidPreviewState.offerId = offerData.id || offerData.offerId || null;
         window.driverBidPreviewState.serviceRequestId = offerData.serviceRequestId || offerData.service_request_id || null;
         window.driverBidPreviewState.baseOffer = Number(offerData.amount || offerData.offer || 550);
@@ -9756,8 +9770,16 @@ window.openDriverBidRequestPreview = function(offerData = null) {
         }
 
         // Update DOM elements with real offer details
+        const commRate = window.getDriverCommissionRate();
         const estNetEl = document.getElementById('driver-preview-est-net');
-        if (estNetEl) estNetEl.textContent = `Est. Net: ₹${Math.round(window.driverBidPreviewState.baseOffer * 0.9)}`;
+        if (estNetEl) {
+            if (window.driverBidPreviewState.isCashRide) {
+                const commAmt = Math.round(window.driverBidPreviewState.baseOffer * (commRate / 100));
+                estNetEl.textContent = `Commission: ₹${commAmt}`;
+            } else {
+                estNetEl.textContent = `Est. Net: ₹${Math.round(window.driverBidPreviewState.baseOffer * (1 - commRate / 100))}`;
+            }
+        }
 
         const pDistEl = document.getElementById('driver-preview-pickup-dist');
         if (pDistEl && offerData.distanceKm != null) pDistEl.textContent = `${offerData.distanceKm} km away`;
@@ -10145,14 +10167,35 @@ window.updateDriverCounterUI = function() {
     const floor = window.driverBidPreviewState.baseOffer || 550;
     const ceiling = window.driverBidPreviewState.maxCeiling || 850;
     const current = window.driverBidPreviewState.selectedBid || floor;
+    const isCash = !!window.driverBidPreviewState.isCashRide;
+    const commRate = window.getDriverCommissionRate();
+    const commAmt = Math.round(current * (commRate / 100));
     
     const disp = document.getElementById('driver-counter-amount-display');
     const subLabel = document.getElementById('driver-counter-sub-label');
     const minusBtn = document.getElementById('driver-counter-btn-minus');
     const plusBtn = document.getElementById('driver-counter-btn-plus');
     const actionBtn = document.getElementById('driver-preview-main-action-btn');
+    const estNetEl = document.getElementById('driver-preview-est-net');
+    
+    // Dynamic Cash Banner Elements (Added on top of established screen)
+    const cashBanner = document.getElementById('driver-bid-cash-banner');
+    const cashPill = document.getElementById('driver-bid-cash-collect-pill');
+    const commRateSpan = document.getElementById('driver-bid-comm-rate');
+    const commAmtSpan = document.getElementById('driver-bid-comm-amt');
     
     if (disp) disp.textContent = current;
+
+    if (isCash) {
+        if (cashBanner) cashBanner.style.display = 'flex';
+        if (cashPill) cashPill.textContent = `Collect ₹${current} Cash`;
+        if (commRateSpan) commRateSpan.textContent = `${commRate}%`;
+        if (commAmtSpan) commAmtSpan.textContent = `₹${commAmt}`;
+        if (estNetEl) estNetEl.textContent = `Commission: ₹${commAmt}`;
+    } else {
+        if (cashBanner) cashBanner.style.display = 'none';
+        if (estNetEl) estNetEl.textContent = `Est. Net: ₹${Math.round(current * (1 - commRate / 100))}`;
+    }
     
     // Minus button state
     if (minusBtn) {
@@ -10183,7 +10226,7 @@ window.updateDriverCounterUI = function() {
             subLabel.style.color = '#22c55e';
         }
         if (actionBtn) {
-            actionBtn.textContent = `ACCEPT ₹${current}`;
+            actionBtn.textContent = isCash ? `ACCEPT ₹${current} CASH` : `ACCEPT ₹${current}`;
             actionBtn.style.background = '#22c55e';
             actionBtn.style.color = '#000';
             actionBtn.style.boxShadow = '0 4px 20px rgba(34, 197, 94, 0.4)';
@@ -10194,7 +10237,7 @@ window.updateDriverCounterUI = function() {
             subLabel.style.color = '#facc15';
         }
         if (actionBtn) {
-            actionBtn.textContent = `SEND ₹${current}`;
+            actionBtn.textContent = isCash ? `SEND ₹${current} COUNTER` : `SEND ₹${current}`;
             actionBtn.style.background = '#facc15';
             actionBtn.style.color = '#000';
             actionBtn.style.boxShadow = '0 4px 20px rgba(250, 204, 21, 0.4)';
@@ -10356,57 +10399,28 @@ window.rejectDriverBidPreview = async function() {
 // CASH RIDES & DRIVER WALLET PREVIEW MOCKUP HANDLERS
 // =============================================================================
 window.openCashIncomingPickupPreview = function() {
-    const modal = document.getElementById('incoming-pickup-modal');
-    if (!modal) return;
-
-    const vName = document.getElementById('ip-vehicle-name');
-    if (vName) vName.textContent = 'Tata Harrier XZA+';
-
-    const vMeta = document.getElementById('ip-vehicle-meta');
-    if (vMeta) vMeta.textContent = 'Automatic • Diesel • Luxury SUV';
-
-    const earnings = document.getElementById('ip-earnings');
-    if (earnings) earnings.textContent = '₹450 Cash in Hand';
-
-    const dist = document.getElementById('ip-distance');
-    if (dist) dist.textContent = '1.2 km away';
-
-    const addr = document.getElementById('ip-address');
-    if (addr) addr.textContent = 'Mani Casadona, Newtown, Kolkata';
-
-    const badge = document.getElementById('ip-payment-badge-container');
-    if (badge) {
-        badge.style.display = 'flex';
-        const pill = document.getElementById('ip-cash-collect-pill');
-        if (pill) pill.textContent = 'Collect ₹450 Cash';
-        const note = document.getElementById('ip-commission-deduct-note');
-        if (note) note.textContent = 'Customer pays you full fare in cash. 20% platform commission (₹90) will be added to your wallet outstanding.';
-    }
-
-    const timerCircle = document.getElementById('ip-timer-circle');
-    if (timerCircle) timerCircle.textContent = '60';
-
-    const acceptBtn = document.getElementById('ip-btn-accept');
-    if (acceptBtn) {
-        acceptBtn.textContent = 'ACCEPT (MOCKUP)';
-        acceptBtn.onclick = function() {
-            if (typeof showToast === 'function') {
-                showToast('Mockup: Cash booking accepted! Full ₹450 cash collected from rider at end.', 'success');
-            }
-            window.closeCashIncomingPickupPreview();
-        };
-    }
-
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    window.openDriverBidRequestPreview({
+        id: 'mock_cash_offer_1',
+        paymentMode: 'cash',
+        amount: 550,
+        floorAmount: 500,
+        ceilingAmount: 850,
+        distanceKm: '25.5',
+        etaMinutes: '54',
+        pickupAddress: 'Mani Casadona, Newtown, Kolkata',
+        dropAddress: 'Howrah Railway Station, Howrah',
+        vehicleMake: 'Tata Harrier',
+        vehicleModel: 'XZA+ Automatic',
+        vehicleType: 'SUV',
+        vehicleTransmission: 'Automatic',
+        vehicleFuel: 'Diesel',
+        customerName: 'Priyanka Sharma',
+        customerRating: '4.9 (24 trips)'
+    });
 };
 
 window.closeCashIncomingPickupPreview = function() {
-    const modal = document.getElementById('incoming-pickup-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-    }
+    window.closeDriverBidRequestPreview();
 };
 
 window.openDriverWalletPreview = function() {
