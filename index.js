@@ -12369,7 +12369,19 @@ app.get('/api/health', async (req, res) => {
             uploadsWritable
         });
     } catch (e) {
-        res.status(500).json({ status: 'error', db: 'disconnected', message: e.message });
+        let targetHost = 'none';
+        try {
+            const parsePg = require('pg-connection-string').parse;
+            targetHost = parsePg(sanitizedDbUrl || '').host || 'empty';
+        } catch (_) {}
+        res.status(500).json({ 
+            status: 'error', 
+            db: 'disconnected', 
+            message: e.message,
+            targetHost,
+            dbUrlLength: (sanitizedDbUrl || '').length,
+            hasNeonTech: (sanitizedDbUrl || '').includes('neon.tech')
+        });
     }
 });
 
