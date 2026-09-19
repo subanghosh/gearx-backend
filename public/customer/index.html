@@ -1716,7 +1716,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="preview-peek-triptype-badge" style="background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); color: var(--primary); font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 8px;">One-Way</span>
                     <span id="preview-peek-mode-badge" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 8px;">Km</span>
-                    <span id="preview-peek-payment-badge" style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 8px;">After Trip</span>
+                    <span id="preview-peek-payment-badge" style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 8px;">Cash</span>
                     <span style="font-size: 0.7rem; color: #a1a1aa;">Tap / drag to expand</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -1836,27 +1836,33 @@
                     </button>
                 </div>
 
-                <!-- 6. Payment Method Selector (Pay after Trip End vs Pay in Advance) -->
+                <!-- 6. Payment Method Selector (Pay in Cash vs Pay Online) -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label style="font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Payment Method</label>
                     <div style="display: flex; gap: 8px;">
-                        <!-- Pay after Trip End Option (Default) -->
-                        <div id="preview-payment-cash-card" onclick="setPreviewPaymentMode('cash')" style="flex: 1; padding: 12px 14px; border-radius: 14px; background: rgba(34, 197, 94, 0.12); border: 1.5px solid #22c55e; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;">
-                            <span style="font-size: 0.82rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px;">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
-                                Pay after Trip End
-                            </span>
-                            <span id="preview-payment-cash-radio" style="width: 16px; height: 16px; border-radius: 50%; border: 2px solid #22c55e; background: #22c55e; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                <span style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></span>
-                            </span>
+                        <!-- Pay in Cash Option (Default) -->
+                        <div id="preview-payment-cash-card" onclick="setPreviewPaymentMode('cash')" style="flex: 1; padding: 11px 12px; border-radius: 14px; background: rgba(34, 197, 94, 0.12); border: 1.5px solid #22c55e; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: all 0.2s;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.85rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 6px;">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
+                                    Pay in Cash
+                                </span>
+                                <span id="preview-payment-cash-radio" style="width: 16px; height: 16px; border-radius: 50%; border: 2px solid #22c55e; background: #22c55e; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></span>
+                                </span>
+                            </div>
+                            <span style="font-size: 0.68rem; color: #a1a1aa; font-weight: 500;">Pay after trip ends</span>
                         </div>
-                        <!-- Pay in Advance Option -->
-                        <div id="preview-payment-online-card" onclick="setPreviewPaymentMode('online')" style="flex: 1; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1.5px solid rgba(255, 255, 255, 0.1); cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;">
-                            <span style="font-size: 0.82rem; font-weight: 800; color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-                                Pay in Advance
-                            </span>
-                            <span id="preview-payment-online-radio" style="width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); background: transparent; flex-shrink: 0;"></span>
+                        <!-- Pay Online Option -->
+                        <div id="preview-payment-online-card" onclick="setPreviewPaymentMode('online')" style="flex: 1; padding: 11px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1.5px solid rgba(255, 255, 255, 0.1); cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: all 0.2s;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.85rem; font-weight: 800; color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                                    Pay Online
+                                </span>
+                                <span id="preview-payment-online-radio" style="width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.3); background: transparent; flex-shrink: 0;"></span>
+                            </div>
+                            <span style="font-size: 0.68rem; color: #71717a; font-weight: 500;">Pay in advance</span>
                         </div>
                     </div>
                 </div>
