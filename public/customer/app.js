@@ -13567,6 +13567,15 @@ window.openHireDriverPreviewScreen = function() {
     screen.style.display = 'flex';
     document.body.style.overflow = 'hidden';
 
+    // Auto-expand sheet in preview mode so payment method selector is visible
+    const sheet = document.getElementById('preview-hire-bottom-sheet');
+    const icon = document.getElementById('preview-sheet-expand-icon');
+    if (sheet) {
+        window.previewHireDriverState.sheetExpanded = true;
+        sheet.style.transform = 'translateY(0px)';
+        if (icon) icon.textContent = '▼';
+    }
+
     // Initialize Real Google Map & Route Polyline
     setTimeout(() => {
         if (typeof window.initHireDriverPreviewMap === 'function') {

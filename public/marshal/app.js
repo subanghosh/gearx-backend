@@ -10424,6 +10424,17 @@ window.closeCashIncomingPickupPreview = function() {
 };
 
 window.openDriverWalletPreview = function() {
+    if (typeof window.closeDriverBidRequestPreview === 'function') {
+        window.closeDriverBidRequestPreview();
+    }
+    if (typeof window.closeWalletBlockedScreenPreview === 'function') {
+        window.closeWalletBlockedScreenPreview();
+    }
+    const splash = document.getElementById('splash-screen');
+    if (splash) splash.style.display = 'none';
+    const login = document.getElementById('login-screen');
+    if (login) login.style.display = 'none';
+
     if (typeof switchTab === 'function') {
         switchTab('alerts');
     }
@@ -10442,6 +10453,9 @@ window.openDriverWalletPreview = function() {
 };
 
 window.openWalletBlockedScreenPreview = function() {
+    if (typeof window.closeDriverBidRequestPreview === 'function') {
+        window.closeDriverBidRequestPreview();
+    }
     const screen = document.getElementById('wallet-limit-blocked-screen');
     if (screen) {
         screen.style.display = 'flex';
