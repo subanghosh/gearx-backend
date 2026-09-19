@@ -9735,7 +9735,7 @@ window.getDriverCommissionRate = function() {
     if (window._cachedPayoutRates && window._cachedPayoutRates.commissionRatePercent != null) {
         return parseFloat(window._cachedPayoutRates.commissionRatePercent);
     }
-    return window._mockupCommissionRate || 20.0;
+    return window._mockupCommissionRate || 15.0;
 };
 
 window.openDriverBidRequestPreview = function(offerData = null) {
@@ -9771,14 +9771,14 @@ window.openDriverBidRequestPreview = function(offerData = null) {
 
         // Update DOM elements with real offer details
         const commRate = window.getDriverCommissionRate();
+        const estNetContainer = document.getElementById('driver-preview-est-net-container');
         const estNetEl = document.getElementById('driver-preview-est-net');
-        if (estNetEl) {
-            if (window.driverBidPreviewState.isCashRide) {
-                const commAmt = Math.round(window.driverBidPreviewState.baseOffer * (commRate / 100));
-                estNetEl.textContent = `Commission: ₹${commAmt}`;
-            } else {
-                estNetEl.textContent = `Est. Net: ₹${Math.round(window.driverBidPreviewState.baseOffer * (1 - commRate / 100))}`;
-            }
+        if (window.driverBidPreviewState.isCashRide) {
+            // Hide separate commission badge on offer card — commission is shown in ONE place only below stepper!
+            if (estNetContainer) estNetContainer.style.display = 'none';
+        } else {
+            if (estNetContainer) estNetContainer.style.display = 'inline-flex';
+            if (estNetEl) estNetEl.textContent = `Est. Net: ₹${Math.round(window.driverBidPreviewState.baseOffer * (1 - commRate / 100))}`;
         }
 
         const pDistEl = document.getElementById('driver-preview-pickup-dist');
@@ -10178,22 +10178,21 @@ window.updateDriverCounterUI = function() {
     const actionBtn = document.getElementById('driver-preview-main-action-btn');
     const estNetEl = document.getElementById('driver-preview-est-net');
     
-    // Dynamic Cash Banner Elements (Added on top of established screen)
+    // Dynamic Cash Banner Elements (Simplified block below stepper)
     const cashBanner = document.getElementById('driver-bid-cash-banner');
-    const cashPill = document.getElementById('driver-bid-cash-collect-pill');
-    const commRateSpan = document.getElementById('driver-bid-comm-rate');
-    const commAmtSpan = document.getElementById('driver-bid-comm-amt');
+    const commRateAmtSpan = document.getElementById('driver-bid-comm-rate-amt');
+    const estNetContainer = document.getElementById('driver-preview-est-net-container');
+    const estNetEl = document.getElementById('driver-preview-est-net');
     
     if (disp) disp.textContent = current;
 
     if (isCash) {
         if (cashBanner) cashBanner.style.display = 'flex';
-        if (cashPill) cashPill.textContent = `Collect ₹${current} Cash`;
-        if (commRateSpan) commRateSpan.textContent = `${commRate}%`;
-        if (commAmtSpan) commAmtSpan.textContent = `₹${commAmt}`;
-        if (estNetEl) estNetEl.textContent = `Commission: ₹${commAmt}`;
+        if (commRateAmtSpan) commRateAmtSpan.textContent = `${commRate}% (₹${commAmt})`;
+        if (estNetContainer) estNetContainer.style.display = 'none'; // HIDE from offer card so commission is shown in ONE place only!
     } else {
         if (cashBanner) cashBanner.style.display = 'none';
+        if (estNetContainer) estNetContainer.style.display = 'inline-flex';
         if (estNetEl) estNetEl.textContent = `Est. Net: ₹${Math.round(current * (1 - commRate / 100))}`;
     }
     
@@ -10399,6 +10398,11 @@ window.rejectDriverBidPreview = async function() {
 // CASH RIDES & DRIVER WALLET PREVIEW MOCKUP HANDLERS
 // =============================================================================
 window.openCashIncomingPickupPreview = function() {
+    // Explicitly test with a non-20% commission rate (15%) to prove dynamic computation
+    window._mockupCommissionRate = 15.0;
+    if (typeof currentUser !== 'undefined' && currentUser) {
+        currentUser.commission_rate = 15.0;
+    }
     window.openDriverBidRequestPreview({
         id: 'mock_cash_offer_1',
         paymentMode: 'cash',

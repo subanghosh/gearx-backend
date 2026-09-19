@@ -16,35 +16,55 @@ async function capture() {
     });
 
     try {
-        const page = await browser.newPage();
-
         // 1. Screen 1: Customer Pay in Cash Selector
-        console.log('[1/4] Loading https://api.redrivo.in/customer/#preview-hire-driver ...');
-        await page.goto('https://api.redrivo.in/customer/#preview-hire-driver', { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 2000));
-        await page.screenshot({ path: path.join(outDir, 'screen1_customer_cash.png') });
-        console.log('  -> Saved screen1_customer_cash.png');
+        {
+            console.log('[1/4] Loading https://api.redrivo.in/customer/#preview-hire-driver ...');
+            const page = await browser.newPage();
+            await page.goto('https://api.redrivo.in/customer/#preview-hire-driver', { waitUntil: 'networkidle2', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 2500));
+            // Ensure payment card is scrolled nicely into view
+            await page.evaluate(() => {
+                const card = document.getElementById('preview-payment-cash-card');
+                if (card) card.scrollIntoView({ behavior: 'instant', block: 'center' });
+            });
+            await new Promise(r => setTimeout(r, 500));
+            await page.screenshot({ path: path.join(outDir, 'screen1_customer_cash.png') });
+            console.log('  -> Saved screen1_customer_cash.png');
+            await page.close();
+        }
 
         // 2. Screen 2: Driver Incoming Cash Request (Real established screen)
-        console.log('[2/4] Loading https://drivers.redrivo.in/#preview-incoming-cash ...');
-        await page.goto('https://drivers.redrivo.in/#preview-incoming-cash', { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 3500));
-        await page.screenshot({ path: path.join(outDir, 'screen2_driver_incoming_cash.png') });
-        console.log('  -> Saved screen2_driver_incoming_cash.png');
+        {
+            console.log('[2/4] Loading https://drivers.redrivo.in/#preview-incoming-cash ...');
+            const page = await browser.newPage();
+            await page.goto('https://drivers.redrivo.in/#preview-incoming-cash', { waitUntil: 'networkidle2', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 3500));
+            await page.screenshot({ path: path.join(outDir, 'screen2_driver_incoming_cash.png') });
+            console.log('  -> Saved screen2_driver_incoming_cash.png');
+            await page.close();
+        }
 
         // 3. Screen 3: Driver Wallet Outstanding Balance
-        console.log('[3/4] Loading https://drivers.redrivo.in/#preview-driver-wallet ...');
-        await page.goto('https://drivers.redrivo.in/#preview-driver-wallet', { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 2000));
-        await page.screenshot({ path: path.join(outDir, 'screen3_driver_wallet.png') });
-        console.log('  -> Saved screen3_driver_wallet.png');
+        {
+            console.log('[3/4] Loading https://drivers.redrivo.in/#preview-driver-wallet ...');
+            const page = await browser.newPage();
+            await page.goto('https://drivers.redrivo.in/#preview-driver-wallet', { waitUntil: 'networkidle2', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 3000));
+            await page.screenshot({ path: path.join(outDir, 'screen3_driver_wallet.png') });
+            console.log('  -> Saved screen3_driver_wallet.png');
+            await page.close();
+        }
 
         // 4. Screen 4: Driver Blocked Screen
-        console.log('[4/4] Loading https://drivers.redrivo.in/#preview-wallet-blocked ...');
-        await page.goto('https://drivers.redrivo.in/#preview-wallet-blocked', { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 2000));
-        await page.screenshot({ path: path.join(outDir, 'screen4_driver_blocked.png') });
-        console.log('  -> Saved screen4_driver_blocked.png');
+        {
+            console.log('[4/4] Loading https://drivers.redrivo.in/#preview-wallet-blocked ...');
+            const page = await browser.newPage();
+            await page.goto('https://drivers.redrivo.in/#preview-wallet-blocked', { waitUntil: 'networkidle2', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 2500));
+            await page.screenshot({ path: path.join(outDir, 'screen4_driver_blocked.png') });
+            console.log('  -> Saved screen4_driver_blocked.png');
+            await page.close();
+        }
 
         console.log('[SUCCESS] All 4 live screenshots captured successfully!');
     } catch (err) {
