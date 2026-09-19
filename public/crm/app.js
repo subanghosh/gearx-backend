@@ -478,6 +478,7 @@ async function fetchRealtimeData() {
 
         const currentHash = JSON.stringify(finalizedData);
         window.initialDataLoaded = true;
+        window._lastCrmSyncTimestamp = Date.now();
         if (currentHash === LAST_SYNC_STATE_HASH) return false; // No data change
         
         console.log("Sync Complete: Data updated in state.");
@@ -490,10 +491,17 @@ async function fetchRealtimeData() {
     }
 }
 
+// Background sync interval (15 minutes to minimize Neon serverless database compute)
+const CRM_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+
 function startRealtimeSync() {
     if (SYNC_INTERVAL) clearInterval(SYNC_INTERVAL);
-    // High-frequency sync: 3 seconds for "instant" feel
     SYNC_INTERVAL = setInterval(async () => {
+        // Tab visibility guard: drop to zero queries when tab is minimized, hidden, or backgrounded
+        if (typeof document !== 'undefined' && document.hidden) {
+            return;
+        }
+
         const isAuthPage = router.currentPage === 'login';
         if (!isAuthPage && PROTOTYPE_STATE.currentUser) {
             const hasChanges = await fetchRealtimeData();
@@ -526,7 +534,24 @@ function startRealtimeSync() {
                 }
             }
         }
-    }, 3000); 
+    }, CRM_SYNC_INTERVAL_MS);
+}
+
+// Optional immediate sync on returning to tab if the 15m interval has elapsed
+if (typeof document !== 'undefined' && !window._crmVisibilityListenerAttached) {
+    window._crmVisibilityListenerAttached = true;
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && router.currentPage !== 'login' && PROTOTYPE_STATE.currentUser) {
+            const now = Date.now();
+            if (!window._lastCrmSyncTimestamp || (now - window._lastCrmSyncTimestamp >= CRM_SYNC_INTERVAL_MS)) {
+                fetchRealtimeData().then(hasChanges => {
+                    if (hasChanges) {
+                        router.renderPage(router.currentPage, document.getElementById('app'));
+                    }
+                }).catch(() => {});
+            }
+        }
+    });
 }
 
 function calculateRating(reviews) {
