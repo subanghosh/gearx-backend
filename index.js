@@ -483,9 +483,25 @@ function generateOtpEmailHtml(otp, title = 'Your ReDrivo Verification Code', sub
 </html>`;
 }
 
-const isSsl = process.env.DATABASE_URL && (process.env.DATABASE_URL.includes('sslmode=require') || process.env.DATABASE_URL.includes('neon.tech'));
+function cleanDatabaseUrl(raw) {
+    if (!raw) return '';
+    let str = raw.trim();
+    if (str.startsWith('psql ')) {
+        str = str.replace(/^psql\s+['"]?/, '').replace(/['"]?$/, '').trim();
+    }
+    if (str.startsWith('DATABASE_URL=')) {
+        str = str.replace(/^DATABASE_URL=/, '').trim();
+    }
+    if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+        str = str.slice(1, -1).trim();
+    }
+    return str;
+}
+
+const sanitizedDbUrl = cleanDatabaseUrl(process.env.DATABASE_URL);
+const isSsl = sanitizedDbUrl && (sanitizedDbUrl.includes('sslmode=require') || sanitizedDbUrl.includes('neon.tech'));
 const pool = new Pool({ 
-    connectionString: process.env.DATABASE_URL,
+    connectionString: sanitizedDbUrl,
     ssl: isSsl ? { rejectUnauthorized: false } : false,
     idleTimeoutMillis: 10000, // Closes idle client connections after 10s so Neon serverless compute can auto-suspend
     connectionTimeoutMillis: 10000, // Waits up to 10s for Neon cold-start wake-up
