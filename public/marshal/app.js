@@ -10176,7 +10176,6 @@ window.updateDriverCounterUI = function() {
     const minusBtn = document.getElementById('driver-counter-btn-minus');
     const plusBtn = document.getElementById('driver-counter-btn-plus');
     const actionBtn = document.getElementById('driver-preview-main-action-btn');
-    const estNetEl = document.getElementById('driver-preview-est-net');
     
     // Dynamic Cash Banner Elements (Simplified block below stepper)
     const cashBanner = document.getElementById('driver-bid-cash-banner');
@@ -10511,6 +10510,7 @@ function checkMarshalPreviewHash() {
     }
 }
 
+window.checkMarshalPreviewHash = checkMarshalPreviewHash;
 window.addEventListener('hashchange', checkMarshalPreviewHash);
 
 if (document.readyState === 'loading') {
