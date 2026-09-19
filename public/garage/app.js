@@ -3326,5 +3326,3 @@ window.addEventListener('DOMContentLoaded', () => {
         initGoogleOneTap();
     }
 });
-
-// Auto-cache-busting verified: 2026-09-11

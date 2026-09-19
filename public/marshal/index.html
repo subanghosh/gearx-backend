@@ -1089,6 +1089,44 @@
                 <span style="font-size: 0.9rem; color: var(--text-main); font-weight: 600;"><span id="earnings-trip-count">0</span> Trips Completed</span>
             </div>
         </div>
+        <!-- Outstanding Commission Balance Card (Commission Model) -->
+        <div id="driver-outstanding-balance-card" style="margin: 20px 10px 0 10px; background: linear-gradient(145deg, rgba(250, 204, 21, 0.06) 0%, rgba(20, 20, 20, 0.95) 100%); border: 1.5px solid rgba(250, 204, 21, 0.25); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="material-symbols-outlined" style="font-size: 18px; color: var(--primary);">account_balance_wallet</span>
+                        <span style="font-size: 0.72rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Outstanding Commission</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 4px;">
+                        <span style="font-size: 1.75rem; font-weight: 900; color: #fff;" id="driver-outstanding-amount">₹300.00</span>
+                        <span style="font-size: 0.75rem; color: #a1a1aa; font-weight: 600;">/ ₹500 Max Limit</span>
+                    </div>
+                </div>
+                <span id="driver-outstanding-status-pill" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; font-size: 0.68rem; font-weight: 800; padding: 4px 8px; border-radius: 8px;">
+                    ACTIVE (₹200 BUFFER)
+                </span>
+            </div>
+
+            <!-- Progress Meter -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
+                    <div id="driver-outstanding-progress-bar" style="width: 60%; height: 100%; background: linear-gradient(90deg, #22c55e, #facc15); border-radius: 4px; transition: width 0.3s ease;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: #71717a;">
+                    <span>₹0 (Clear)</span>
+                    <span id="driver-outstanding-limit-label">₹500 Hard Block Limit</span>
+                </div>
+            </div>
+
+            <!-- Explanatory note & Action button -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                <span style="font-size: 0.7rem; color: #a1a1aa; line-height: 1.3;">Owed commission on cash rides. Pay down anytime via Razorpay.</span>
+                <button type="button" onclick="showToast('Mockup: Opening Razorpay to clear ₹300 balance...', 'info')" style="padding: 8px 14px; border-radius: 10px; background: var(--primary); color: #000; font-size: 0.78rem; font-weight: 800; border: none; cursor: pointer; flex-shrink: 0; box-shadow: 0 2px 10px rgba(250, 204, 21, 0.25);">
+                    Pay Down
+                </button>
+            </div>
+        </div>
+
         <!-- Withdraw to Bank Section -->
         <div style="margin-top: 20px; padding: 0 10px;" id="withdrawal-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 4px;">
@@ -1400,10 +1438,24 @@
                 <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.06); margin: 0;">
 
                 <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Payment Mode & Cash Collection Badge -->
+                    <div id="ip-payment-badge-container" style="background: rgba(34, 197, 94, 0.12); border: 1.5px solid #22c55e; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span style="font-size: 0.8rem; font-weight: 900; color: #22c55e; letter-spacing: 0.5px; display: flex; align-items: center; gap: 5px;">
+                                <span class="material-symbols-outlined" style="font-size: 17px; color: #22c55e;">payments</span>
+                                CASH RIDE
+                            </span>
+                            <span style="background: #22c55e; color: #000; font-size: 0.72rem; font-weight: 800; padding: 2px 7px; border-radius: 6px;" id="ip-cash-collect-pill">Collect ₹450 Cash</span>
+                        </div>
+                        <span style="font-size: 0.67rem; color: #a1a1aa; line-height: 1.3;" id="ip-commission-deduct-note">
+                            Customer pays you full fare in cash. 20% platform commission (₹90) will be added to your wallet outstanding.
+                        </span>
+                    </div>
+
                     <!-- Earnings -->
                     <div style="display: flex; align-items: center; gap: 6px; color: #10B981; font-weight: 800; font-size: 0.95rem; font-family: 'Plus Jakarta Sans', sans-serif;">
                         <span class="material-symbols-outlined" style="font-size: 18px;">payments</span>
-                        <span id="ip-earnings">₹450 Earning</span>
+                        <span id="ip-earnings">₹450 Cash in Hand</span>
                     </div>
                     <!-- Distance -->
                     <div style="display: flex; align-items: center; gap: 6px; color: #D4AF37; font-weight: 700; font-size: 0.82rem; font-family: 'Plus Jakarta Sans', sans-serif;">
@@ -1976,6 +2028,81 @@
             </button>
             <button type="button" id="driver-preview-main-action-btn" onclick="submitDriverBidPreview()" style="flex: 2; padding: 12px; border-radius: 12px; background: #22c55e; border: none; color: #000; font-size: 0.9rem; font-weight: 900; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(34, 197, 94, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
                 ACCEPT ₹550
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- WALLET LIMIT BLOCKED SCREEN (Commission Model Outstanding Cap Exceeded)   -->
+<!-- ========================================================================= -->
+<div id="wallet-limit-blocked-screen" style="display: none; position: fixed; inset: 0; z-index: 120000; background: rgba(8, 10, 15, 0.96); backdrop-filter: blur(14px); align-items: center; justify-content: center; padding: 20px; font-family: 'Plus Jakarta Sans', sans-serif;">
+    <div style="position: relative; width: 100%; max-width: 390px; background: linear-gradient(160deg, #1b1717 0%, #12141a 100%); border: 1.5px solid rgba(239, 68, 68, 0.4); border-radius: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(239, 68, 68, 0.15); padding: 24px 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+        
+        <!-- Header: Red Alert Icon & Blocking Pill -->
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="width: 46px; height: 46px; border-radius: 14px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); display: flex; align-items: center; justify-content: center;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; font-size: 0.72rem; font-weight: 800; padding: 4px 10px; border-radius: 8px; letter-spacing: 0.6px; text-transform: uppercase;">
+                Requests Blocked
+            </span>
+        </div>
+
+        <!-- Title & Subtitle -->
+        <div>
+            <h3 style="font-size: 1.25rem; font-weight: 900; color: #fff; margin: 0 0 4px 0; line-height: 1.2;">Outstanding Limit Reached</h3>
+            <p style="font-size: 0.78rem; color: #a1a1aa; margin: 0; line-height: 1.4;">Your accumulated commission debt from cash trips has exceeded the permissible platform limit of ₹500.00.</p>
+        </div>
+
+        <!-- Financial Breakdown Card -->
+        <div style="background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.72rem; color: #a1a1aa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Current Outstanding</span>
+                <span id="blocked-screen-balance" style="font-size: 1.6rem; font-weight: 900; color: #ef4444; letter-spacing: -0.5px;">₹660.00</span>
+            </div>
+
+            <!-- Overdue Progress Meter (Exceeded 100%) -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; position: relative;">
+                    <div style="width: 100%; height: 100%; background: #ef4444; border-radius: 4px;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.65rem; font-weight: 700;">
+                    <span style="color: #71717a;">Limit: ₹500.00</span>
+                    <span style="color: #ef4444;">Over Limit by ₹160.00</span>
+                </div>
+            </div>
+
+            <!-- Rule Explanation Box -->
+            <div style="background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; border-radius: 0 8px 8px 0; padding: 8px 10px;">
+                <span style="font-size: 0.68rem; color: #d4d4d8; line-height: 1.35; display: block;">
+                    Drivers on the 20% commission model must keep their unpaid balance below ₹500.00. You cannot go online or accept rides until this balance is paid down.
+                </span>
+            </div>
+        </div>
+
+        <!-- Payment Actions via Razorpay -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Pay Full -->
+            <button type="button" onclick="showToast('Mockup: Launching Razorpay for ₹660.00 (Full Settlement)...', 'success')" style="width: 100%; padding: 14px; border-radius: 14px; background: #22c55e; border: none; color: #000; font-size: 0.9rem; font-weight: 900; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 18px rgba(34, 197, 94, 0.35); text-transform: uppercase; letter-spacing: 0.5px;">
+                <span>Pay Full Balance (₹660.00)</span>
+            </button>
+
+            <!-- Pay Minimum to Reactivate -->
+            <button type="button" onclick="showToast('Mockup: Launching Razorpay for ₹200.00 (Reactivation)...', 'info')" style="width: 100%; padding: 12px; border-radius: 14px; background: rgba(250, 204, 21, 0.12); border: 1.5px solid rgba(250, 204, 21, 0.4); color: #facc15; font-size: 0.82rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <span>Pay ₹200 (Brings balance to ₹460 & Unblocks)</span>
+            </button>
+        </div>
+
+        <!-- Mockup Preview Dismissal -->
+        <div style="text-align: center; margin-top: 2px;">
+            <button type="button" onclick="closeWalletBlockedScreenPreview()" style="background: transparent; border: none; color: #71717a; font-size: 0.72rem; text-decoration: underline; cursor: pointer; padding: 4px 8px;">
+                Close Mockup Preview
             </button>
         </div>
 

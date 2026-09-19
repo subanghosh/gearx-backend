@@ -12844,7 +12844,11 @@ app.use((req, res, next) => {
             p === '/robots.txt' ||
             p === '/googleb3142194a3b63def.html' ||
             p === '/crm' || p.startsWith('/crm/') ||
-            p === '/admin' || p.startsWith('/admin/')
+            p === '/admin' || p.startsWith('/admin/') ||
+            p === '/customer' || p.startsWith('/customer/') ||
+            p === '/marshal' || p.startsWith('/marshal/') ||
+            p === '/driver' || p.startsWith('/driver/') ||
+            p === '/drivers' || p.startsWith('/drivers/')
         ) {
             return next();
         }

@@ -13224,6 +13224,7 @@ window.previewHireDriverState = {
     tripType: 'oneway',        // 'oneway' | 'round' | 'outstation'
     bookingMode: 'km',         // 'km' | 'hourly' | 'daywise'
     timing: 'instant',         // 'instant' | 'schedule'
+    paymentMode: 'cash',       // 'cash' | 'online'
     selectedHours: 4,
     selectedDays: 1,
     selectedOutstation: '1 Day',
@@ -14782,10 +14783,72 @@ window.updatePreviewOfferDisplay = function() {
     }
 };
 
+window.setPreviewPaymentMode = function(mode) {
+    window.previewHireDriverState.paymentMode = mode;
+    const cashCard = document.getElementById('preview-payment-cash-card');
+    const onlineCard = document.getElementById('preview-payment-online-card');
+    const cashRadio = document.getElementById('preview-payment-cash-radio');
+    const onlineRadio = document.getElementById('preview-payment-online-radio');
+    const peekBadge = document.getElementById('preview-peek-payment-badge');
+
+    if (mode === 'cash') {
+        if (cashCard) {
+            cashCard.style.background = 'rgba(34, 197, 94, 0.12)';
+            cashCard.style.borderColor = '#22c55e';
+        }
+        if (cashRadio) {
+            cashRadio.style.background = '#22c55e';
+            cashRadio.style.borderColor = '#22c55e';
+            cashRadio.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></span>';
+        }
+        if (onlineCard) {
+            onlineCard.style.background = 'rgba(255, 255, 255, 0.03)';
+            onlineCard.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        }
+        if (onlineRadio) {
+            onlineRadio.style.background = 'transparent';
+            onlineRadio.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            onlineRadio.innerHTML = '';
+        }
+        if (peekBadge) {
+            peekBadge.textContent = 'Cash';
+            peekBadge.style.color = '#22c55e';
+            peekBadge.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+            peekBadge.style.background = 'rgba(34, 197, 94, 0.12)';
+        }
+    } else {
+        if (onlineCard) {
+            onlineCard.style.background = 'rgba(250, 204, 21, 0.12)';
+            onlineCard.style.borderColor = 'var(--primary)';
+        }
+        if (onlineRadio) {
+            onlineRadio.style.background = 'var(--primary)';
+            onlineRadio.style.borderColor = 'var(--primary)';
+            onlineRadio.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></span>';
+        }
+        if (cashCard) {
+            cashCard.style.background = 'rgba(255, 255, 255, 0.03)';
+            cashCard.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        }
+        if (cashRadio) {
+            cashRadio.style.background = 'transparent';
+            cashRadio.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            cashRadio.innerHTML = '';
+        }
+        if (peekBadge) {
+            peekBadge.textContent = 'Online';
+            peekBadge.style.color = 'var(--primary)';
+            peekBadge.style.borderColor = 'rgba(250, 204, 21, 0.3)';
+            peekBadge.style.background = 'rgba(250, 204, 21, 0.12)';
+        }
+    }
+};
+
 window.updatePreviewUI = function() {
     setPreviewTripType(window.previewHireDriverState.tripType);
     setPreviewBookingMode(window.previewHireDriverState.bookingMode);
     setPreviewTiming(window.previewHireDriverState.timing);
+    setPreviewPaymentMode(window.previewHireDriverState.paymentMode || 'cash');
     updatePreviewOfferDisplay();
     if (typeof window.updatePreviewCTA === 'function') {
         window.updatePreviewCTA();

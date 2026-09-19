@@ -209,7 +209,8 @@ function getAttachmentUrl(path) {
     if (path.startsWith('data:')) {
         return path;
     }
-    if (path.includes('mock')) {
+    // If it's a mock file or a disk upload (which are lost due to Render's ephemeral filesystem), show a friendly placeholder
+    if (path.includes('mock') || path.startsWith('uploads/')) {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="250" viewBox="0 0 400 250" style="background:#121212; font-family:sans-serif;"><rect width="400" height="250" fill="#1a1a1a" stroke="#333" stroke-width="2"/><circle cx="200" cy="90" r="30" fill="#444"/><path d="M160,150 Q200,120 240,150" stroke="#444" stroke-width="6" fill="none"/><text x="200" y="190" fill="#e5c158" font-size="14" text-anchor="middle" font-weight="bold" letter-spacing="1">DOCUMENT PLACEHOLDER</text><text x="200" y="215" fill="#666" font-size="10" text-anchor="middle">${path}</text></svg>`;
         return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     }
@@ -556,48 +557,6 @@ const toggleSidebar = () => {
     if (overlay) overlay.classList.toggle('active');
 };
 
-const updateSidebarToggleUi = (isCollapsed) => {
-    const layout = document.querySelector('.main-layout');
-    const toggleIcon = document.getElementById('sidebar-toggle-icon');
-    const toggleBtn = document.getElementById('sidebar-toggle-btn');
-    if (layout) {
-        layout.classList.toggle('sidebar-collapsed', isCollapsed);
-    }
-    if (document.documentElement) {
-        document.documentElement.classList.toggle('sidebar-collapsed-preload', isCollapsed);
-    }
-    if (toggleIcon) {
-        toggleIcon.setAttribute('data-lucide', isCollapsed ? 'panel-left-open' : 'panel-left-close');
-    }
-    if (toggleBtn) {
-        toggleBtn.setAttribute('title', isCollapsed ? 'Expand Navigation Sidebar (Ctrl+B)' : 'Collapse Navigation Sidebar (Ctrl+B)');
-    }
-    if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        window.lucide.createIcons();
-    }
-};
-
-const toggleSidebarCollapse = () => {
-    const layout = document.querySelector('.main-layout');
-    const isCurrentlyCollapsed = layout ? layout.classList.contains('sidebar-collapsed') : (localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true');
-    const nextState = !isCurrentlyCollapsed;
-    localStorage.setItem('redrivo_crm_sidebar_collapsed', nextState ? 'true' : 'false');
-    updateSidebarToggleUi(nextState);
-};
-
-const initSidebarCollapseState = () => {
-    const isCollapsed = localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true';
-    updateSidebarToggleUi(isCollapsed);
-};
-
-// Global keyboard shortcut (Ctrl+B / Cmd+B) to toggle sidebar
-document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
-        e.preventDefault();
-        toggleSidebarCollapse();
-    }
-});
-
 const router = {
     currentPage: 'dashboard',
     navigate: async (page) => {
@@ -694,7 +653,6 @@ const router = {
                 case 'rental-partners': renderProviderPage(container, 'rental-partners'); break;
                 case 'sku-catalog': renderSKUCatalog(container); break;
                 case 'charges': renderAllCharges(container); break;
-                case 'offers': renderOffers(container); break;
                 case 'admin-survey': renderAdminSurvey(container); break;
                 case 'public-survey': renderSurveyWizard(container); break;
                 case 'disputes': renderDisputes(container); break;
@@ -863,125 +821,125 @@ async function renderDashboard(container) {
     if (demandTabActive) {
         sectionHtml = `
             <!-- SECTION 1: CUSTOMER & DEMAND DASHBOARD -->
-            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md);">
-                <h2 style="margin-top:0; color:var(--primary); font-size:1.05rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
-                    <i data-lucide="users" style="width:16px; height:16px;"></i>
+            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 24px; border-radius: var(--radius-lg);">
+                <h2 style="margin-top:0; color:var(--primary); font-size:1.3rem; margin-bottom:20px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                    <i data-lucide="users" style="width:20px; height:20px;"></i>
                     SECTION 1: Customer & Demand Dashboard
                 </h2>
 
                 <!-- Live Active Orders Metric Card -->
-                <div style="background: rgba(250, 204, 21, 0.05); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="background: rgba(250, 204, 21, 0.05); border: 1px solid rgba(250, 204, 21, 0.2); border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between;">
                     <div>
-                        <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Live Active Orders</span>
-                        <div style="font-size: 1.75rem; font-weight: 800; color: var(--primary); margin: 4px 0 0 0;">${activeRequests.length}</div>
+                        <span style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Live Active Orders</span>
+                        <div style="font-size: 2.75rem; font-weight: 800; color: var(--primary); margin: 6px 0 0 0;">${activeRequests.length}</div>
                     </div>
-                    <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                        <i data-lucide="shopping-bag" style="width:18px; height:18px;"></i>
+                    <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(250, 204, 21, 0.1); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                        <i data-lucide="shopping-bag" style="width:26px; height:26px;"></i>
                     </div>
                 </div>
 
                 <!-- Geographic Heatmap (Origin vs. Destination) -->
-                <div style="margin-bottom: 18px;">
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="map" style="width:14px; height:14px; color:var(--primary);"></i>
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="map" style="width:16px; height:16px; color:var(--primary);"></i>
                         Geographic Routing Heatmap (Origin vs. Destination)
                     </h3>
-                    <table class="data-table" style="width:100%; font-size:0.80rem;">
+                    <table class="data-table" style="width:100%; font-size:0.85rem;">
                         <thead>
                             <tr style="border-bottom:1px solid var(--border);">
-                                <th style="padding:8px 10px; text-align:left;">Dispatch Route</th>
-                                <th style="padding:8px 10px; text-align:right;">Active Requests</th>
+                                <th style="padding:10px; text-align:left;">Dispatch Route</th>
+                                <th style="padding:10px; text-align:right;">Active Requests</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${geoStats.map(stat => `
                                 <tr style="border-bottom: 1px dashed rgba(255,255,255,0.03);">
-                                    <td style="padding:8px 10px; font-weight:600; color:rgba(255,255,255,0.95); display:flex; align-items:center; gap:6px;">
-                                        <i data-lucide="navigation-2" style="width:12px; height:12px; color:var(--primary);"></i>
+                                    <td style="padding:12px 10px; font-weight:600; color:rgba(255,255,255,0.95); display:flex; align-items:center; gap:8px;">
+                                        <i data-lucide="navigation-2" style="width:13px; height:13px; color:var(--primary);"></i>
                                         <span>${stat.origin}</span>
                                         <span style="color:var(--text-muted);">→</span>
                                         <span style="color:var(--text-dim);">${stat.dest}</span>
                                     </td>
-                                    <td style="padding:8px 10px; text-align:right; font-weight:700; color:var(--primary);">${stat.count} requests</td>
+                                    <td style="padding:12px 10px; text-align:right; font-weight:700; color:var(--primary);">${stat.count} requests</td>
                                 </tr>
                             `).join('')}
-                            ${geoStats.length === 0 ? '<tr><td colspan="2" style="text-align:center; padding:20px; color:var(--text-dim);">No active dispatch routes.</td></tr>' : ''}
+                            ${geoStats.length === 0 ? '<tr><td colspan="2" style="text-align:center; padding:30px; color:var(--text-dim);">No active dispatch routes.</td></tr>' : ''}
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Top 5 Pincodes by Booking & Search Demand -->
-                <div style="margin-bottom: 18px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h3 style="font-size:0.82rem; color:#fff; margin:0; display:flex; align-items:center; gap:6px;">
-                            <i data-lucide="bar-chart-2" style="width:14px; height:14px; color:var(--primary);"></i>
+                <div style="margin-bottom: 24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h3 style="font-size:0.95rem; color:#fff; margin:0; display:flex; align-items:center; gap:6px;">
+                            <i data-lucide="bar-chart-2" style="width:16px; height:16px; color:var(--primary);"></i>
                             Top 5 High Demand Pincodes (Live 2h Rolling Aggregation)
                         </h3>
-                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.65rem; font-weight:700; padding:2px 6px; border-radius:4px;">Live Demand</span>
+                        <span class="badge" style="background: rgba(250,204,21,0.1); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:4px;">Live Demand</span>
                     </div>
-                    <table class="data-table" style="width:100%; font-size:0.80rem;">
+                    <table class="data-table" style="width:100%; font-size:0.85rem;">
                         <thead>
                             <tr style="border-bottom:1px solid var(--border);">
-                                <th style="padding:8px 10px; text-align:left;">Pincode & Locality</th>
-                                <th style="padding:8px 10px; text-align:center;">Searches / Orders</th>
-                                <th style="padding:8px 10px; text-align:right;">Demand Score</th>
+                                <th style="padding:10px; text-align:left;">Pincode & Locality</th>
+                                <th style="padding:10px; text-align:center;">Searches / Orders</th>
+                                <th style="padding:10px; text-align:right;">Demand Score</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${pincodeStats.map(stat => `
                                 <tr style="border-bottom: 1px dashed rgba(255,255,255,0.03);">
-                                    <td style="padding:8px 10px; font-weight:600; color:rgba(255,255,255,0.95);">
-                                        <div style="display:flex; align-items:center; gap:6px;">
-                                            <i data-lucide="map-pin" style="width:12px; height:12px; color:var(--primary);"></i>
+                                    <td style="padding:12px 10px; font-weight:600; color:rgba(255,255,255,0.95);">
+                                        <div style="display:flex; align-items:center; gap:8px;">
+                                            <i data-lucide="map-pin" style="width:13px; height:13px; color:var(--primary);"></i>
                                             <span style="font-weight:700; color:#fff;">${stat.pincode}</span>
-                                            <span style="color:var(--text-dim); font-size:0.72rem;">· ${stat.areaName || 'Kolkata'}</span>
+                                            <span style="color:var(--text-dim); font-size:0.75rem;">· ${stat.areaName || 'Kolkata'}</span>
                                         </div>
                                     </td>
-                                    <td style="padding:8px 10px; text-align:center; color:var(--text-muted); font-size:0.75rem;">
+                                    <td style="padding:12px 10px; text-align:center; color:var(--text-muted); font-size:0.8rem;">
                                         <span style="color:#fff; font-weight:700;">${stat.searchCount || 0}</span> searches · <span style="color:var(--primary); font-weight:700;">${stat.bookingCount || 0}</span> bookings
                                     </td>
-                                    <td style="padding:8px 10px; text-align:right;">
-                                        <span class="badge" style="background:${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.2)' : 'rgba(250,204,21,0.15)'}; color:${stat.demandLevel === 'Surge' ? '#EF4444' : '#FACC15'}; border:1px solid ${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.4)' : 'rgba(250,204,21,0.3)'}; font-weight:800; font-size:0.68rem; padding:2px 6px; border-radius:4px;">
+                                    <td style="padding:12px 10px; text-align:right;">
+                                        <span class="badge" style="background:${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.2)' : 'rgba(250,204,21,0.15)'}; color:${stat.demandLevel === 'Surge' ? '#EF4444' : '#FACC15'}; border:1px solid ${stat.demandLevel === 'Surge' ? 'rgba(239,68,68,0.4)' : 'rgba(250,204,21,0.3)'}; font-weight:800; font-size:0.75rem; padding:3px 8px; border-radius:6px;">
                                             ${stat.demandScore} pts (${stat.demandLevel || 'High'})
                                         </span>
                                     </td>
                                 </tr>
                             `).join('')}
-                            ${pincodeStats.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:20px; color:var(--text-dim);">No demand search data available in the last 2 hours.</td></tr>' : ''}
+                            ${pincodeStats.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:30px; color:var(--text-dim);">No demand search data available in the last 2 hours.</td></tr>' : ''}
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Vehicle Type Split (Doughnut Chart UI Representation) -->
-                <div style="margin-bottom: 18px; padding: 14px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:8px;">
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="pie-chart" style="width:14px; height:14px; color:var(--primary);"></i>
+                <div style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:12px;">
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:15px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="pie-chart" style="width:16px; height:16px; color:var(--primary);"></i>
                         Live Vehicle Type Split (Car vs. Bike)
                     </h3>
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:20px;">
                         <div style="flex:1;">
-                            <div style="display:flex; justify-content:space-between; font-size:0.80rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
                                 <span style="display:flex; align-items:center; gap:6px; color:#fff; font-weight:500;">
-                                    <span style="width:8px; height:8px; border-radius:50%; background:var(--primary); display:inline-block;"></span> Cars
+                                    <span style="width:10px; height:10px; border-radius:50%; background:var(--primary); display:inline-block;"></span> Cars
                                 </span>
                                 <span style="font-weight:700; color:var(--primary);">${cars} requests (${carPct}%)</span>
                             </div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.80rem; margin-bottom:4px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px;">
                                 <span style="display:flex; align-items:center; gap:6px; color:var(--text-dim);">
-                                    <span style="width:8px; height:8px; border-radius:50%; background:#4B5563; display:inline-block;"></span> Bikes
+                                    <span style="width:10px; height:10px; border-radius:50%; background:#4B5563; display:inline-block;"></span> Bikes
                                 </span>
                                 <span style="font-weight:700; color:#fff;">${bikes} requests (${bikePct}%)</span>
                             </div>
                         </div>
                         
-                        <div style="position:relative; width:64px; height:64px; display:flex; align-items:center; justify-content:center;">
-                            <svg width="64" height="64" viewBox="0 0 36 36">
+                        <div style="position:relative; width:80px; height:80px; display:flex; align-items:center; justify-content:center;">
+                            <svg width="80" height="80" viewBox="0 0 36 36">
                                 <circle cx="18" cy="18" r="15.915" fill="none" stroke="#4B5563" stroke-width="4"></circle>
                                 <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--primary)" stroke-width="4.2"
                                         stroke-dasharray="${carPct} ${100 - carPct}" stroke-dashoffset="25"></circle>
                             </svg>
-                            <div style="position:absolute; font-size:0.70rem; font-weight:800; color:#fff; text-align:center;">
-                                <span>${activeRequests.length}</span><br><span style="font-size:0.45rem; color:var(--text-dim); text-transform:uppercase;">Veh</span>
+                            <div style="position:absolute; font-size:0.75rem; font-weight:800; color:#fff; text-align:center;">
+                                <span>${activeRequests.length}</span><br><span style="font-size:0.5rem; color:var(--text-dim); text-transform:uppercase;">Veh</span>
                             </div>
                         </div>
                     </div>
@@ -989,11 +947,11 @@ async function renderDashboard(container) {
 
                 <!-- Live Order Status Feed Ticker -->
                 <div>
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="clock" style="width:14px; height:14px; color:var(--primary);"></i>
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="clock" style="width:16px; height:16px; color:var(--primary);"></i>
                         Live Active Order Feed Ticker
                     </h3>
-                    <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; flex-direction:column; gap:10px;">
                         ${activeOrderTicker.map(r => {
                             let statusText = 'Searching for Marshal';
                             let badgeClass = 'badge-warning';
@@ -1006,16 +964,16 @@ async function renderDashboard(container) {
                                 badgeClass = 'badge-success';
                             }
                             return `
-                                <div style="padding:9px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+                                <div style="padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
                                     <div>
-                                        <div style="font-size:0.80rem; font-weight:600; color:#fff;">${r.customerName || 'Customer'}</div>
-                                        <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px;">Order ID: #${r.id.substring(0,8)}</div>
+                                        <div style="font-size:0.85rem; font-weight:600; color:#fff;">${r.customerName || 'Customer'}</div>
+                                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Order ID: #${r.id.substring(0,8)}</div>
                                     </div>
-                                    <span class="badge ${badgeClass}" style="font-size:0.65rem;">${statusText}</span>
+                                    <span class="badge ${badgeClass}" style="font-size:0.7rem;">${statusText}</span>
                                 </div>
                             `;
                         }).join('')}
-                        ${activeOrderTicker.length === 0 ? '<div style="padding:16px; text-align:center; color:var(--text-dim); border:1px dashed var(--border); border-radius:6px;">No active requests.</div>' : ''}
+                        ${activeOrderTicker.length === 0 ? '<div style="padding:20px; text-align:center; color:var(--text-dim); border:1px dashed var(--border); border-radius:8px;">No active requests.</div>' : ''}
                     </div>
                 </div>
             </div>
@@ -1023,72 +981,72 @@ async function renderDashboard(container) {
     } else {
         sectionHtml = `
             <!-- SECTION 2: MARSHAL LOGISTICS DASHBOARD -->
-            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md);">
-                <h2 style="margin-top:0; color:var(--primary); font-size:1.05rem; margin-bottom:14px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
-                    <i data-lucide="truck" style="width:16px; height:16px;"></i>
+            <div class="card" style="margin-top:0; border: 1px solid rgba(255,255,255,0.05); background: var(--bg-surface); padding: 24px; border-radius: var(--radius-lg);">
+                <h2 style="margin-top:0; color:var(--primary); font-size:1.3rem; margin-bottom:20px; display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+                    <i data-lucide="truck" style="width:20px; height:20px;"></i>
                     SECTION 2: Marshal Logistics Dashboard
                 </h2>
 
                 <!-- Marshal On-Duty Status -->
-                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                         <div>
-                            <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Registered Marshals</span>
-                            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin: 2px 0 0 0;">${totalRegistered}</div>
+                            <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Registered Marshals</span>
+                            <div style="font-size: 2.2rem; font-weight: 800; color: #fff; margin: 4px 0 0 0;">${totalRegistered}</div>
                         </div>
                         <div style="text-align:right;">
-                            <span style="color: #10B981; font-size: 0.78rem; font-weight: 700; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
-                                <span style="width:6px; height:6px; border-radius:50%; background:#10B981; display:inline-block; animation: pulse 1.5s infinite;"></span>
+                            <span style="color: #10B981; font-size: 0.85rem; font-weight: 700; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:#10B981; display:inline-block; animation: pulse 1.5s infinite;"></span>
                                 ${liveActiveCount} On-Duty
                             </span>
-                            <span style="color: var(--text-muted); font-size: 0.65rem; display:block; margin-top:2px;">Online / Active</span>
+                            <span style="color: var(--text-muted); font-size: 0.7rem; display:block; margin-top:2px;">Online / Active</span>
                         </div>
                     </div>
-                    <div style="height:5px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
+                    <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
                         <div style="width:${totalRegistered > 0 ? (liveActiveCount / totalRegistered * 100).toFixed(0) : 0}%; height:100%; background:var(--primary);"></div>
                     </div>
                 </div>
 
                 <!-- Live Duty Stages (Horizontal Bar Chart) -->
-                <div style="margin-bottom: 18px;">
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="bar-chart-2" style="width:14px; height:14px; color:var(--primary);"></i>
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:15px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="bar-chart-2" style="width:16px; height:16px; color:var(--primary);"></i>
                         Live Marshal Duty Stages Track
                     </h3>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div style="display:flex; flex-direction:column; gap:12px;">
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Idle / Available</span>
                                 <span style="font-weight:700; color:var(--primary);">${stages.idle} marshals</span>
                             </div>
-                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
+                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.idle / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:var(--primary);"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">En Route to Customer</span>
                                 <span style="font-weight:700; color:#fff;">${stages.enRoute} marshals</span>
                             </div>
-                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
+                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.enRoute / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#10B981;"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Driving to Garage</span>
                                 <span style="font-weight:700; color:#fff;">${stages.drivingToGarage} marshals</span>
                             </div>
-                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
+                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.drivingToGarage / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#3B82F6;"></div>
                             </div>
                         </div>
                         <div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:3px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
                                 <span style="color:var(--text-dim); font-weight:500;">Returning to Customer</span>
                                 <span style="font-weight:700; color:#fff;">${stages.returning} marshals</span>
                             </div>
-                            <div style="height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
+                            <div style="height:8px; background:rgba(255,255,255,0.03); border-radius:4px; overflow:hidden;">
                                 <div style="width:${liveActiveCount > 0 ? (stages.returning / liveActiveCount * 100).toFixed(0) : 0}%; height:100%; background:#8B5CF6;"></div>
                             </div>
                         </div>
@@ -1096,50 +1054,50 @@ async function renderDashboard(container) {
                 </div>
 
                 <!-- Onboarding & Compliance Data -->
-                <div style="margin-bottom: 18px; padding: 14px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:8px;">
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="shield-check" style="width:14px; height:14px; color:var(--primary);"></i>
+                <div style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border); border-radius:12px;">
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="shield-check" style="width:16px; height:16px; color:var(--primary);"></i>
                         Marshal Onboarding & Compliance Metrics
                     </h3>
-                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; text-align:center;">
-                        <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.1); padding:10px; border-radius:6px;">
-                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">Verified (Approved)</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:#10B981;">${compliance.verified}</div>
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; text-align:center;">
+                        <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.1); padding:12px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Verified (Approved)</div>
+                            <div style="font-size:1.25rem; font-weight:700; color:#10B981;">${compliance.verified}</div>
                         </div>
-                        <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.1); padding:10px; border-radius:6px;">
-                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">KYC Pending</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:#F59E0B;">${compliance.pending}</div>
+                        <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.1); padding:12px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">KYC Pending</div>
+                            <div style="font-size:1.25rem; font-weight:700; color:#F59E0B;">${compliance.pending}</div>
                         </div>
-                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
-                            <div style="font-size:0.70rem; color:var(--text-muted); margin-bottom:2px;">Not Started</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:#fff;">${compliance.unverified}</div>
+                        <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:12px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Not Started</div>
+                            <div style="font-size:1.25rem; font-weight:700; color:#fff;">${compliance.unverified}</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Logistics SLAs -->
                 <div>
-                    <h3 style="font-size:0.82rem; color:#fff; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                        <i data-lucide="award" style="width:14px; height:14px; color:var(--primary);"></i>
+                    <h3 style="font-size:0.95rem; color:#fff; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                        <i data-lucide="award" style="width:16px; height:16px; color:var(--primary);"></i>
                         Logistics SLA Response Milestones
                     </h3>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; align-items:center; gap:10px;">
-                            <div style="width:32px; height:32px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                                <i data-lucide="navigation" style="width:15px; height:15px;"></i>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:15px; border-radius:10px; display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                                <i data-lucide="navigation" style="width:18px; height:18px;"></i>
                             </div>
                             <div>
-                                <div style="font-size:0.70rem; color:var(--text-muted);">Avg. Time to Reach Customer</div>
-                                <div style="font-size:0.95rem; font-weight:800; color:#fff; margin-top:2px;">${avgReachTime} mins</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">Avg. Time to Reach Customer</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:2px;">${avgReachTime} mins</div>
                             </div>
                         </div>
-                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:12px; border-radius:8px; display:flex; align-items:center; gap:10px;">
-                            <div style="width:32px; height:32px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
-                                <i data-lucide="shield-alert" style="width:15px; height:15px;"></i>
+                        <div style="background:rgba(250,204,21,0.02); border:1px solid var(--border); padding:15px; border-radius:10px; display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:50%; background:rgba(250,204,21,0.05); display:flex; align-items:center; justify-content:center; color:var(--primary);">
+                                <i data-lucide="shield-alert" style="width:18px; height:18px;"></i>
                             </div>
                             <div>
-                                <div style="font-size:0.70rem; color:var(--text-muted);">Avg. Transit Time to Garage</div>
-                                <div style="font-size:0.95rem; font-weight:800; color:#fff; margin-top:2px;">${avgTransitTime} mins</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">Avg. Transit Time to Garage</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:#fff; margin-top:2px;">${avgTransitTime} mins</div>
                             </div>
                         </div>
                     </div>
@@ -1172,39 +1130,39 @@ async function renderDashboard(container) {
 
     const html = `
         <div class="fade-in">
-            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <header class="page-header" style="border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div>
-                    <h1 class="page-title" style="display:flex; align-items:center; gap:8px; margin:0;">
-                        <i data-lucide="activity" style="color:var(--primary); width:20px; height:20px;"></i>
+                    <h1 class="page-title" style="display:flex; align-items:center; gap:10px; margin:0;">
+                        <i data-lucide="activity" style="color:var(--primary); width:28px; height:28px;"></i>
                         Live CEO Operations Command Center
                     </h1>
-                    <p style="color: var(--text-dim); margin-top: 3px; margin-bottom:0; font-size:0.78rem;">Real-time logistics supply-demand matching & dispatch metrics</p>
+                    <p style="color: var(--text-dim); margin-top: 4px; margin-bottom:0;">Real-time logistics supply-demand matching & dispatch metrics</p>
                 </div>
-                <div style="display:flex; gap: 10px;">
+                <div style="display:flex; gap: 12px;">
                     <button class="btn btn-secondary" onclick="fetchRealtimeData().then(() => renderDashboard(document.getElementById('app')))">
-                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh Command Center
+                        <i data-lucide="refresh-cw"></i> Refresh Command Center
                     </button>
                 </div>
             </header>
 
             <!-- EXECUTIVE FINANCIAL OVERVIEW PANEL -->
-            <div class="card" style="margin-top:0; margin-bottom:18px; background:var(--bg-surface); border:1px solid rgba(250,204,21,0.25); padding:16px; border-radius:var(--radius-md);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div class="card" style="margin-top:0; margin-bottom:24px; background:var(--bg-surface); border:1px solid rgba(250,204,21,0.25); padding:22px; border-radius:var(--radius-lg);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
                     <div>
-                        <h2 style="margin:0; font-size:1.05rem; color:#fff; display:flex; align-items:center; gap:6px;">
-                            <i data-lucide="trending-up" style="color:var(--primary); width:18px; height:18px;"></i>
+                        <h2 style="margin:0; font-size:1.25rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="trending-up" style="color:var(--primary); width:22px; height:22px;"></i>
                             Executive Financial Summary
                         </h2>
-                        <p style="font-size:0.75rem; color:var(--text-muted); margin:3px 0 0 0;">
+                        <p style="font-size:0.82rem; color:var(--text-muted); margin:4px 0 0 0;">
                             Realized revenue, partner fulfillment costs, net platform profit, and order volumes.
                         </p>
                     </div>
 
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <!-- Business Line Filter Dropdown -->
-                        <div style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:6px; border:1px solid var(--border);">
-                            <i data-lucide="layers" style="width:13px; height:13px; color:var(--primary);"></i>
-                            <select id="exec-business-line-select" class="select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark; padding:2px 4px;">
+                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
+                            <i data-lucide="layers" style="width:14px; height:14px; color:var(--primary);"></i>
+                            <select id="exec-business-line-select" class="select" onchange="window.handleExecBusinessLineChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
                                 <option value="all" ${bLine === 'all' ? 'selected' : ''}>All Combined</option>
                                 <option value="drivers" ${bLine === 'drivers' ? 'selected' : ''}>Drivers (P2P Rides)</option>
                                 <option value="garage" ${bLine === 'garage' ? 'selected' : ''}>Garage (Service & Repairs)</option>
@@ -1213,9 +1171,9 @@ async function renderDashboard(container) {
                         </div>
 
                         <!-- Date Range Filter Dropdown -->
-                        <div style="display:inline-flex; align-items:center; gap:5px; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:6px; border:1px solid var(--border);">
-                            <i data-lucide="calendar" style="width:13px; height:13px; color:var(--primary);"></i>
-                            <select id="exec-range-select" class="select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.78rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark; padding:2px 4px;">
+                        <div style="display:inline-flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
+                            <i data-lucide="calendar" style="width:14px; height:14px; color:var(--primary);"></i>
+                            <select id="exec-range-select" class="select" onchange="window.handleExecRangeChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:0.85rem; font-weight:700; cursor:pointer; outline:none; color-scheme:dark;">
                                 <option value="today" ${range === 'today' ? 'selected' : ''}>Today</option>
                                 <option value="week" ${range === 'week' ? 'selected' : ''}>This Week</option>
                                 <option value="month" ${range === 'month' ? 'selected' : ''}>This Month</option>
@@ -1226,30 +1184,30 @@ async function renderDashboard(container) {
 
                         ${range === 'custom' ? `
                             <div style="display:inline-flex; align-items:center; gap:6px;">
-                                <input type="date" id="exec-custom-start" value="${window._execCustomStart || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
-                                <span style="color:var(--text-muted); font-size:0.75rem;">to</span>
-                                <input type="date" id="exec-custom-end" value="${window._execCustomEnd || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
-                                <button onclick="window.applyExecCustomRange()" class="btn btn-sm btn-primary" style="font-weight:700; padding:4px 10px; font-size:0.75rem;">Apply</button>
+                                <input type="date" id="exec-custom-start" value="${window._execCustomStart || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
+                                <span style="color:var(--text-muted); font-size:0.8rem;">to</span>
+                                <input type="date" id="exec-custom-end" value="${window._execCustomEnd || ''}" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.8rem;">
+                                <button onclick="window.applyExecCustomRange()" class="btn btn-sm btn-primary" style="font-weight:700; padding:6px 12px;">Apply</button>
                             </div>
                         ` : ''}
                     </div>
                 </div>
 
                 <!-- 4 KPI Cards Grid -->
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:12px;">
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
                     <!-- Card 1: Gross Customer Revenue -->
-                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(34, 197, 94, 0.04); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
-                                <div style="font-size: 1.55rem; font-weight: 800; color: #22C55E; margin: 4px 0 2px 0;">₹${finData.revenue.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Customer Revenue</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #22C55E; margin: 6px 0 4px 0;">₹${finData.revenue.toLocaleString()}</div>
                             </div>
-                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
-                                <i data-lucide="credit-card" style="width:16px; height:16px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(34, 197, 94, 0.12); display:flex; align-items:center; justify-content:center; color:#22C55E;">
+                                <i data-lucide="credit-card" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(34,197,94,0.15); color:#22C55E; border:1px solid rgba(34,197,94,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
                                 ${finData.completedCount} Completed
                             </span>
                             <span>realized receipts</span>
@@ -1257,18 +1215,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 2: Partner / Driver Payouts -->
-                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${card2Title}</span>
-                                <div style="font-size: 1.55rem; font-weight: 800; color: #3B82F6; margin: 4px 0 2px 0;">₹${finData.payout.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${card2Title}</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #3B82F6; margin: 6px 0 4px 0;">₹${finData.payout.toLocaleString()}</div>
                             </div>
-                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
-                                <i data-lucide="truck" style="width:16px; height:16px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(59, 130, 246, 0.12); display:flex; align-items:center; justify-content:center; color:#3B82F6;">
+                                <i data-lucide="truck" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
                                 ${card2Badge}
                             </span>
                             <span>${card2Sub}</span>
@@ -1276,18 +1234,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 3: Net Platform Profit -->
-                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(250, 204, 21, 0.04); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
-                                <div style="font-size: 1.55rem; font-weight: 800; color: #FACC15; margin: 4px 0 2px 0;">₹${finData.netProfit.toLocaleString()}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Net Platform Profit</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #FACC15; margin: 6px 0 4px 0;">₹${finData.netProfit.toLocaleString()}</div>
                             </div>
-                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
-                                <i data-lucide="wallet" style="width:16px; height:16px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(250, 204, 21, 0.12); display:flex; align-items:center; justify-content:center; color:#FACC15;">
+                                <i data-lucide="wallet" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.35); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
                                 ${finData.marginPercent}% Net Margin
                             </span>
                             <span>retained profit</span>
@@ -1295,18 +1253,18 @@ async function renderDashboard(container) {
                     </div>
 
                     <!-- Card 4: Total Completed Orders -->
-                    <div style="background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 14px; position:relative; overflow:hidden;">
+                    <div style="background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 18px; position:relative; overflow:hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span style="color: var(--text-muted); font-size: 0.70rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Completed Orders</span>
-                                <div style="font-size: 1.55rem; font-weight: 800; color: #A855F7; margin: 4px 0 2px 0;">${finData.completedCount}</div>
+                                <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Total Completed Orders</span>
+                                <div style="font-size: 2.1rem; font-weight: 800; color: #A855F7; margin: 6px 0 4px 0;">${finData.completedCount}</div>
                             </div>
-                            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); display:flex; align-items:center; justify-content:center; color:#A855F7;">
-                                <i data-lucide="package-check" style="width:16px; height:16px;"></i>
+                            <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(168, 85, 247, 0.12); display:flex; align-items:center; justify-content:center; color:#A855F7;">
+                                <i data-lucide="package-check" style="width:20px; height:20px;"></i>
                             </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:5px; margin-top:6px; font-size:0.72rem; color:var(--text-muted);">
-                            <span class="badge" style="background: rgba(168,85,247,0.15); color:#A855F7; border:1px solid rgba(168,85,247,0.3); font-weight:700; font-size:0.68rem; padding:1px 6px; border-radius:4px;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--text-muted);">
+                            <span class="badge" style="background: rgba(168,85,247,0.15); color:#A855F7; border:1px solid rgba(168,85,247,0.3); font-weight:700; font-size:0.72rem; padding:2px 8px; border-radius:4px;">
                                 ${finData.completionRate}% Completion Rate
                             </span>
                             <span>${finData.completedCount} of ${finData.totalAttempts} total</span>
@@ -1316,22 +1274,22 @@ async function renderDashboard(container) {
             </div>
 
             <!-- Dashboard Tab Switcher -->
-            <div class="tabs-header" style="display:flex; gap:12px; border-bottom:1px solid var(--border); margin-bottom:18px; padding-bottom:1px;">
+            <div class="tabs-header" style="display:flex; gap:16px; border-bottom:1px solid var(--border); margin-bottom:24px; padding-bottom:1px;">
                 <button onclick="window.activeDashboardTab='demand'; renderDashboard(document.getElementById('app'))" 
                         class="tab-btn ${demandTabActive ? 'active' : ''}" 
-                        style="background:none; border:none; color:${demandTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:0.85rem; font-weight:700; padding:8px 12px; cursor:pointer; border-bottom:2px solid ${demandTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px;">
-                    <i data-lucide="users" style="width:15px; height:15px;"></i>
+                        style="background:none; border:none; color:${demandTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:1.05rem; font-weight:700; padding:12px 16px; cursor:pointer; border-bottom:3px solid ${demandTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px;">
+                    <i data-lucide="users" style="width:18px; height:18px;"></i>
                     Customer & Demand
                 </button>
                 <button onclick="window.activeDashboardTab='logistics'; renderDashboard(document.getElementById('app'))" 
                         class="tab-btn ${logisticsTabActive ? 'active' : ''}" 
-                        style="background:none; border:none; color:${logisticsTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:0.85rem; font-weight:700; padding:8px 12px; cursor:pointer; border-bottom:2px solid ${logisticsTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px;">
-                    <i data-lucide="truck" style="width:15px; height:15px;"></i>
+                        style="background:none; border:none; color:${logisticsTabActive ? 'var(--primary)' : 'var(--text-muted)'}; font-size:1.05rem; font-weight:700; padding:12px 16px; cursor:pointer; border-bottom:3px solid ${logisticsTabActive ? 'var(--primary)' : 'transparent'}; transition:all 0.2s; display:inline-flex; align-items:center; gap:8px;">
+                    <i data-lucide="truck" style="width:18px; height:18px;"></i>
                     Driver Logistics
                 </button>
             </div>
 
-            <div style="display:grid; grid-template-columns: 1fr; gap: 18px;">
+            <div style="display:grid; grid-template-columns: 1fr; gap: 24px;">
                 ${sectionHtml}
             </div>
         </div>
@@ -3440,16 +3398,13 @@ async function approveMarshal(marshalId) {
             })
         });
 
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            throw new Error(data.error || 'Approval failed due to a server error.');
-        }
+        if (!res.ok) throw new Error('Approval failed');
 
         await showAlert('Success', 'Driver Approved Successfully!', 'Done', 'success');
         closeModal('modal-review-kyc');
         fetchRealtimeData().then(() => refreshActiveUserView());
     } catch (err) {
-        await showAlert('KYC Approval Blocked', err.message, 'Review Details', 'error');
+        await showAlert('Error', err.message, 'Close', 'error');
     }
 }
 
@@ -5139,355 +5094,111 @@ function renderRequests(container) {
             </header>
 
             <div class="card" style="padding: 0; overflow: hidden;">
-                <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px; align-items:center;">
-                    <button class="tab-btn active" onclick="switchOrderPipelineTab('all', this)">All Orders (${requests.length})</button>
-                    <button class="tab-btn" onclick="switchOrderPipelineTab('in_progress', this)">In Progress</button>
-                    <button class="tab-btn" onclick="switchOrderPipelineTab('completed', this)">Completed</button>
-                    <button class="tab-btn" id="tab-plate-requests" onclick="switchOrderPipelineTab('requests', this)">
-                        Requests <span id="badge-plate-requests" class="chip chip-warning" style="font-size:0.75rem; padding: 2px 7px; margin-left:6px; font-weight:700">0</span>
-                    </button>
+                <div style="padding: 15px 25px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); display:flex; gap: 20px;">
+                    <button class="tab-btn active">All Orders (${requests.length})</button>
+                    <button class="tab-btn">In Progress</button>
+                    <button class="tab-btn">Completed</button>
                 </div>
                 
-                <div id="pipeline-content-area">
-                    <table class="data-table">
-                        <thead>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer & Vehicle</th>
+                            <th>Pincode</th>
+                            <th>Fulfillment Point</th>
+                            <th>Status</th>
+                            <th style="text-align:right">Total Payable</th>
+                            <th style="text-align:center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-tbody">
+                        ${requests.map(req => {
+                            const flow = req.booking_flow || req.bookingFlow || '';
+                            let fulfillmentIcon = 'warehouse';
+                            let fulfillmentColor = 'var(--text-muted)';
+                            let fulfillmentText = 'Unassigned';
+
+                            if (flow === 'p2p') {
+                                fulfillmentIcon = 'map-pin';
+                                fulfillmentColor = 'var(--info)';
+                                fulfillmentText = req.pickup_address ? req.pickup_address.split(',')[0].trim() : 'Direct Pickup';
+                            } else if (flow === 'rental_p2p') {
+                                fulfillmentIcon = 'key';
+                                fulfillmentColor = 'var(--warning)';
+                                fulfillmentText = req.pickup_address ? req.pickup_address.split('(')[0].trim() : 'Rental Hub';
+                            } else {
+                                const actualGarageId = req.assignedGarageId || req.garageid;
+                                const assignedGarage = actualGarageId ? PROTOTYPE_STATE.garages.find(g => g.id === actualGarageId) : null;
+                                if (assignedGarage) {
+                                    fulfillmentIcon = 'warehouse';
+                                    fulfillmentColor = 'var(--success)';
+                                    fulfillmentText = assignedGarage.name;
+                                }
+                            }
+                            
+                            const actualCustId = req.customerId || req.customerid;
+                            const cust = PROTOTYPE_STATE.customers.find(c => c.id === actualCustId);
+                            const customerName = cust ? cust.name : (req.customerName || req.customername || 'Walk-in');
+                            
+                            const actualVehId = req.vehicleId || req.vehicleid;
+                            const veh = PROTOTYPE_STATE.vehicles.find(v => v.id === actualVehId);
+                            const vehicleName = veh ? `${veh.make} ${veh.model}` : (req.vehicleName || req.vehiclename || 'Unknown Vehicle');
+                            
+                            const displayPincode = req.pincode || (req.pickup_address ? (req.pickup_address.match(/\b\d{6}\b/) || ['N/A'])[0] : 'N/A');
+
+                            return `
                             <tr>
-                                <th>Order ID</th>
-                                <th>Customer & Vehicle</th>
-                                <th>Pincode</th>
-                                <th>Fulfillment Point</th>
-                                <th>Status</th>
-                                <th style="text-align:right">Total Payable</th>
-                                <th style="text-align:center">Actions</th>
+                                <td>
+                                    <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${req.id.substring(0, 8)}</div>
+                                    <div style="font-size: 0.75rem; color:var(--text-dim); margin-top:2px">${new Date(req.date).toLocaleDateString()}</div>
+                                </td>
+                                <td>
+                                    <div style="font-weight:600">${customerName}</div>
+                                    <div style="font-size: 0.8rem; color:var(--text-muted)">${vehicleName}</div>
+                                </td>
+                                <td>
+                                    <div style="font-weight:600; color:var(--text-main); font-family:monospace;">${displayPincode}</div>
+                                </td>
+                                <td>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <i data-lucide="${fulfillmentIcon}" style="width:14px; color:${fulfillmentColor}"></i>
+                                        <span style="font-size:0.85rem; font-weight:500">${fulfillmentText}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="chip ${req.status === 'completed' ? 'chip-success' : 'chip-warning'}">${req.status}</span>
+                                </td>
+                                <td style="text-align:right; font-weight:700; font-size:1rem;">
+                                    ₹${(req.totalCustomerPrice || 0).toLocaleString()}
+                                </td>
+                                <td>
+                                    <div style="display:flex; justify-content:center; gap:8px;">
+                                        <button class="btn btn-secondary btn-sm" onclick="openRequestDetailsModal('${req.id}')" title="View Details">
+                                            <i data-lucide="eye" style="width:14px"></i>
+                                        </button>
+                                        ${PROTOTYPE_STATE.currentUser.role === 'Admin' ? `
+                                            <button class="btn btn-secondary btn-sm" onclick="openAssignGarageModal('${req.id}')" title="Assign Garage">
+                                                <i data-lucide="user-plus" style="width:14px"></i>
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm" onclick="deleteServiceRequest('${req.id}')" style="color:var(--danger)" title="Delete">
+                                                <i data-lucide="trash-2" style="width:14px"></i>
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody id="orders-tbody">
-                            ${renderOrderRows(requests)}
-                        </tbody>
-                    </table>
-                    ${requests.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No active orders found in the pipeline.</div>' : ''}
-                </div>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+                ${requests.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No active orders found in the pipeline.</div>' : ''}
             </div>
         </div>
     `;
     container.innerHTML = html;
     lucide.createIcons();
-
-    // Fetch pending requests count to update badge
-    fetch('/api/crm/vehicle-plate-requests?status=pending')
-        .then(r => r.json())
-        .then(data => {
-            const badge = document.getElementById('badge-plate-requests');
-            if (badge && data && data.requests) {
-                const count = data.requests.filter(req => req.status === 'pending').length;
-                badge.textContent = count;
-                badge.className = count > 0 ? 'chip chip-danger' : 'chip chip-secondary';
-            }
-        })
-        .catch(() => {});
 }
-
-function renderOrderRows(orders) {
-    return orders.map(req => {
-        const flow = req.booking_flow || req.bookingFlow || '';
-        let fulfillmentIcon = 'warehouse';
-        let fulfillmentColor = 'var(--text-muted)';
-        let fulfillmentText = 'Unassigned';
-
-        if (flow === 'p2p') {
-            fulfillmentIcon = 'map-pin';
-            fulfillmentColor = 'var(--info)';
-            fulfillmentText = req.pickup_address ? req.pickup_address.split(',')[0].trim() : 'Direct Pickup';
-        } else if (flow === 'rental_p2p') {
-            fulfillmentIcon = 'key';
-            fulfillmentColor = 'var(--warning)';
-            fulfillmentText = req.pickup_address ? req.pickup_address.split('(')[0].trim() : 'Rental Hub';
-        } else {
-            const actualGarageId = req.assignedGarageId || req.garageid;
-            const assignedGarage = actualGarageId ? PROTOTYPE_STATE.garages.find(g => g.id === actualGarageId) : null;
-            if (assignedGarage) {
-                fulfillmentIcon = 'warehouse';
-                fulfillmentColor = 'var(--success)';
-                fulfillmentText = assignedGarage.name;
-            }
-        }
-        
-        const actualCustId = req.customerId || req.customerid;
-        const cust = PROTOTYPE_STATE.customers.find(c => c.id === actualCustId);
-        const customerName = cust ? cust.name : (req.customerName || req.customername || 'Walk-in');
-        
-        const actualVehId = req.vehicleId || req.vehicleid;
-        const veh = PROTOTYPE_STATE.vehicles.find(v => v.id === actualVehId);
-        const vehicleName = veh ? `${veh.make} ${veh.model}` : (req.vehicleName || req.vehiclename || 'Unknown Vehicle');
-        
-        const displayPincode = req.pincode || (req.pickup_address ? (req.pickup_address.match(/\b\d{6}\b/) || ['N/A'])[0] : 'N/A');
-
-        return `
-        <tr>
-            <td>
-                <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${req.id.substring(0, 8)}</div>
-                <div style="font-size: 0.75rem; color:var(--text-dim); margin-top:2px">${new Date(req.date).toLocaleDateString()}</div>
-            </td>
-            <td>
-                <div style="font-weight:600">${customerName}</div>
-                <div style="font-size: 0.8rem; color:var(--text-muted)">${vehicleName}</div>
-            </td>
-            <td>
-                <div style="font-weight:600; color:var(--text-main); font-family:monospace;">${displayPincode}</div>
-            </td>
-            <td>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <i data-lucide="${fulfillmentIcon}" style="width:14px; color:${fulfillmentColor}"></i>
-                    <span style="font-size:0.85rem; font-weight:500">${fulfillmentText}</span>
-                </div>
-            </td>
-            <td>
-                <span class="chip ${req.status === 'completed' ? 'chip-success' : 'chip-warning'}">${req.status}</span>
-            </td>
-            <td style="text-align:right; font-weight:700; font-size:1rem;">
-                ₹${(req.totalCustomerPrice || 0).toLocaleString()}
-            </td>
-            <td>
-                <div style="display:flex; justify-content:center; gap:8px;">
-                    <button class="btn btn-secondary btn-sm" onclick="openRequestDetailsModal('${req.id}')" title="View Details">
-                        <i data-lucide="eye" style="width:14px"></i>
-                    </button>
-                    ${PROTOTYPE_STATE.currentUser.role === 'Admin' ? `
-                        <button class="btn btn-secondary btn-sm" onclick="openAssignGarageModal('${req.id}')" title="Assign Garage">
-                            <i data-lucide="user-plus" style="width:14px"></i>
-                        </button>
-                        <button class="btn btn-secondary btn-sm" onclick="deleteServiceRequest('${req.id}')" style="color:var(--danger)" title="Delete">
-                            <i data-lucide="trash-2" style="width:14px"></i>
-                        </button>
-                    ` : ''}
-                </div>
-            </td>
-        </tr>
-        `;
-    }).join('');
-}
-
-window.switchOrderPipelineTab = async function(tab, btnEl) {
-    const tabBtns = btnEl.parentElement.querySelectorAll('.tab-btn');
-    tabBtns.forEach(b => b.classList.remove('active'));
-    btnEl.classList.add('active');
-
-    const contentArea = document.getElementById('pipeline-content-area');
-    if (!contentArea) return;
-
-    if (tab === 'requests') {
-        contentArea.innerHTML = '<div style="padding: 40px; text-align:center; color:var(--text-dim);"><i data-lucide="loader-2" class="spin"></i> Loading Plate-Change Requests...</div>';
-        lucide.createIcons();
-
-        try {
-            const res = await fetch('/api/crm/vehicle-plate-requests');
-            const data = await res.json();
-            const plateRequests = data.requests || [];
-
-            let rowsHtml = '';
-            if (plateRequests.length === 0) {
-                rowsHtml = `<tr><td colspan="7" style="padding: 50px; text-align:center; color:var(--text-dim)">No vehicle plate-change requests submitted.</td></tr>`;
-            } else {
-                rowsHtml = plateRequests.map(pr => {
-                    const isOwnership = pr.is_ownership_changed === true || pr.is_ownership_changed === 'true' || pr.is_ownership_changed === 1;
-                    const statusClass = pr.status === 'approved' ? 'chip-success' : pr.status === 'rejected' ? 'chip-danger' : 'chip-warning';
-                    
-                    return `
-                    <tr>
-                        <td>
-                            <div style="font-family: monospace; font-weight:700; color:var(--primary)">#${pr.id.substring(0, 10)}</div>
-                            <div style="font-size:0.75rem; color:var(--text-dim); margin-top:2px">${new Date(pr.created_at).toLocaleString()}</div>
-                        </td>
-                        <td>
-                            <div style="font-weight:600">${pr.customer_name || 'Customer'}</div>
-                            <div style="font-size:0.8rem; color:var(--text-muted)">${pr.customer_phone || pr.customer_id}</div>
-                        </td>
-                        <td>
-                            <div style="font-weight:600">${pr.vehicle_make || ''} ${pr.vehicle_model || ''}</div>
-                            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-                                <span class="chip chip-secondary" style="font-size:0.75rem;">${pr.current_plate}</span>
-                                <span style="color:var(--text-dim)">→</span>
-                                <span class="chip chip-warning" style="font-weight:700; font-size:0.8rem; color:#FACC15; background:rgba(250,204,21,0.15)">${pr.requested_plate}</span>
-                            </div>
-                        </td>
-                        <td>
-                            ${isOwnership ? `
-                                <span class="chip chip-info" style="font-size:0.75rem; font-weight:600">Ownership Transfer</span>
-                            ` : `
-                                <span class="chip chip-secondary" style="font-size:0.75rem;">Same Owner</span>
-                            `}
-                        </td>
-                        <td>
-                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                ${pr.rc_doc_signed_url ? `
-                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.rc_doc_signed_url}', 'Registration Certificate (RC) — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px;">
-                                        📄 RC Book
-                                    </button>
-                                ` : '<span style="color:var(--danger); font-size:0.75rem;">Missing RC</span>'}
-                                ${pr.insurance_doc_signed_url ? `
-                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.insurance_doc_signed_url}', 'Insurance Certificate — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px;">
-                                        🛡️ Insurance
-                                    </button>
-                                ` : '<span style="color:var(--danger); font-size:0.75rem;">Missing Ins</span>'}
-                                ${isOwnership && pr.form29_30_doc_signed_url ? `
-                                    <button class="btn btn-secondary btn-sm" onclick="openPlateDocModal('${pr.form29_30_doc_signed_url}', 'Form 29/30 Document — ${pr.requested_plate}')" style="font-size:0.75rem; padding:4px 8px; color:var(--info)">
-                                        📝 Form 29/30
-                                    </button>
-                                ` : (isOwnership ? '<span style="color:var(--danger); font-size:0.75rem;">Missing Form</span>' : '')}
-                            </div>
-                        </td>
-                        <td>
-                            <span class="chip ${statusClass}" style="text-transform:capitalize; font-weight:700">${pr.status}</span>
-                            ${pr.rejection_reason ? `<div style="font-size:0.75rem; color:var(--danger); margin-top:2px;">${pr.rejection_reason}</div>` : ''}
-                        </td>
-                        <td>
-                            <div style="display:flex; justify-content:center; gap:8px;">
-                                ${pr.status === 'pending' ? `
-                                    <button class="btn btn-success btn-sm" onclick="approvePlateChangeRequest('${pr.id}', '${pr.requested_plate}')" style="font-size:0.8rem; padding:5px 12px; background:var(--success); color:#fff; border:none; font-weight:600; cursor:pointer;">
-                                        ✓ Approve
-                                    </button>
-                                    <button class="btn btn-danger btn-sm" onclick="rejectPlateChangeRequest('${pr.id}', '${pr.requested_plate}')" style="font-size:0.8rem; padding:5px 12px; background:var(--danger); color:#fff; border:none; font-weight:600; cursor:pointer;">
-                                        ✕ Reject
-                                    </button>
-                                ` : `
-                                    <span style="font-size:0.8rem; color:var(--text-dim);">${pr.reviewed_by || 'Verified'}</span>
-                                `}
-                            </div>
-                        </td>
-                    </tr>
-                    `;
-                }).join('');
-            }
-
-            contentArea.innerHTML = `
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Request ID & Date</th>
-                            <th>Customer</th>
-                            <th>Vehicle & Plate</th>
-                            <th>Transfer Type</th>
-                            <th>Verification Documents</th>
-                            <th>Status</th>
-                            <th style="text-align:center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
-            `;
-            lucide.createIcons();
-        } catch (e) {
-            contentArea.innerHTML = `<div style="padding:40px; text-align:center; color:var(--danger);">Failed to load plate-change requests: ${e.message}</div>`;
-        }
-        return;
-    }
-
-    // Standard orders view
-    let filtered = [...PROTOTYPE_STATE.serviceRequests].reverse();
-    if (tab === 'in_progress') {
-        filtered = filtered.filter(r => r.status !== 'completed' && r.status !== 'cancelled');
-    } else if (tab === 'completed') {
-        filtered = filtered.filter(r => r.status === 'completed');
-    }
-
-    contentArea.innerHTML = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Order ID</th>
-                    <th>Customer & Vehicle</th>
-                    <th>Pincode</th>
-                    <th>Fulfillment Point</th>
-                    <th>Status</th>
-                    <th style="text-align:right">Total Payable</th>
-                    <th style="text-align:center">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="orders-tbody">
-                ${renderOrderRows(filtered)}
-            </tbody>
-        </table>
-        ${filtered.length === 0 ? '<div style="padding: 60px; text-align:center; color: var(--text-dim);">No orders found for this filter.</div>' : ''}
-    `;
-    lucide.createIcons();
-};
-
-window.openPlateDocModal = function(url, title) {
-    let modal = document.getElementById('plate-doc-preview-modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'plate-doc-preview-modal';
-        modal.className = 'modal-backdrop';
-        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:99999;';
-        document.body.appendChild(modal);
-    }
-
-    const isPdf = url.toLowerCase().includes('.pdf');
-    modal.innerHTML = `
-        <div class="modal-card" style="background:#18181B; border:1px solid #27272A; border-radius:12px; width:90%; max-width:800px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
-            <div style="padding:16px 20px; border-bottom:1px solid #27272A; display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="margin:0; font-size:1.1rem; color:#fff;">${title || 'Document Preview'}</h3>
-                <button onclick="document.getElementById('plate-doc-preview-modal').style.display='none'" style="background:none; border:none; color:#A1A1AA; font-size:1.4rem; cursor:pointer;">&times;</button>
-            </div>
-            <div style="padding:20px; flex:1; overflow:auto; text-align:center;">
-                ${isPdf ? `
-                    <iframe src="${url}" style="width:100%; height:600px; border:none; border-radius:8px;"></iframe>
-                ` : `
-                    <img src="${url}" style="max-width:100%; max-height:600px; object-fit:contain; border-radius:8px; border:1px solid #27272A;" />
-                `}
-            </div>
-            <div style="padding:12px 20px; border-top:1px solid #27272A; display:flex; justify-content:flex-end; gap:10px;">
-                <a href="${url}" target="_blank" class="btn btn-secondary" style="padding:6px 14px; text-decoration:none; font-size:0.85rem;">Open Fullscreen ↗</a>
-                <button class="btn btn-primary" onclick="document.getElementById('plate-doc-preview-modal').style.display='none'" style="padding:6px 16px; font-size:0.85rem;">Close</button>
-            </div>
-        </div>
-    `;
-    modal.style.display = 'flex';
-};
-
-window.approvePlateChangeRequest = async function(requestId, requestedPlate) {
-    if (!confirm(`Are you sure you want to approve the license plate change to "${requestedPlate}"? This will update the vehicle record and anti-fraud registry immediately.`)) {
-        return;
-    }
-
-    try {
-        const res = await fetch(`/api/crm/vehicle-plate-requests/${requestId}/approve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to approve request');
-
-        alert(`✓ Plate change approved successfully! Vehicle updated to ${requestedPlate}.`);
-        const reqTabBtn = document.getElementById('tab-plate-requests');
-        if (reqTabBtn) window.switchOrderPipelineTab('requests', reqTabBtn);
-    } catch (err) {
-        alert('Error approving request: ' + err.message);
-    }
-};
-
-window.rejectPlateChangeRequest = async function(requestId, requestedPlate) {
-    const reason = prompt(`Enter rejection reason for plate change request "${requestedPlate}":`, 'Document verification failed / invalid RC or Insurance');
-    if (reason === null) return; // Cancelled
-
-    try {
-        const res = await fetch(`/api/crm/vehicle-plate-requests/${requestId}/reject`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reason })
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Failed to reject request');
-
-        alert(`Plate change request rejected.`);
-        const reqTabBtn = document.getElementById('tab-plate-requests');
-        if (reqTabBtn) window.switchOrderPipelineTab('requests', reqTabBtn);
-    } catch (err) {
-        alert('Error rejecting request: ' + err.message);
-    }
-};
 
 function openRequestDetailsModal(requestId) {
     const req = PROTOTYPE_STATE.serviceRequests.find(r => r.id === requestId);
@@ -5931,35 +5642,22 @@ function saveNewVehicle(customerId) {
         return;
     }
 
-    const saveVehicleData = async () => {
+    const saveVehicleData = async (base64Photo = null) => {
         try {
-            const formData = new FormData();
-            formData.append('id', generateId());
-            formData.append('customerId', customerId);
-            formData.append('plate', regNumber);
-            formData.append('make', make);
-            formData.append('model', model);
-            formData.append('type', type);
-            formData.append('makeModel', `${make} ${model}`);
-
-            if (photoInput && photoInput.files && photoInput.files[0]) {
-                formData.append('photo', photoInput.files[0]);
-            }
-
-            const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-            const headers = {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            const res = await fetch(`${API_URL}/vehicles`, {
+            await fetch(`${API_URL}/vehicles`, {
                 method: 'POST',
-                headers,
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: generateId(),
+                    customerId: customerId,
+                    plate: regNumber,
+                    make: make,
+                    model: model,
+                    type: type,
+                    makeModel: `${make} ${model}`,
+                    photo: base64Photo
+                })
             });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Failed to save vehicle');
-            }
 
             await fetchRealtimeData();
             closeModal('modal-add-vehicle');
@@ -5969,7 +5667,22 @@ function saveNewVehicle(customerId) {
         }
     };
 
-    saveVehicleData();
+    if (photoInput.files && photoInput.files[0]) {
+        const file = photoInput.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            if (!confirm('This image is large (>2MB) and might fill up local storage. Continue?')) {
+                return;
+            }
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            saveVehicleData(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    } else {
+        saveVehicleData();
+    }
 }
 
 function closeModal(id) {
@@ -5990,7 +5703,6 @@ function prefillSurvey(custId, vehId) {
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-    initSidebarCollapseState();
     const urlParams = new URLSearchParams(window.location.search);
     const viewParam = urlParams.get('view');
     const savedPage = localStorage.getItem('redrivo_crm_page');
@@ -7641,14 +7353,12 @@ async function renderIncentives(container) {
         let withdrawalsList = [];
         let pendingCount = 0;
         try {
-            const [wRes, countRes, sysRes, slabsRes, hourlySlabsRes, outstationSlabsRes, outstationHourlySlabsRes, globalRes, ratesRes, cancelRes] = await Promise.all([
+            const [wRes, countRes, sysRes, slabsRes, hourlySlabsRes, globalRes, ratesRes] = await Promise.all([
                 fetch(`${API_URL}/admin/withdrawals?status=${window._withdrawalTab}`).catch(() => null),
                 fetch(`${API_URL}/admin/withdrawals?status=requested`).catch(() => null),
                 fetch(`${API_URL}/system-settings`).catch(() => null),
                 fetch(`${API_URL}/settings/incentives?type=${window._incentiveVehicleType}`).catch(() => null),
                 fetch(`${API_URL}/settings/hourly-slabs?type=${window._hourlySlabsVehicleType}`).catch(() => null),
-                fetch(`${API_URL}/settings/outstation-slabs?type=${window._outstationSlabsVehicleType || 'car'}`).catch(() => null),
-                fetch(`${API_URL}/settings/outstation-hourly-slabs?type=${window._outstationSlabsVehicleType || 'car'}`).catch(() => null),
                 fetch(`${API_URL}/settings/global`).catch(() => null),
                 fetch(`${API_URL}/payout-model-rates`).catch(() => null),
                 fetch(`${API_URL}/settings/cancellation`).catch(() => null)
@@ -7678,28 +7388,6 @@ async function renderIncentives(container) {
                 if (Array.isArray(hSlabsData) && hSlabsData.length > 0) {
                     window._currentHourlySlabs = hSlabsData.map(s => ({
                         maxHours: Number(s.maxHours !== undefined ? s.maxHours : s.maxhours),
-                        ratePerHour: Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour)
-                    }));
-                }
-            }
-            if (outstationSlabsRes && outstationSlabsRes.ok) {
-                const oSlabsData = await outstationSlabsRes.json();
-                if (Array.isArray(oSlabsData)) {
-                    window._currentOutstationSlabs = oSlabsData.map(s => ({
-                        id: s.id,
-                        minDays: Number(s.minDays !== undefined ? s.minDays : s.mindays),
-                        maxDays: Number(s.maxDays !== undefined ? s.maxDays : s.maxdays),
-                        tripType: s.tripType || s.triptype || 'round',
-                        ratePerDay: Number(s.ratePerDay !== undefined ? s.ratePerDay : s.rateperday)
-                    }));
-                }
-            }
-            if (outstationHourlySlabsRes && outstationHourlySlabsRes.ok) {
-                const ohSlabsData = await outstationHourlySlabsRes.json();
-                if (Array.isArray(ohSlabsData)) {
-                    window._currentOutstationHourlySlabs = ohSlabsData.map(s => ({
-                        id: s.id,
-                        hours: Number(s.hours),
                         ratePerHour: Number(s.ratePerHour !== undefined ? s.ratePerHour : s.rateperhour)
                     }));
                 }
@@ -7775,10 +7463,6 @@ async function renderIncentives(container) {
         }
         if (window._slabsEditMode === undefined) window._slabsEditMode = false;
         if (window._hourlySlabsEditMode === undefined) window._hourlySlabsEditMode = false;
-        if (window._outstationSlabsVehicleType === undefined) window._outstationSlabsVehicleType = 'car';
-        if (window._outstationSlabsEditMode === undefined) window._outstationSlabsEditMode = false;
-        if (window._outstationTripTypeFilter === undefined) window._outstationTripTypeFilter = 'all';
-        if (!window._currentOutstationSlabs) window._currentOutstationSlabs = [];
         if (window._globalEditMode === undefined) window._globalEditMode = false;
         if (window._payoutRatesEditMode === undefined) window._payoutRatesEditMode = false;
         if (window._cancellationEditMode === undefined) window._cancellationEditMode = false;
@@ -7798,9 +7482,6 @@ async function renderIncentives(container) {
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'hourly_slabs' ? 'active' : ''}" onclick="window._driverOpsTab='hourly_slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'hourly_slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'hourly_slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="clock" style="width:16px; height:16px;"></i> Hourly Rate Slabs
-                </button>
-                <button class="tab-btn ${window._driverOpsTab === 'outstation_slabs' ? 'active' : ''}" onclick="window._driverOpsTab='outstation_slabs'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'outstation_slabs' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'outstation_slabs' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
-                    <i data-lucide="map-pin" style="width:16px; height:16px;"></i> Outstation Rate Slabs
                 </button>
                 <button class="tab-btn ${window._driverOpsTab === 'fare_rules' ? 'active' : ''}" onclick="window._driverOpsTab='fare_rules'; renderIncentives(document.getElementById('app'))" style="padding:10px 18px; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:${window._driverOpsTab === 'fare_rules' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._driverOpsTab === 'fare_rules' ? '#000' : '#fff'}; display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
                     <i data-lucide="sliders" style="width:16px; height:16px;"></i> Base Fares & Payout Rules
@@ -8073,190 +7754,6 @@ async function renderIncentives(container) {
                     </div>
                 </div>
                 `;
-            }
-
-            // TAB: OUTSTATION RATE SLABS
-            else if (window._driverOpsTab === 'outstation_slabs') {
-                window._outstationSlabsSubTab = window._outstationSlabsSubTab || 'multiday';
-                const isHourly = window._outstationSlabsSubTab === 'hourly';
-
-                html += `
-                <div class="card" style="margin-top:0;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                        <div>
-                            <h2 style="margin:0; color:var(--text-main); font-size:1.2rem;">Outstation Driver Rate Slabs</h2>
-                            <p style="font-size:0.85rem; color:var(--text-muted); margin:4px 0 0 0;">Configure dedicated driver payout pricing for outstation bookings.</p>
-                        </div>
-
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <!-- Vehicle Type Toggle -->
-                            <button class="tab-btn ${window._outstationSlabsVehicleType === 'car' ? 'active' : ''}" onclick="window._outstationSlabsVehicleType='car'; window._currentOutstationSlabs=null; window._currentOutstationHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._outstationSlabsVehicleType === 'car' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._outstationSlabsVehicleType === 'car' ? '#000' : '#fff'};">
-                                Car Slabs
-                            </button>
-                            <button class="tab-btn ${window._outstationSlabsVehicleType === 'bike' ? 'active' : ''}" onclick="window._outstationSlabsVehicleType='bike'; window._currentOutstationSlabs=null; window._currentOutstationHourlySlabs=null; renderIncentives(document.getElementById('app'))" style="padding:8px 16px; font-weight:700; border-radius:6px; border:none; cursor:pointer; background:${window._outstationSlabsVehicleType === 'bike' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; color:${window._outstationSlabsVehicleType === 'bike' ? '#000' : '#fff'};">
-                                Bike Slabs
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Mode Toggle Sub-Bar (Hourly vs Multi-Day) -->
-                    <div style="display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px;">
-                        <button onclick="window._outstationSlabsSubTab='multiday'; renderIncentives(document.getElementById('app'))" style="display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-weight:700; font-size:0.85rem; border:1.5px solid ${!isHourly ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background:${!isHourly ? 'rgba(250, 204, 21, 0.15)' : 'rgba(255,255,255,0.02)'}; color:${!isHourly ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; transition:all 0.2s;">
-                            <span>📅 Multi-Day Slabs</span>
-                        </button>
-                        <button onclick="window._outstationSlabsSubTab='hourly'; renderIncentives(document.getElementById('app'))" style="display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-weight:700; font-size:0.85rem; border:1.5px solid ${isHourly ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}; background:${isHourly ? 'rgba(250, 204, 21, 0.15)' : 'rgba(255,255,255,0.02)'}; color:${isHourly ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; transition:all 0.2s;">
-                            <span>🕒 Hourly Packages (12/16/20h)</span>
-                        </button>
-                    </div>
-                `;
-
-                if (isHourly) {
-                    const disabledHourly = window._outstationHourlyEditMode ? '' : 'disabled';
-                    const hourlySlabs = window._currentOutstationHourlySlabs || [];
-
-                    html += `
-                        <div style="margin-bottom:16px;">
-                            <div style="font-weight:700; color:#fff; font-size:0.95rem; margin-bottom:4px;">Outstation Hourly Package Rates (12 / 16 / 20 Hours)</div>
-                            <div style="font-size:0.8rem; color:var(--text-muted);">Configure driver payout rate per hour for single-day outstation trips within the 12-hour driving limit.</div>
-                        </div>
-
-                        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-                            <thead>
-                                <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
-                                    <th style="padding:10px;">Duration Package</th>
-                                    <th style="padding:10px;">Driver Rate (₹/Hour)</th>
-                                    <th style="padding:10px;">Total Base Payout (₹)</th>
-                                    ${window._outstationHourlyEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
-                                </tr>
-                            </thead>
-                            <tbody>
-                    `;
-
-                    if (hourlySlabs.length === 0) {
-                        html += `
-                            <tr>
-                                <td colspan="${window._outstationHourlyEditMode ? 4 : 3}" style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.88rem;">
-                                    No outstation hourly package rates configured for ${window._outstationSlabsVehicleType.toUpperCase()} yet. The customer app will disable hourly booking and indicate unconfigured rates until added here.
-                                </td>
-                            </tr>
-                        `;
-                    } else {
-                        hourlySlabs.forEach((slab, index) => {
-                            const payout = (Number(slab.hours) * Number(slab.ratePerHour || 0)).toFixed(0);
-                            html += `
-                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                                    <td style="padding:10px;">
-                                        <select onchange="window._currentOutstationHourlySlabs[${index}].hours=Number(this.value); window.drawIncentivesUI()" ${disabledHourly} style="padding:8px 12px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700;">
-                                            <option value="12" ${Number(slab.hours) === 12 ? 'selected' : ''}>12 Hours Package</option>
-                                            <option value="16" ${Number(slab.hours) === 16 ? 'selected' : ''}>16 Hours Package</option>
-                                            <option value="20" ${Number(slab.hours) === 20 ? 'selected' : ''}>20 Hours Package</option>
-                                        </select>
-                                    </td>
-                                    <td style="padding:10px;">
-                                        <input type="number" step="10" min="0" value="${slab.ratePerHour || 0}" onchange="window._currentOutstationHourlySlabs[${index}].ratePerHour=parseFloat(this.value); window.drawIncentivesUI()" ${disabledHourly} style="width:130px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);">
-                                    </td>
-                                    <td style="padding:10px; font-weight:800; color:#FACC15; font-family:monospace; font-size:0.95rem;">
-                                        ₹${payout} (${slab.hours}h &times; ₹${slab.ratePerHour || 0})
-                                    </td>
-                                    ${window._outstationHourlyEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentOutstationHourlySlabs.splice(${index}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
-                                </tr>
-                            `;
-                        });
-                    }
-
-                    html += `
-                            </tbody>
-                        </table>
-
-                        <div style="display:flex; gap:10px;">
-                            ${window._outstationHourlyEditMode ? `
-                                <button onclick="window._currentOutstationHourlySlabs = window._currentOutstationHourlySlabs || []; const usedH = window._currentOutstationHourlySlabs.map(s => Number(s.hours)); const nextH = [12, 16, 20].find(h => !usedH.includes(h)) || 12; window._currentOutstationHourlySlabs.push({ hours: nextH, ratePerHour: (window._outstationSlabsVehicleType === 'bike' ? 50 : 120) }); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Package Rate</button>
-                                <button onclick="saveOutstationHourlyIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Hourly Slabs</button>
-                            ` : `
-                                <button onclick="window._outstationHourlyEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Hourly Slabs</button>
-                            `}
-                        </div>
-                    </div>
-                    `;
-                } else {
-                    // MULTI-DAY SLABS SUB-VIEW
-                    const disabledAttr = window._outstationSlabsEditMode ? '' : 'disabled';
-                    const filter = window._outstationTripTypeFilter || 'all';
-                    const slabsToDisplay = (window._currentOutstationSlabs || []).filter(s => {
-                        if (filter === 'all') return true;
-                        return s.tripType === filter;
-                    });
-
-                    html += `
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                            <div>
-                                <div style="font-weight:700; color:#fff; font-size:0.95rem; margin-bottom:4px;">Outstation Multi-Day Rate Slabs</div>
-                                <div style="font-size:0.8rem; color:var(--text-muted);">Configure flat driver daily payout rates for multi-day outstation bookings.</div>
-                            </div>
-                            <!-- Trip Type Filter -->
-                            <select onchange="window._outstationTripTypeFilter=this.value; renderIncentives(document.getElementById('app'))" style="padding:8px 12px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.82rem; font-weight:600;">
-                                <option value="all" ${filter === 'all' ? 'selected' : ''}>All Trip Types</option>
-                                <option value="round" ${filter === 'round' ? 'selected' : ''}>Round Trip Only</option>
-                                <option value="oneway" ${filter === 'oneway' ? 'selected' : ''}>One-Way Only</option>
-                            </select>
-                        </div>
-
-                        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-                            <thead>
-                                <tr style="border-bottom:1px solid var(--border); text-align:left; font-size:0.8rem; color:var(--text-muted); text-transform:uppercase;">
-                                    <th style="padding:10px;">From (Days)</th>
-                                    <th style="padding:10px;">To (Days)</th>
-                                    <th style="padding:10px;">Trip Type</th>
-                                    <th style="padding:10px;">Driver Payout Rate (₹/Day)</th>
-                                    ${window._outstationSlabsEditMode ? '<th style="text-align:center; padding:10px;">Action</th>' : ''}
-                                </tr>
-                            </thead>
-                            <tbody>
-                    `;
-
-                    if (slabsToDisplay.length === 0) {
-                        html += `
-                            <tr>
-                                <td colspan="${window._outstationSlabsEditMode ? 5 : 4}" style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.88rem;">
-                                    No outstation day slabs configured for ${window._outstationSlabsVehicleType.toUpperCase()} yet. Click <strong>+ Add Slab</strong> to create the first rate tier.
-                                </td>
-                            </tr>
-                        `;
-                    } else {
-                        slabsToDisplay.forEach((slab, index) => {
-                            const realIndex = window._currentOutstationSlabs.indexOf(slab);
-                            html += `
-                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                                    <td style="padding:10px;"><input type="number" step="1" min="1" value="${slab.minDays || 1}" onchange="window._currentOutstationSlabs[${realIndex}].minDays=parseFloat(this.value)" ${disabledAttr} style="width:100px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
-                                    <td style="padding:10px;"><input type="number" step="1" min="1" value="${slab.maxDays || 999}" onchange="window._currentOutstationSlabs[${realIndex}].maxDays=parseFloat(this.value)" ${disabledAttr} style="width:100px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px;"></td>
-                                    <td style="padding:10px;">
-                                        <select onchange="window._currentOutstationSlabs[${realIndex}].tripType=this.value" ${disabledAttr} style="padding:8px 12px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:600;">
-                                            <option value="round" ${slab.tripType === 'round' ? 'selected' : ''}>Round Trip</option>
-                                            <option value="oneway" ${slab.tripType === 'oneway' ? 'selected' : ''}>One-Way</option>
-                                        </select>
-                                    </td>
-                                    <td style="padding:10px;"><input type="number" step="50" min="0" value="${slab.ratePerDay || 0}" onchange="window._currentOutstationSlabs[${realIndex}].ratePerDay=parseFloat(this.value)" ${disabledAttr} style="width:130px; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); color:#fff; border-radius:6px; font-weight:700; color:var(--primary);"></td>
-                                    ${window._outstationSlabsEditMode ? `<td style="padding:10px; text-align:center;"><button onclick="window._currentOutstationSlabs.splice(${realIndex}, 1); window.drawIncentivesUI()" style="background:var(--danger); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;">Remove</button></td>` : ''}
-                                </tr>
-                            `;
-                        });
-                    }
-
-                    html += `
-                            </tbody>
-                        </table>
-
-                        <div style="display:flex; gap:10px;">
-                            ${window._outstationSlabsEditMode ? `
-                                <button onclick="window._currentOutstationSlabs.push({minDays: 1, maxDays: 999, tripType: (window._outstationTripTypeFilter === 'oneway' ? 'oneway' : 'round'), ratePerDay: (window._outstationSlabsVehicleType === 'bike' ? 600 : 1500)}); window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 16px; border-radius:6px;">+ Add Slab</button>
-                                <button onclick="saveOutstationIncentives()" class="btn-primary" style="padding:10px 20px; background:var(--success); border:none; color:#fff; font-weight:700; border-radius:6px;">Save Slabs</button>
-                            ` : `
-                                <button onclick="window._outstationSlabsEditMode=true; window.drawIncentivesUI()" class="btn-secondary" style="padding:10px 20px; border-radius:6px; font-weight:700;">Edit Slabs</button>
-                            `}
-                        </div>
-                    </div>
-                    `;
-                }
             }
 
             // TAB 3: BASE FARES & PAYOUT RULES
@@ -8774,66 +8271,6 @@ async function renderIncentives(container) {
             }
         };
 
-        window.saveOutstationIncentives = async function() {
-            if (!Array.isArray(window._currentOutstationSlabs)) return;
-            window._currentOutstationSlabs.sort((a,b) => (a.minDays || 0) - (b.minDays || 0));
-            try {
-                const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
-                const sres = await fetch(`${API_URL}/settings/outstation-slabs`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                    },
-                    body: JSON.stringify({ 
-                        slabs: window._currentOutstationSlabs,
-                        type: window._outstationSlabsVehicleType 
-                    })
-                });
-                if(sres.ok) {
-                    window._outstationSlabsEditMode = false;
-                    alert('Outstation rate slabs saved successfully!');
-                    window._currentOutstationSlabs = null;
-                    renderIncentives(container);
-                } else {
-                    const errData = await sres.json().catch(() => ({}));
-                    alert('Failed to save outstation slabs: ' + (errData.error || sres.statusText));
-                }
-            } catch(e) {
-                alert('Error: ' + e.message);
-            }
-        };
-
-        window.saveOutstationHourlyIncentives = async function() {
-            if (!Array.isArray(window._currentOutstationHourlySlabs)) return;
-            window._currentOutstationHourlySlabs.sort((a,b) => Number(a.hours || 0) - Number(b.hours || 0));
-            try {
-                const token = localStorage.getItem('token') || localStorage.getItem('redrivo_token');
-                const sres = await fetch(`${API_URL}/settings/outstation-hourly-slabs`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                    },
-                    body: JSON.stringify({ 
-                        slabs: window._currentOutstationHourlySlabs,
-                        type: window._outstationSlabsVehicleType || 'car'
-                    })
-                });
-                if(sres.ok) {
-                    window._outstationHourlyEditMode = false;
-                    alert('Outstation hourly rate slabs saved successfully!');
-                    window._currentOutstationHourlySlabs = null;
-                    renderIncentives(container);
-                } else {
-                    const errData = await sres.json().catch(() => ({}));
-                    alert('Failed to save outstation hourly slabs: ' + (errData.error || sres.statusText));
-                }
-            } catch(e) {
-                alert('Error: ' + e.message);
-            }
-        };
-
         window.drawIncentivesUI = renderSlabsUI;
         renderSlabsUI();
         
@@ -8841,826 +8278,6 @@ async function renderIncentives(container) {
         container.innerHTML = '<div class="card" style="color:var(--danger);">Error loading incentives: ' + err.message + '</div>';
     }
 }
-
-// ============================================================================
-// FREE RIDE OFFERS & PROMOTIONS MANAGEMENT SYSTEM
-// ============================================================================
-
-window._offersTab = 'offers';
-window._offersUsageSearchQuery = '';
-window._modalTargetCustomers = [];
-window._modalSearchTimeout = null;
-
-async function renderOffers(container) {
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('subtab')) {
-            window._offersTab = urlParams.get('subtab');
-        }
-        const activeTab = window._offersTab || 'offers';
-
-        container.innerHTML = `
-            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
-                <div class="loader-spin" style="margin: 0 auto 16px auto;"></div>
-                <p>Loading Offers & Promotional Engine...</p>
-            </div>
-        `;
-
-        const [offersRes, usageRes] = await Promise.all([
-            fetch(`${API_URL}/offers`).catch(() => null),
-            fetch(`${API_URL}/offers/usage`).catch(() => null)
-        ]);
-
-        const offersData = (offersRes && offersRes.ok) ? await offersRes.json() : { offers: [] };
-        const usageData = (usageRes && usageRes.ok) ? await usageRes.json() : { usage: [] };
-
-        const offers = offersData.offers || [];
-        const usageList = usageData.usage || [];
-
-        // Compute high-level KPI summary
-        const activeOffersCount = offers.filter(o => o.status === 'active' && new Date(o.end_date) >= new Date()).length;
-        const totalClaimedRides = usageList.reduce((acc, u) => acc + (u.rides_used || 0), 0);
-        const totalSubsidized = usageList.reduce((acc, u) => acc + (parseFloat(u.total_subsidized) || 0), 0);
-        const uniqueCustomersBenefited = new Set(usageList.map(u => u.customer_id)).size;
-
-        let mainTabContent = '';
-
-        if (activeTab === 'offers') {
-            // TAB 1: ACTIVE & SCHEDULED OFFERS TABLE
-            let rowsHtml = '';
-            if (offers.length === 0) {
-                rowsHtml = `
-                    <tr>
-                        <td colspan="8" style="padding: 40px; text-align: center; color: var(--text-muted);">
-                            <i data-lucide="gift" style="width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.5;"></i>
-                            <div style="font-weight: 600;">No promotional offers configured yet.</div>
-                            <button onclick="window.openOfferModal()" class="btn btn-primary btn-sm" style="margin-top: 12px;">
-                                + Create First Offer
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            } else {
-                rowsHtml = offers.map(o => {
-                    const isExpired = new Date(o.end_date) < new Date();
-                    let statusClass = 'chip-success';
-                    let statusLabel = 'ACTIVE';
-
-                    if (o.status === 'paused') {
-                        statusClass = 'chip-warning';
-                        statusLabel = 'PAUSED';
-                    } else if (o.status === 'archived') {
-                        statusClass = 'chip-secondary';
-                        statusLabel = 'ARCHIVED';
-                    } else if (isExpired) {
-                        statusClass = 'chip-danger';
-                        statusLabel = 'EXPIRED';
-                    }
-
-                    const startDateStr = o.start_date ? new Date(o.start_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Immediate';
-                    const endDateStr = new Date(o.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-
-                    const scopeBadge = o.vehicle_scope === 'both'
-                        ? '<span class="badge" style="background:rgba(250,204,21,0.15); color:#FACC15; border:1px solid rgba(250,204,21,0.3); font-size:0.75rem;">Car &amp; Bike</span>'
-                        : (o.vehicle_scope === 'car'
-                            ? '<span class="badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-size:0.75rem;">Car Only</span>'
-                            : '<span class="badge" style="background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3); font-size:0.75rem;">Bike Only</span>');
-
-                    const targetBadge = o.target_type === 'all'
-                        ? '<span class="badge badge-success" style="font-size:0.75rem;">All Customers</span>'
-                        : `<span class="badge badge-info" style="font-size:0.75rem; cursor:pointer;" onclick="window.showTargetCustomersDetails('${o.id}')" title="Click to view target customer list">🎯 ${o.target_customer_count || (o.target_customers ? o.target_customers.length : 0)} Specific Customers</span>`;
-
-                    const offerJsonStr = encodeURIComponent(JSON.stringify(o));
-
-                    return `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.88rem;">
-                            <td style="padding: 14px 16px;">
-                                <div style="font-weight: 700; color: #fff;">${o.name}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">
-                                    ${o.description || 'No description provided'}
-                                </div>
-                                <div style="font-family: monospace; font-size: 0.7rem; color: var(--primary); margin-top: 4px;">#${o.id}</div>
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                ${scopeBadge}
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                ${targetBadge}
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                <div style="font-weight: 700; color: #fff;">${o.ride_count} Free Rides</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);">Up to ${o.max_free_distance_km} km / ride</div>
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                <div style="font-size: 0.82rem; color: #fff;">${startDateStr} → ${endDateStr}</div>
-                                <div style="font-size: 0.72rem; color: ${isExpired ? 'var(--danger)' : 'var(--text-dim)'}; margin-top: 2px;">
-                                    ${isExpired ? 'Offer period ended' : 'Active validity window'}
-                                </div>
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                <div style="font-weight: 700; color: #fff;">${o.claimed_rides_count || 0} Rides</div>
-                                <div style="font-size: 0.75rem; color: var(--primary); font-weight: 600;">₹${parseFloat(o.subsidized_amount_total || 0).toLocaleString()} Subsidized</div>
-                            </td>
-                            <td style="padding: 14px 16px;">
-                                <span class="chip ${statusClass}" style="font-size:0.75rem; font-weight:700;">${statusLabel}</span>
-                            </td>
-                            <td style="padding: 14px 16px; text-align: center;">
-                                <div style="display: flex; gap: 6px; justify-content: center;">
-                                    ${o.status === 'active' ? `
-                                        <button class="btn btn-secondary btn-sm" onclick="window.toggleOfferStatus('${o.id}', 'paused')" title="Pause Offer" style="padding: 4px 8px;">
-                                            <i data-lucide="pause" style="width: 13px; height: 13px; color: var(--warning);"></i>
-                                        </button>
-                                    ` : (o.status === 'paused' ? `
-                                        <button class="btn btn-secondary btn-sm" onclick="window.toggleOfferStatus('${o.id}', 'active')" title="Resume Offer" style="padding: 4px 8px;">
-                                            <i data-lucide="play" style="width: 13px; height: 13px; color: var(--success);"></i>
-                                        </button>
-                                    ` : '')}
-                                    <button class="btn btn-secondary btn-sm" onclick="window.openOfferModal('${offerJsonStr}')" title="Edit Offer" style="padding: 4px 8px;">
-                                        <i data-lucide="edit" style="width: 13px; height: 13px;"></i>
-                                    </button>
-                                    <button class="btn btn-secondary btn-sm" onclick="window.deleteOffer('${o.id}')" title="Delete / Archive" style="padding: 4px 8px; color: var(--danger);">
-                                        <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-
-            mainTabContent = `
-                <div class="card" style="padding:0; overflow:hidden; background:var(--bg-card); border:1px solid var(--border);">
-                    <div style="overflow-x:auto;">
-                        <table style="width:100%; border-collapse:collapse; text-align:left;">
-                            <thead>
-                                <tr style="border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02); font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">
-                                    <th style="padding:12px 16px;">Offer Campaign</th>
-                                    <th style="padding:12px 16px;">Vehicle Scope</th>
-                                    <th style="padding:12px 16px;">Audience</th>
-                                    <th style="padding:12px 16px;">Allotment &amp; Distance</th>
-                                    <th style="padding:12px 16px;">Validity Window</th>
-                                    <th style="padding:12px 16px;">Performance</th>
-                                    <th style="padding:12px 16px;">Status</th>
-                                    <th style="padding:12px 16px; text-align:center;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rowsHtml}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-
-        } else if (activeTab === 'usage') {
-            // TAB 2: CUSTOMER USAGE LEDGER
-            const query = (window._offersUsageSearchQuery || '').toLowerCase();
-            const filteredUsage = usageList.filter(u => {
-                if (!query) return true;
-                return (u.customer_name || '').toLowerCase().includes(query) ||
-                       (u.customer_phone || '').includes(query) ||
-                       (u.offer_name || '').toLowerCase().includes(query);
-            });
-
-            let usageRowsHtml = '';
-            if (filteredUsage.length === 0) {
-                usageRowsHtml = `
-                    <tr>
-                        <td colspan="7" style="padding: 40px; text-align: center; color: var(--text-muted);">
-                            <i data-lucide="users" style="width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.5;"></i>
-                            <div style="font-weight: 600;">No promotional ride claims recorded matching this criteria.</div>
-                        </td>
-                    </tr>
-                `;
-            } else {
-                usageRowsHtml = filteredUsage.map(u => {
-                    const used = u.rides_used || 0;
-                    const allotted = u.rides_allotted || 5;
-                    const remaining = Math.max(0, allotted - used);
-                    const pct = Math.min(100, Math.round((used / allotted) * 100));
-
-                    const lastUsedStr = u.last_used_at 
-                        ? new Date(parseInt(u.last_used_at)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                        : 'N/A';
-
-                    return `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.88rem;">
-                            <td style="padding: 12px 16px;">
-                                <div style="font-weight: 700; color: #fff;">${u.customer_name}</div>
-                                <div style="font-size: 0.78rem; color: var(--text-dim); display: flex; align-items: center; gap: 4px; margin-top: 2px;">
-                                    <i data-lucide="phone" style="width: 12px; height: 12px;"></i> ${u.customer_phone || 'No phone'}
-                                </div>
-                            </td>
-                            <td style="padding: 12px 16px;">
-                                <div style="font-weight: 600; color: #fff;">${u.offer_name}</div>
-                                <div style="font-family: monospace; font-size: 0.7rem; color: var(--primary);">#${u.offer_id}</div>
-                            </td>
-                            <td style="padding: 12px 16px;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div style="font-weight: 800; color: #fff;">${used} / ${allotted} Rides</div>
-                                    <span style="font-size: 0.75rem; color: var(--text-dim);">(${pct}%)</span>
-                                </div>
-                                <div style="width: 120px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 4px; overflow: hidden;">
-                                    <div style="width: ${pct}%; height: 100%; background: ${pct >= 100 ? 'var(--danger)' : 'var(--primary)'}; border-radius: 3px;"></div>
-                                </div>
-                            </td>
-                            <td style="padding: 12px 16px;">
-                                <span class="chip ${remaining > 0 ? 'chip-success' : 'chip-secondary'}" style="font-weight: 700; font-size: 0.8rem;">
-                                    ${remaining} Left
-                                </span>
-                            </td>
-                            <td style="padding: 12px 16px; font-weight: 700; color: var(--primary); font-size: 0.95rem;">
-                                ₹${parseFloat(u.total_subsidized || 0).toLocaleString()}
-                            </td>
-                            <td style="padding: 12px 16px; color: var(--text-muted); font-size: 0.8rem;">
-                                ${lastUsedStr}
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-
-            mainTabContent = `
-                <!-- Filter Search Box -->
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-                    <div class="search-box" style="width:100%; max-width:360px;">
-                        <i data-lucide="search" style="width:14px; color:var(--text-muted)"></i>
-                        <input type="text" placeholder="Search customer or offer name..." class="search-input" value="${window._offersUsageSearchQuery || ''}" oninput="window.filterOffersUsageLedger(this.value)">
-                    </div>
-                    <div style="font-size:0.85rem; color:var(--text-muted);">
-                        Showing <strong>${filteredUsage.length}</strong> customer ledger entries
-                    </div>
-                </div>
-
-                <div class="card" style="padding:0; overflow:hidden; background:var(--bg-card); border:1px solid var(--border);">
-                    <div style="overflow-x:auto;">
-                        <table style="width:100%; border-collapse:collapse; text-align:left;">
-                            <thead>
-                                <tr style="border-bottom:1px solid var(--border); background:rgba(255,255,255,0.02); font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">
-                                    <th style="padding:12px 16px;">Customer</th>
-                                    <th style="padding:12px 16px;">Applied Offer</th>
-                                    <th style="padding:12px 16px;">Usage Progress</th>
-                                    <th style="padding:12px 16px;">Remaining</th>
-                                    <th style="padding:12px 16px;">Total Subsidized</th>
-                                    <th style="padding:12px 16px;">Last Used Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${usageRowsHtml}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-
-        }
-
-        container.innerHTML = `
-            <!-- Offers Section Header -->
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg, rgba(234,179,8,0.2), rgba(249,115,22,0.2)); display:flex; align-items:center; justify-content:center; border:1px solid rgba(234,179,8,0.3);">
-                            <i data-lucide="gift" style="color:var(--primary); width:22px; height:22px;"></i>
-                        </div>
-                        <div>
-                            <h1 style="margin:0; font-size:1.6rem; font-weight:800; color:var(--text-main); letter-spacing:-0.5px;">Offers &amp; Promotions Engine</h1>
-                            <p style="margin:4px 0 0 0; font-size:0.85rem; color:var(--text-muted);">Configure named free-ride promotions, target specific customer cohorts, and track customer usage ledger.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <button onclick="window.openOfferModal()" class="btn btn-primary" style="padding:8px 16px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                        <i data-lucide="plus-circle" style="width:15px; height:15px;"></i> Create New Offer
-                    </button>
-                    <button onclick="renderOffers(document.getElementById('app'))" class="btn-secondary" style="padding:8px 16px; border-radius:6px; font-weight:600; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
-                        <i data-lucide="refresh-cw" style="width:14px; height:14px;"></i> Refresh
-                    </button>
-                </div>
-            </div>
-
-            <!-- KPI Metric Cards Grid -->
-            <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
-                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Active Campaigns</div>
-                    <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:6px 0 2px;">${activeOffersCount} Offers</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">${offers.length} total campaigns configured</div>
-                </div>
-
-                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Free Rides Claimed</div>
-                    <div style="font-size:1.8rem; font-weight:800; color:var(--primary); margin:6px 0 2px;">${totalClaimedRides} Rides</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">Across all active &amp; historical promos</div>
-                </div>
-
-                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Value Subsidized</div>
-                    <div style="font-size:1.8rem; font-weight:800; color:#22c55e; margin:6px 0 2px;">₹${totalSubsidized.toLocaleString()}</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">100% platform-absorbed promotional spend</div>
-                </div>
-
-                <div class="stat-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:18px;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Customers Benefited</div>
-                    <div style="font-size:1.8rem; font-weight:800; color:#fff; margin:6px 0 2px;">${uniqueCustomersBenefited} Users</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">Unique accounts with completed promo rides</div>
-                </div>
-            </div>
-
-            <!-- Sub-Navigation Tabs -->
-            <div style="display:flex; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px;">
-                <button onclick="window._offersTab='offers'; renderOffers(document.getElementById('app'))" 
-                    class="btn ${activeTab === 'offers' ? 'btn-primary' : 'btn-secondary'}" 
-                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
-                    <i data-lucide="tag" style="width:16px; height:16px;"></i> Active &amp; Scheduled Offers (${offers.length})
-                </button>
-                <button onclick="window._offersTab='usage'; renderOffers(document.getElementById('app'))" 
-                    class="btn ${activeTab === 'usage' ? 'btn-primary' : 'btn-secondary'}" 
-                    style="font-weight:700; display:flex; align-items:center; gap:8px;">
-                    <i data-lucide="users" style="width:16px; height:16px;"></i> Customer Usage Ledger (${usageList.length})
-                </button>
-            </div>
-
-            <!-- Tab Content Area -->
-            <div>
-                ${mainTabContent}
-            </div>
-        `;
-
-        if (window.lucide) lucide.createIcons();
-
-        if (urlParams.get('openmodal') === '1') {
-            setTimeout(() => {
-                if (window.openOfferModal) {
-                    window.openOfferModal();
-                    if (urlParams.get('modalcohort') === '1') {
-                        const radio = document.querySelector('input[name="modal-target-type"][value="specific"]');
-                        if (radio) { radio.checked = true; window.toggleTargetAudienceView('specific'); }
-                        window._modalTargetCustomers = [
-                            { id: 'usr_cust_demo_vip1', name: 'Dr. John Watson', phone: '+919876543210', email: 'watson@bakerstreet.com' },
-                            { id: 'usr_cust_demo_vip2', name: 'Priya Sharma', phone: '+919830012345', email: 'priya.sharma@example.com' }
-                        ];
-                        const chipsContainer = document.getElementById('modal-target-chips-container');
-                        const countEl = document.getElementById('modal-target-count');
-                        if (chipsContainer && window.renderModalTargetChips) {
-                            chipsContainer.innerHTML = window.renderModalTargetChips();
-                        }
-                        if (countEl) countEl.innerText = window._modalTargetCustomers.length;
-                        const nameInput = document.getElementById('modal-offer-name');
-                        if (nameInput) nameInput.value = 'VIP Loyalty: 3 Free Rides (Car Only)';
-                        const ridesInput = document.getElementById('modal-offer-rides');
-                        if (ridesInput) ridesInput.value = '3';
-                        const scopeSelect = document.getElementById('modal-offer-scope');
-                        if (scopeSelect) scopeSelect.value = 'car';
-                    }
-                }
-            }, 1200);
-        }
-    } catch (err) {
-        console.error('renderOffers Error:', err);
-        container.innerHTML = `
-            <div class="card" style="color:var(--danger); padding:30px; text-align:center;">
-                <i data-lucide="alert-circle" style="width:36px; height:36px; margin-bottom:10px;"></i>
-                <h3>Error Loading Offers</h3>
-                <p>${err.message}</p>
-                <button class="btn btn-primary" onclick="renderOffers(document.getElementById('app'))" style="margin-top:15px;">Retry</button>
-            </div>
-        `;
-        if (window.lucide) lucide.createIcons();
-    }
-}
-
-// ----------------------------------------------------------------------------
-// MODAL & CLIENT ACTION HANDLERS FOR OFFERS
-// ----------------------------------------------------------------------------
-
-window.closeCrmModal = function() {
-    const modalHost = document.getElementById('crm-modal-host');
-    if (modalHost) modalHost.innerHTML = '';
-};
-
-window.filterOffersUsageLedger = function(query) {
-    window._offersUsageSearchQuery = query;
-    renderOffers(document.getElementById('app'));
-};
-
-window.toggleOfferStatus = async function(id, newStatus) {
-    try {
-        const res = await fetch(`${API_URL}/offers/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            window.showToast(`Offer ${newStatus === 'active' ? 'resumed' : 'paused'} successfully.`, 'success');
-            renderOffers(document.getElementById('app'));
-        } else {
-            alert(data.error || 'Failed to update offer status.');
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-};
-
-window.deleteOffer = async function(id) {
-    if (!confirm('Are you sure you want to delete or archive this offer?')) return;
-    try {
-        const res = await fetch(`${API_URL}/offers/${id}`, {
-            method: 'DELETE'
-        });
-        const data = await res.json();
-        if (res.ok) {
-            window.showToast(data.message || 'Offer removed successfully.', 'success');
-            renderOffers(document.getElementById('app'));
-        } else {
-            alert(data.error || 'Failed to delete offer.');
-        }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-};
-
-window.showTargetCustomersDetails = async function(offerId) {
-    try {
-        const res = await fetch(`${API_URL}/offers`);
-        const data = await res.json();
-        const offer = (data.offers || []).find(o => o.id === offerId);
-        if (!offer) return alert('Offer details not found.');
-
-        const targets = offer.target_customers || [];
-        let listHtml = '';
-        if (targets.length === 0) {
-            listHtml = '<div style="padding:20px; text-align:center; color:var(--text-muted);">No specific customer accounts attached.</div>';
-        } else {
-            listHtml = targets.map(c => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; margin-bottom:8px;">
-                    <div>
-                        <div style="font-weight:700; color:#fff;">${c.name}</div>
-                        <div style="font-size:0.8rem; color:var(--text-muted);">${c.phone || ''} ${c.email ? '• ' + c.email : ''}</div>
-                    </div>
-                    <span class="chip chip-info" style="font-size:0.7rem;">Targeted</span>
-                </div>
-            `).join('');
-        }
-
-        const modalHtml = `
-            <div class="modal-overlay open" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
-                <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:540px; padding:24px; max-height:85vh; overflow-y:auto;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                        <h2 style="margin:0; font-size:1.2rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                            <i data-lucide="users" style="color:var(--primary); width:20px;"></i> Target Audience (${targets.length})
-                        </h2>
-                        <button onclick="window.closeCrmModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer;">&times;</button>
-                    </div>
-                    <div style="margin-bottom:16px; font-size:0.85rem; color:var(--text-muted);">
-                        Campaign: <strong>${offer.name}</strong> (#${offer.id})
-                    </div>
-                    <div style="max-height:50vh; overflow-y:auto;">
-                        ${listHtml}
-                    </div>
-                    <div style="margin-top:20px; text-align:right;">
-                        <button onclick="window.closeCrmModal()" class="btn btn-secondary">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        let modalEl = document.getElementById('crm-modal-host');
-        if (!modalEl) {
-            modalEl = document.createElement('div');
-            modalEl.id = 'crm-modal-host';
-            document.body.appendChild(modalEl);
-        }
-        modalEl.innerHTML = modalHtml;
-        if (window.lucide) lucide.createIcons();
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-};
-
-window.openOfferModal = function(encodedOfferStr = null) {
-    let offer = null;
-    if (encodedOfferStr) {
-        try {
-            offer = JSON.parse(decodeURIComponent(encodedOfferStr));
-        } catch (e) {}
-    }
-
-    const isEdit = !!offer;
-    window._modalTargetCustomers = (offer && offer.target_customers) ? [...offer.target_customers] : [];
-
-    // Format start and end date for datetime-local
-    const now = new Date();
-    const defaultStart = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    
-    // Default end date: 60 days from now
-    const futureDate = new Date(now.getTime() + (60 * 24 * 60 * 60 * 1000));
-    const defaultEnd = new Date(futureDate.getTime() - futureDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-
-    const startVal = offer && offer.start_date ? new Date(new Date(offer.start_date).getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : defaultStart;
-    const endVal = offer && offer.end_date ? new Date(new Date(offer.end_date).getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : defaultEnd;
-
-    const modalHtml = `
-        <div class="modal-overlay open" style="display:flex; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); backdrop-filter:blur(6px); z-index:9999; justify-content:center; align-items:center;">
-            <div class="modal-content" style="background:#151D2E; border:1px solid var(--border); border-radius:16px; width:90%; max-width:640px; padding:28px; max-height:90vh; overflow-y:auto;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                    <div>
-                        <h2 style="margin:0; font-size:1.3rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                            <i data-lucide="gift" style="color:var(--primary); width:22px;"></i> ${isEdit ? 'Edit Promotional Offer' : 'Create New Promotional Offer'}
-                        </h2>
-                        <p style="margin:4px 0 0 0; font-size:0.8rem; color:var(--text-muted);">Configure free rides, distance caps, targeting rules, and validity period.</p>
-                    </div>
-                    <button onclick="window.closeCrmModal()" style="background:none; border:none; color:var(--text-muted); font-size:1.6rem; cursor:pointer;">&times;</button>
-                </div>
-
-                <form id="offer-modal-form" onsubmit="window.submitOfferForm(event, '${offer ? offer.id : ''}')">
-                    <!-- Offer Name -->
-                    <div style="margin-bottom:16px;">
-                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                            Offer Campaign Name <span style="color:var(--danger);">*</span>
-                        </label>
-                        <input type="text" id="modal-offer-name" required value="${offer ? (offer.name || '') : ''}" placeholder="e.g. October Festival Launch Promo" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.9rem;">
-                    </div>
-
-                    <!-- Description -->
-                    <div style="margin-bottom:16px;">
-                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                            Description / Internal Notes
-                        </label>
-                        <textarea id="modal-offer-desc" rows="2" placeholder="Brief rationale or customer-facing promo explanation..." class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.85rem;">${offer ? (offer.description || '') : ''}</textarea>
-                    </div>
-
-                    <!-- Free Rides & Max Free Distance Grid -->
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                        <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                                Free Rides Allotment <span style="color:var(--danger);">*</span>
-                            </label>
-                            <input type="number" id="modal-offer-rides" required min="1" step="1" value="${offer ? (offer.ride_count || 5) : 5}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-weight:700;">
-                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:3px; display:block;">Rides per customer account</span>
-                        </div>
-
-                        <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                                Max Free Distance (km) <span style="color:var(--danger);">*</span>
-                            </label>
-                            <input type="number" id="modal-offer-max-dist" required min="1" step="0.5" value="${offer ? (offer.max_free_distance_km || 30.0) : 30.0}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-weight:700;">
-                            <span style="font-size:0.72rem; color:var(--text-dim); margin-top:3px; display:block;">Distance waived 100% (Option B)</span>
-                        </div>
-                    </div>
-
-                    <!-- Vehicle Scope -->
-                    <div style="margin-bottom:16px;">
-                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                            Vehicle Scope <span style="color:var(--danger);">*</span>
-                        </label>
-                        <select id="modal-offer-scope" class="select" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; font-size:0.9rem;">
-                            <option value="both" ${(!offer || offer.vehicle_scope === 'both') ? 'selected' : ''}>Both Car &amp; Bike</option>
-                            <option value="car" ${offer && offer.vehicle_scope === 'car' ? 'selected' : ''}>Car Only</option>
-                            <option value="bike" ${offer && offer.vehicle_scope === 'bike' ? 'selected' : ''}>Bike Only</option>
-                        </select>
-                    </div>
-
-                    <!-- Start & End Dates -->
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
-                        <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                                Start Date &amp; Time
-                            </label>
-                            <input type="datetime-local" id="modal-offer-start" value="${startVal}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px;">
-                        </div>
-
-                        <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:6px;">
-                                End Date &amp; Time (Mandatory) <span style="color:var(--danger);">*</span>
-                            </label>
-                            <input type="datetime-local" id="modal-offer-end" required value="${endVal}" class="input" style="width:100%; padding:10px 14px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:#fff; border-radius:8px; border-color:rgba(250,204,21,0.4);">
-                        </div>
-                    </div>
-
-                    <!-- Target Audience Selector -->
-                    <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:24px;">
-                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#fff; margin-bottom:10px;">
-                            Target Audience
-                        </label>
-
-                        <div style="display:flex; gap:20px; margin-bottom:14px;">
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#fff; font-size:0.9rem;">
-                                <input type="radio" name="modal-target-type" value="all" ${(!offer || offer.target_type === 'all') ? 'checked' : ''} onchange="window.toggleTargetAudienceView('all')">
-                                All Customers (Global Promo)
-                            </label>
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#fff; font-size:0.9rem;">
-                                <input type="radio" name="modal-target-type" value="specific" ${offer && offer.target_type === 'specific' ? 'checked' : ''} onchange="window.toggleTargetAudienceView('specific')">
-                                Specific Customers (Cohort Campaign)
-                            </label>
-                        </div>
-
-                        <!-- Specific Customers Container -->
-                        <div id="modal-specific-audience-box" style="display:${offer && offer.target_type === 'specific' ? 'block' : 'none'}; border-top:1px solid var(--border); padding-top:14px;">
-                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px; font-weight:600;">
-                                Search &amp; Add Customer Accounts:
-                            </label>
-                            <div style="position:relative; margin-bottom:10px;">
-                                <input type="text" id="modal-customer-search-input" placeholder="Type customer name, phone (+91...), or email..." class="input" oninput="window.handleTargetCustomerSearch(this.value)" style="width:100%; padding:9px 12px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:#fff; border-radius:6px; font-size:0.85rem;">
-                                <div id="modal-customer-search-dropdown" style="display:none; position:absolute; top:100%; left:0; width:100%; max-height:180px; overflow-y:auto; background:#1E293B; border:1px solid var(--border); border-radius:8px; z-index:1000; box-shadow:0 10px 25px rgba(0,0,0,0.5); margin-top:4px;"></div>
-                            </div>
-
-                            <!-- Selected Customers Chips -->
-                            <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:6px;">Selected Target Cohort (<span id="modal-target-count">${window._modalTargetCustomers.length}</span>):</div>
-                            <div id="modal-target-chips-container" style="display:flex; flex-wrap:wrap; gap:6px; max-height:120px; overflow-y:auto; padding:4px 0;">
-                                ${window.renderModalTargetChips()}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Modal Actions -->
-                    <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--border); padding-top:16px;">
-                        <button type="button" onclick="window.closeCrmModal()" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" id="btn-modal-offer-submit" class="btn btn-primary" style="padding:10px 24px; font-weight:700;">
-                            ${isEdit ? 'Save Changes' : 'Create Offer'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-
-    let modalEl = document.getElementById('crm-modal-host');
-    if (!modalEl) {
-        modalEl = document.createElement('div');
-        modalEl.id = 'crm-modal-host';
-        document.body.appendChild(modalEl);
-    }
-    modalEl.innerHTML = modalHtml;
-    if (window.lucide) lucide.createIcons();
-};
-
-window.closeCrmModal = function() {
-    const modalEl = document.getElementById('crm-modal-host');
-    if (modalEl) modalEl.innerHTML = '';
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) modalContainer.innerHTML = '';
-};
-
-window.toggleTargetAudienceView = function(type) {
-    const box = document.getElementById('modal-specific-audience-box');
-    if (box) box.style.display = type === 'specific' ? 'block' : 'none';
-};
-
-window.handleTargetCustomerSearch = function(query) {
-    clearTimeout(window._modalSearchTimeout);
-    const dropdown = document.getElementById('modal-customer-search-dropdown');
-    if (!dropdown) return;
-
-    if (!query || query.trim().length === 0) {
-        dropdown.style.display = 'none';
-        return;
-    }
-
-    window._modalSearchTimeout = setTimeout(async () => {
-        try {
-            const res = await fetch(`${API_URL}/crm/customers/search?q=${encodeURIComponent(query.trim())}`);
-            const data = await res.json();
-            const customers = data.customers || [];
-
-            if (customers.length === 0) {
-                dropdown.innerHTML = '<div style="padding:10px; font-size:0.8rem; color:var(--text-muted); text-align:center;">No matching customers found</div>';
-            } else {
-                dropdown.innerHTML = customers.map(c => {
-                    const isAlreadyAdded = window._modalTargetCustomers.some(tc => tc.id === c.id);
-                    return `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem; cursor:pointer;" onclick="${isAlreadyAdded ? '' : `window.addModalTargetCustomer('${c.id}', '${encodeURIComponent(c.name || '')}', '${c.phone || ''}', '${c.email || ''}')`}">
-                            <div>
-                                <div style="font-weight:700; color:#fff;">${c.name || 'Customer'}</div>
-                                <div style="font-size:0.75rem; color:var(--text-muted);">${c.phone || ''} ${c.email ? '• ' + c.email : ''}</div>
-                            </div>
-                            ${isAlreadyAdded ? `
-                                <span style="font-size:0.72rem; color:var(--success); font-weight:700;">✓ Added</span>
-                            ` : `
-                                <button type="button" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:3px 8px;">+ Add</button>
-                            `}
-                        </div>
-                    `;
-                }).join('');
-            }
-            dropdown.style.display = 'block';
-        } catch (e) {
-            dropdown.style.display = 'none';
-        }
-    }, 250);
-};
-
-window.addModalTargetCustomer = function(id, encodedName, phone, email) {
-    const name = decodeURIComponent(encodedName);
-    if (!window._modalTargetCustomers.some(c => c.id === id)) {
-        window._modalTargetCustomers.push({ id, name, phone, email });
-    }
-    const container = document.getElementById('modal-target-chips-container');
-    const countEl = document.getElementById('modal-target-count');
-    if (container) container.innerHTML = window.renderModalTargetChips();
-    if (countEl) countEl.textContent = window._modalTargetCustomers.length;
-
-    const dropdown = document.getElementById('modal-customer-search-dropdown');
-    if (dropdown) dropdown.style.display = 'none';
-    const input = document.getElementById('modal-customer-search-input');
-    if (input) input.value = '';
-};
-
-window.removeModalTargetCustomer = function(id) {
-    window._modalTargetCustomers = window._modalTargetCustomers.filter(c => c.id !== id);
-    const container = document.getElementById('modal-target-chips-container');
-    const countEl = document.getElementById('modal-target-count');
-    if (container) container.innerHTML = window.renderModalTargetChips();
-    if (countEl) countEl.textContent = window._modalTargetCustomers.length;
-};
-
-window.renderModalTargetChips = function() {
-    if (!window._modalTargetCustomers || window._modalTargetCustomers.length === 0) {
-        return '<span style="font-size:0.75rem; color:var(--text-dim); font-style:italic;">No customers selected yet. Search above to add.</span>';
-    }
-    return window._modalTargetCustomers.map(c => `
-        <span class="chip chip-info" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:3px 8px; border-radius:12px;">
-            <span>${c.name} (${c.phone || c.id})</span>
-            <span onclick="window.removeModalTargetCustomer('${c.id}')" style="cursor:pointer; font-weight:800; opacity:0.7;" title="Remove">&times;</span>
-        </span>
-    `).join('');
-};
-
-window.submitOfferForm = async function(e, editId = null) {
-    e.preventDefault();
-
-    const name = document.getElementById('modal-offer-name').value.trim();
-    const description = document.getElementById('modal-offer-desc').value.trim();
-    const ride_count = parseInt(document.getElementById('modal-offer-rides').value, 10);
-    const max_free_distance_km = parseFloat(document.getElementById('modal-offer-max-dist').value);
-    const vehicle_scope = document.getElementById('modal-offer-scope').value;
-    const start_date = document.getElementById('modal-offer-start').value;
-    const end_date = document.getElementById('modal-offer-end').value;
-
-    const targetTypeRadio = document.querySelector('input[name="modal-target-type"]:checked');
-    const target_type = targetTypeRadio ? targetTypeRadio.value : 'all';
-
-    if (!end_date) {
-        alert('Please specify a mandatory offer end date.');
-        return;
-    }
-
-    if (new Date(end_date) <= new Date()) {
-        alert('End date must be in the future.');
-        return;
-    }
-
-    if (target_type === 'specific' && window._modalTargetCustomers.length === 0) {
-        alert('Please select at least one customer account for a targeted campaign.');
-        return;
-    }
-
-    const payload = {
-        name,
-        description,
-        ride_count,
-        max_free_distance_km,
-        vehicle_scope,
-        start_date: start_date ? new Date(start_date).toISOString() : new Date().toISOString(),
-        end_date: new Date(end_date).toISOString(),
-        target_type,
-        customer_ids: target_type === 'specific' ? window._modalTargetCustomers.map(c => c.id) : []
-    };
-
-    const submitBtn = document.getElementById('btn-modal-offer-submit');
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Saving...';
-    }
-
-    try {
-        const url = editId ? `${API_URL}/offers/${editId}` : `${API_URL}/offers`;
-        const method = editId ? 'PATCH' : 'POST';
-
-        const res = await fetch(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-
-        if (res.ok) {
-            window.closeCrmModal();
-            window.showToast(editId ? 'Offer updated successfully.' : 'New promotional offer created.', 'success');
-            renderOffers(document.getElementById('app'));
-        } else {
-            alert(data.error || 'Failed to save offer.');
-        }
-    } catch (err) {
-        alert('Error saving offer: ' + err.message);
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = editId ? 'Save Changes' : 'Create Offer';
-        }
-    }
-};
 
 
 
@@ -10270,5 +8887,3 @@ window.renderTractionLiveMetrics = async function(container) {
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
 };
-
-// Auto-cache-busting verified: 2026-09-11

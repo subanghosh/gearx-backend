@@ -2,57 +2,38 @@
 <html lang="en">
 
 <head>
-    <!-- Favicon & App Icons -->
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0B0E14">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>ReDrivo Command Center</title>
-    <link rel="stylesheet" href="styles.css?v=20260919_compact">
+    <link rel="stylesheet" href="styles.css?v=20260909_security">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script>
-        // Apply saved sidebar collapse state before initial paint to prevent layout flash
-        try {
-            if (localStorage.getItem('redrivo_crm_sidebar_collapsed') === 'true') {
-                document.documentElement.classList.add('sidebar-collapsed-preload');
-            }
-        } catch (_) {}
-    </script>
 </head>
 
 <body>
 
     <div class="app-wrapper">
         <!-- Top Navigation -->
-        <header class="top-nav" style="display:flex; justify-content:space-between; align-items:center; padding:10px 20px; background:var(--bg-surface); border-bottom:1px solid var(--border); width: 100%; z-index: 100;">
-            <div style="display:flex; align-items:center; gap: 12px;">
+        <header class="top-nav" style="display:flex; justify-content:space-between; align-items:center; padding:12px 24px; background:var(--bg-surface); border-bottom:1px solid var(--border); width: 100%; z-index: 100;">
+            <div style="display:flex; align-items:center; gap: 16px;">
                 <button class="btn-icon mobile-menu-btn" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; display:none;" onclick="document.querySelector('.sidebar').classList.toggle('active');"><i data-lucide="menu"></i></button>
-                <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" onclick="toggleSidebarCollapse()" title="Toggle Navigation Sidebar (Ctrl+B)" aria-label="Toggle navigation sidebar">
-                    <i data-lucide="panel-left-close" id="sidebar-toggle-icon"></i>
-                </button>
-                <div class="logo" style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.05rem;">
-                    <i data-lucide="shield-check" style="color:var(--primary); width:18px; height:18px;"></i>
+                <div class="logo" style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.25rem;">
+                    <i data-lucide="shield-check" style="color:var(--primary);"></i>
                     <span>Re<span style="color: #FACC15;">D</span>rivo <span style="font-weight:400; color:var(--text-muted);">Command Center</span></span>
                 </div>
             </div>
             
-            <div style="display:flex; align-items:center; gap:14px;">
-                <button class="btn-icon" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i data-lucide="bell" style="width:16px; height:16px;"></i></button>
-                <div class="user-profile" style="display:flex; align-items:center; gap:10px; padding-left:14px; border-left:1px solid var(--border);">
+            <div style="display:flex; align-items:center; gap:16px;">
+                <button class="btn-icon" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i data-lucide="bell"></i></button>
+                <div class="user-profile" style="display:flex; align-items:center; gap:12px; padding-left:16px; border-left:1px solid var(--border);">
                     <div style="text-align:right;">
-                        <div style="font-size:0.80rem; font-weight:700; color:#fff;" id="top-user-name">Admin User</div>
-                        <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; font-weight:800; letter-spacing:0.8px;" id="top-user-role">Super Admin</div>
+                        <div style="font-size:0.85rem; font-weight:700; color:#fff;" id="top-user-name">Admin User</div>
+                        <div style="font-size:0.7rem; color:var(--text-dim); text-transform:uppercase; font-weight:800; letter-spacing:1px;" id="top-user-role">Super Admin</div>
                     </div>
-                    <div style="width:30px; height:30px; border-radius:50%; background:var(--primary-dim); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.75rem; border:1px solid rgba(245, 158, 11, 0.3);">
+                    <div style="width:36px; height:36px; border-radius:50%; background:var(--primary-dim); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:800; border:1px solid rgba(245, 158, 11, 0.3);">
                         <span id="top-user-initial">A</span>
                     </div>
                 </div>
@@ -97,9 +78,6 @@
                     <a onclick="router.navigate('incentives')" class="nav-link" id="nav-incentives">
                         <i data-lucide="percent"></i> <span>Driver Ops</span>
                     </a>
-                    <a onclick="router.navigate('offers')" class="nav-link" id="nav-offers">
-                        <i data-lucide="gift"></i> <span>Offers</span>
-                    </a>
                     
                     <div class="sidebar-label">Insights</div>
                     <a onclick="router.navigate('surveys')" class="nav-link" id="nav-surveys">
@@ -141,6 +119,6 @@
     <!-- Scripts -->
     <script src="data.js?v=4"></script>
     <script src="otp-boxes.js"></script>
-    <script src="app.js?v=20260919_compact"></script>
+    <script src="app.js?v=20260910_geofence"></script>
 </body>
 </html>

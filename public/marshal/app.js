@@ -10352,10 +10352,106 @@ window.rejectDriverBidPreview = async function() {
     }
 };
 
+// =============================================================================
+// CASH RIDES & DRIVER WALLET PREVIEW MOCKUP HANDLERS
+// =============================================================================
+window.openCashIncomingPickupPreview = function() {
+    const modal = document.getElementById('incoming-pickup-modal');
+    if (!modal) return;
+
+    const vName = document.getElementById('ip-vehicle-name');
+    if (vName) vName.textContent = 'Tata Harrier XZA+';
+
+    const vMeta = document.getElementById('ip-vehicle-meta');
+    if (vMeta) vMeta.textContent = 'Automatic • Diesel • Luxury SUV';
+
+    const earnings = document.getElementById('ip-earnings');
+    if (earnings) earnings.textContent = '₹450 Cash in Hand';
+
+    const dist = document.getElementById('ip-distance');
+    if (dist) dist.textContent = '1.2 km away';
+
+    const addr = document.getElementById('ip-address');
+    if (addr) addr.textContent = 'Mani Casadona, Newtown, Kolkata';
+
+    const badge = document.getElementById('ip-payment-badge-container');
+    if (badge) {
+        badge.style.display = 'flex';
+        const pill = document.getElementById('ip-cash-collect-pill');
+        if (pill) pill.textContent = 'Collect ₹450 Cash';
+        const note = document.getElementById('ip-commission-deduct-note');
+        if (note) note.textContent = 'Customer pays you full fare in cash. 20% platform commission (₹90) will be added to your wallet outstanding.';
+    }
+
+    const timerCircle = document.getElementById('ip-timer-circle');
+    if (timerCircle) timerCircle.textContent = '60';
+
+    const acceptBtn = document.getElementById('ip-btn-accept');
+    if (acceptBtn) {
+        acceptBtn.textContent = 'ACCEPT (MOCKUP)';
+        acceptBtn.onclick = function() {
+            if (typeof showToast === 'function') {
+                showToast('Mockup: Cash booking accepted! Full ₹450 cash collected from rider at end.', 'success');
+            }
+            window.closeCashIncomingPickupPreview();
+        };
+    }
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+};
+
+window.closeCashIncomingPickupPreview = function() {
+    const modal = document.getElementById('incoming-pickup-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+    }
+};
+
+window.openDriverWalletPreview = function() {
+    if (typeof switchTab === 'function') {
+        switchTab('alerts');
+    }
+    setTimeout(() => {
+        const card = document.getElementById('driver-outstanding-balance-card');
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.transition = 'box-shadow 0.4s ease, border-color 0.4s ease';
+            card.style.borderColor = '#facc15';
+            card.style.boxShadow = '0 0 25px rgba(250, 204, 21, 0.4)';
+            setTimeout(() => {
+                card.style.boxShadow = '';
+            }, 2500);
+        }
+    }, 200);
+};
+
+window.openWalletBlockedScreenPreview = function() {
+    const screen = document.getElementById('wallet-limit-blocked-screen');
+    if (screen) {
+        screen.style.display = 'flex';
+    }
+};
+
+window.closeWalletBlockedScreenPreview = function() {
+    const screen = document.getElementById('wallet-limit-blocked-screen');
+    if (screen) {
+        screen.style.display = 'none';
+    }
+};
+
 // Hash routing for direct access
 function checkMarshalPreviewHash() {
-    if (window.location.hash === '#preview-driver-bid-request' || window.location.hash === '#preview-bid-request') {
+    const hash = window.location.hash;
+    if (hash === '#preview-driver-bid-request' || hash === '#preview-bid-request') {
         window.openDriverBidRequestPreview();
+    } else if (hash === '#preview-incoming-cash' || hash === '#preview-cash-request') {
+        window.openCashIncomingPickupPreview();
+    } else if (hash === '#preview-driver-wallet' || hash === '#preview-wallet') {
+        window.openDriverWalletPreview();
+    } else if (hash === '#preview-wallet-blocked' || hash === '#preview-blocked') {
+        window.openWalletBlockedScreenPreview();
     }
 }
 
