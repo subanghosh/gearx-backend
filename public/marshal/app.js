@@ -10435,9 +10435,33 @@ window.openDriverWalletPreview = function() {
     const login = document.getElementById('login-screen');
     if (login) login.style.display = 'none';
 
-    if (typeof switchTab === 'function') {
-        switchTab('alerts');
+    const mainApp = document.getElementById('main-app');
+    if (mainApp) {
+        mainApp.classList.remove('hidden');
+        mainApp.style.display = 'block';
     }
+
+    document.querySelectorAll('.tab-panel').forEach(p => {
+        p.classList.remove('active');
+        p.style.display = 'none';
+    });
+    const tabEl = document.getElementById('tab-alerts');
+    if (tabEl) {
+        tabEl.classList.add('active');
+        tabEl.style.display = 'block';
+    }
+
+    // Update bottom nav highlighting
+    document.querySelectorAll('nav.fixed.bottom-0 button').forEach(btn => {
+        btn.classList.remove('text-primary-container', 'font-bold');
+        btn.classList.add('text-on-surface-variant');
+    });
+    const newBottomBtn = document.querySelector('nav.fixed.bottom-0 button[onclick*="alerts"]');
+    if (newBottomBtn) {
+        newBottomBtn.classList.remove('text-on-surface-variant');
+        newBottomBtn.classList.add('text-primary-container', 'font-bold');
+    }
+
     setTimeout(() => {
         const card = document.getElementById('driver-outstanding-balance-card');
         if (card) {

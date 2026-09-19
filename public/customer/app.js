@@ -13574,6 +13574,10 @@ window.openHireDriverPreviewScreen = function() {
         window.previewHireDriverState.sheetExpanded = true;
         sheet.style.transform = 'translateY(0px)';
         if (icon) icon.textContent = '▼';
+        setTimeout(() => {
+            const payCard = document.getElementById('preview-payment-cash-card');
+            if (payCard) payCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 120);
     }
 
     // Initialize Real Google Map & Route Polyline
